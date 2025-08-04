@@ -127,60 +127,295 @@ baton/
 - `POST /api/mcp/plans` - Create a plan from AI agent
 - `POST /api/mcp/plans/:id/convert` - Convert plan to tasks
 
-## MCP Integration
+## 🤖 AI Editor Integration
 
-Baton includes a **fully compliant Model Context Protocol (MCP) server** that enables seamless integration with AI agents like Claude Desktop and Claude Code.
+Baton includes a **fully compliant Model Context Protocol (MCP) server** with workspace context detection, enabling seamless integration with AI-powered editors and tools.
 
-### 🎯 True MCP Compliance
+### 🎯 Key Features
 
-- ✅ **JSON-RPC 2.0 messaging** with proper lifecycle management
-- ✅ **WebSocket & STDIO transport** for flexible connectivity  
-- ✅ **Resources** - Read-only access to projects, tasks, and analytics
-- ✅ **Tools** - Execute actions like creating tasks, updating projects
-- ✅ **Prompts** - Templated workflows for project planning and analysis
+- ✅ **Workspace Context Detection** - Automatically detects which project you're working on
+- ✅ **True MCP Compliance** - JSON-RPC 2.0 with WebSocket & STDIO transport
+- ✅ **9 Resources** - Projects, tasks, kanban boards, analytics, and workspace context
+- ✅ **11 Tools** - Create tasks, manage projects, get analytics, workspace management
+- ✅ **8 Prompts** - Project planning, task breakdown, retrospectives, risk assessment
 
-### Quick MCP Setup
+### 🔧 Editor Integration
 
-#### For Claude Desktop
-```json
-{
-  "mcpServers": {
-    "baton": {
-      "command": "node",
-      "args": ["/path/to/baton/backend/dist/mcp-server.js"],
-      "env": {
-        "DATABASE_URL": "postgresql://baton_user:baton_password@localhost:5432/baton_dev"
-      }
+<details>
+<summary><strong>📝 Claude Code</strong></summary>
+
+#### Prerequisites
+- [Claude Code](https://claude.ai/code) installed
+- Baton running locally (see Quick Start above)
+
+#### Setup Steps
+
+1. **Start Baton MCP Server**
+   ```bash
+   cd backend
+   npm run build
+   npm run mcp:stdio
+   ```
+
+2. **Add MCP Server to Claude Code**
+   ```bash
+   claude mcp add baton --scope project -- node /absolute/path/to/baton/backend/dist/mcp-server.js
+   ```
+   
+   Or with environment variables:
+   ```bash
+   claude mcp add baton --scope project -e DATABASE_URL="postgresql://baton_user:baton_password@localhost:5432/baton_dev" -- node /absolute/path/to/baton/backend/dist/mcp-server.js
+   ```
+
+3. **Verify Integration**
+   ```bash
+   claude mcp list
+   ```
+
+4. **Create Workspace Context**
+   Create a `.baton-project` file in your workspace root:
+   ```json
+   {
+     "projectId": "your-project-id",
+     "workspacePath": "/path/to/your/workspace",
+     "createdAt": "2025-01-01T00:00:00.000Z",
+     "version": "1.0.0"
+   }
+   ```
+
+#### Usage
+- **View Tasks**: Ask Claude "Show me my current tasks"
+- **Create Tasks**: "Add a task to implement user authentication"
+- **Project Analytics**: "What's the status of my current project?"
+- **Planning**: "Create a project plan for a new feature"
+
+</details>
+
+<details>
+<summary><strong>🎨 Cursor IDE</strong></summary>
+
+#### Prerequisites
+- [Cursor IDE](https://cursor.sh/) installed
+- Baton running locally
+
+#### Setup Steps
+
+1. **Install MCP Extension** (if available)
+   - Check Cursor marketplace for MCP support
+
+2. **Alternative: WebSocket Integration**
+   ```bash
+   # Start Baton in WebSocket mode
+   npm run mcp:websocket
+   ```
+
+3. **Configure Cursor Settings**
+   Add to your Cursor settings:
+   ```json
+   {
+     "mcp.servers": {
+       "baton": {
+         "transport": "websocket",
+         "url": "ws://localhost:3002"
+       }
+     }
+   }
+   ```
+
+4. **Workspace Context**
+   Ensure `.baton-project` exists in your workspace root.
+
+#### Usage
+- Access Baton resources through Cursor's MCP interface
+- Use @ mentions to reference Baton resources
+- Create tasks directly from code comments
+
+</details>
+
+<details>
+<summary><strong>🌊 Windsurf</strong></summary>
+
+#### Prerequisites
+- [Windsurf](https://codeium.com/windsurf) installed
+- Baton running locally
+
+#### Setup Steps
+
+1. **Start MCP Server**
+   ```bash
+   npm run mcp:stdio
+   ```
+
+2. **Configure Windsurf**
+   Add MCP server configuration to Windsurf settings:
+   ```json
+   {
+     "mcp": {
+       "servers": {
+         "baton": {
+           "command": "node",
+           "args": ["/absolute/path/to/baton/backend/dist/mcp-server.js"],
+           "env": {
+             "DATABASE_URL": "postgresql://baton_user:baton_password@localhost:5432/baton_dev"
+           }
+         }
+       }
+     }
+   }
+   ```
+
+3. **Workspace Association**
+   Create `.baton-project` in your project root.
+
+#### Usage
+- Leverage Windsurf's AI features with Baton context
+- Generate tasks from code analysis
+- Project planning and management through AI chat
+
+</details>
+
+<details>
+<summary><strong>🔧 Custom MCP Integration</strong></summary>
+
+#### WebSocket Transport
+```javascript
+const WebSocket = require('ws');
+
+// Connect to Baton MCP server
+const ws = new WebSocket('ws://localhost:3002');
+
+// Initialize MCP connection
+ws.send(JSON.stringify({
+  jsonrpc: '2.0',
+  id: 1,
+  method: 'initialize',
+  params: {
+    protocolVersion: '2024-11-05',
+    capabilities: {
+      resources: { subscribe: true },
+      tools: {},
+      prompts: {}
+    },
+    clientInfo: {
+      name: 'custom-client',
+      version: '1.0.0'
     }
   }
-}
+}));
 ```
 
-#### For WebSocket Connections
+#### STDIO Transport
 ```bash
-# Start MCP server in WebSocket mode
-npm run mcp:websocket
-
-# Connect to ws://localhost:3002
+# Direct STDIO communication
+echo '{"jsonrpc":"2.0","id":1,"method":"resources/list"}' | node dist/mcp-server.js
 ```
 
-### Available MCP Resources
-- `@baton://projects` - All projects
-- `@baton://tasks/pending` - Pending tasks  
-- `@baton://projects/{id}/tasks/kanban` - Kanban board view
+#### Available Resources
+- `baton://workspace/current` - Current workspace project
+- `baton://workspace/tasks` - Tasks in current workspace
+- `baton://workspace/tasks/kanban` - Kanban board view
+- `baton://projects` - All projects
+- `baton://tasks/pending` - All pending tasks
+- `baton://mcp-plans` - AI-generated plans
+- `baton://mcp-agents` - Registered AI agents
 
-### Available MCP Tools
+#### Available Tools
 - `create_project` - Create new projects
-- `create_task` - Add tasks to projects
-- `get_project_analytics` - Get project insights
-- `create_mcp_plan` - Generate AI task plans
+- `create_task` - Add tasks to projects  
+- `move_task` - Move tasks between columns
+- `get_project_analytics` - Project insights
+- `get_workspace_info` - Current workspace context
+- `associate_workspace_project` - Link workspace to project
 
-### Available MCP Prompts
-- `create_project_plan` - Generate comprehensive project plans
-- `analyze_project_status` - Analyze project health
-- `sprint_planning` - Create sprint plans
+</details>
 
-📚 **Full MCP Documentation**: See [docs/MCP_INTEGRATION.md](docs/MCP_INTEGRATION.md) for complete details.
+### 🏗️ Workspace Context System
+
+Baton automatically detects which project you're working on based on your workspace:
+
+1. **Automatic Detection**
+   - Reads `.baton-project` configuration files
+   - Matches folder names to project names
+   - Stores workspace mappings in database
+
+2. **Context-Aware Operations**
+   - All task creation defaults to current workspace project
+   - Resource URIs like `baton://workspace/tasks` show current project only
+   - Analytics and reports focus on relevant project
+
+3. **Multi-Project Support**
+   - Different workspaces → different Baton projects
+   - Seamless switching between projects
+   - Persistent workspace associations
+
+### 🧪 Testing Your Integration
+
+```bash
+# Test MCP server functionality
+cd backend
+npm run test:mcp
+
+# Test workspace detection
+npm run test:workspace
+
+# Test database integration
+npm run test:mcp:db
+```
+
+### 🔧 Troubleshooting
+
+<details>
+<summary><strong>Common Issues</strong></summary>
+
+#### MCP Server Not Starting
+```bash
+# Check if PostgreSQL is running
+docker ps | grep postgres
+
+# Verify database connection
+npm run db:migrate
+
+# Check environment variables
+cat .env
+```
+
+#### Workspace Not Detected
+```bash
+# Check .baton-project file exists
+ls -la .baton-project
+
+# Test workspace detection
+npm run test:workspace
+
+# Manually associate workspace
+npm run mcp:dev:websocket
+# Then use the associate_workspace_project tool
+```
+
+#### Claude Code Integration Issues
+```bash
+# Verify MCP server is registered
+claude mcp list
+
+# Check server status
+claude mcp get baton
+
+# Test direct connection
+npm run mcp:stdio
+```
+
+#### Database Connection Errors
+```bash
+# Reset database
+npm run db:reset
+
+# Check PostgreSQL logs
+docker logs baton-postgres
+
+# Verify connection string in .env
+```
+
+</details>
 
 ## Development
 
