@@ -1,4 +1,18 @@
 import React, { useState } from 'react';
+import { 
+  FileText, 
+  CheckCircle2, 
+  Clock, 
+  Archive,
+  RefreshCw,
+  MoreHorizontal,
+  ChevronDown,
+  ChevronRight,
+  Calendar,
+  Monitor,
+  Hash
+} from 'lucide-react';
+import clsx from 'clsx';
 import { usePlans, useUpdatePlan, useDeletePlan } from '../../hooks';
 import type { ClaudeCodePlan, ClaudeCodePlanStatus } from '../../types';
 
@@ -6,15 +20,50 @@ interface PlansListProps {
   projectId: string;
 }
 
+const statusIcons = {
+  accepted: CheckCircle2,
+  implemented: Clock,
+  archived: Archive,
+};
+
+const statusColors = {
+  accepted: 'text-green-500',
+  implemented: 'text-blue-500', 
+  archived: 'text-gray-500',
+};
+
+const statusBadgeColors = {
+  accepted: 'text-green-700 bg-green-50 border-green-200',
+  implemented: 'text-blue-700 bg-blue-50 border-blue-200',
+  archived: 'text-gray-700 bg-gray-50 border-gray-200',
+};
+
 export const PlansList: React.FC<PlansListProps> = ({ projectId }) => {
-  const [selectedPlan, setSelectedPlan] = useState<ClaudeCodePlan | null>(null);
+  const [selectedPlans, setSelectedPlans] = useState<string[]>([]);
+  const [expandedPlans, setExpandedPlans] = useState<string[]>([]);
 
   // Use the custom hooks for plans data and mutations
-  const { data: plansData, isLoading, error } = usePlans(projectId);
+  const { data: plansData, isLoading, error, refetch } = usePlans(projectId);
   const updatePlanMutation = useUpdatePlan();
   const deletePlanMutation = useDeletePlan();
 
   const plans = plansData?.plans || [];
+
+  const handlePlanSelect = (planId: string) => {
+    setSelectedPlans(prev => 
+      prev.includes(planId) 
+        ? prev.filter(id => id !== planId)
+        : [...prev, planId]
+    );
+  };
+
+  const handlePlanExpand = (planId: string) => {
+    setExpandedPlans(prev => 
+      prev.includes(planId)
+        ? prev.filter(id => id !== planId)
+        : [...prev, planId]
+    );
+  };
 
   const handleStatusChange = (plan: ClaudeCodePlan, newStatus: string) => {
     updatePlanMutation.mutate({ 
@@ -23,33 +72,159 @@ export const PlansList: React.FC<PlansListProps> = ({ projectId }) => {
     });
   };
 
-  const handleDelete = (plan: ClaudeCodePlan) => {
-    if (window.confirm('Are you sure you want to delete this plan?')) {
-      // Clear selection if deleting the currently selected plan
-      if (selectedPlan?.id === plan.id) {
-        setSelectedPlan(null);
-      }
-      deletePlanMutation.mutate(plan.id);
+  const handleDelete = async (planId: string) => {
+    if (confirm('Are you sure you want to delete this plan?')) {
+      await deletePlanMutation.mutateAsync(planId);
     }
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString();
+    return new Date(dateString).toLocaleDateString();
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'accepted': return 'bg-green-100 text-green-800';
-      case 'implemented': return 'bg-blue-100 text-blue-800';
-      case 'archived': return 'bg-gray-100 text-gray-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
+  const getContentPreview = (content: string, maxLength = 120) => {
+    if (content.length <= maxLength) return content;
+    return content.substring(0, maxLength) + '...';
+  };
+
+  const renderPlan = (plan: ClaudeCodePlan) => {
+    const StatusIcon = statusIcons[plan.status];
+    const isSelected = selectedPlans.includes(plan.id);
+    const isExpanded = expandedPlans.includes(plan.id);
+
+    return (
+      <div
+        key={plan.id}
+        className={clsx(
+          'group flex items-start space-x-3 p-4 rounded-lg border transition-all duration-200',
+          isSelected 
+            ? 'bg-blue-50 border-blue-200' 
+            : 'bg-white border-gray-200 hover:border-gray-300'
+        )}
+        data-testid={`claude-plan-item-${plan.id}`}
+      >
+        <button
+          onClick={() => handlePlanSelect(plan.id)}
+          className="mt-1 flex-shrink-0"
+          data-testid={`claude-plan-select-${plan.id}`}
+        >
+          <StatusIcon 
+            className={clsx(
+              'w-5 h-5 transition-colors duration-200',
+              statusColors[plan.status]
+            )}
+          />
+        </button>
+
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900 mb-1">
+                {plan.title}
+              </p>
+              
+              <p className="text-sm text-gray-600 mb-3">
+                {isExpanded ? plan.content : getContentPreview(plan.content)}
+              </p>
+
+              {plan.content.length > 120 && (
+                <button
+                  onClick={() => handlePlanExpand(plan.id)}
+                  className="flex items-center space-x-1 text-xs text-blue-600 hover:text-blue-800 mb-3"
+                >
+                  {isExpanded ? (
+                    <>
+                      <ChevronDown className="w-3 h-3" />
+                      <span>Show less</span>
+                    </>
+                  ) : (
+                    <>
+                      <ChevronRight className="w-3 h-3" />
+                      <span>Show more</span>
+                    </>
+                  )}
+                </button>
+              )}
+              
+              <div className="flex items-center space-x-4">
+                <span className={clsx(
+                  'inline-flex items-center px-2 py-1 rounded-md text-xs font-medium border',
+                  statusBadgeColors[plan.status]
+                )}>
+                  <StatusIcon className="w-3 h-3 mr-1" />
+                  {plan.status}
+                </span>
+
+                <div className="flex items-center space-x-1 text-xs text-gray-500">
+                  <Calendar className="w-3 h-3" />
+                  <span>{formatDate(plan.capturedAt)}</span>
+                </div>
+
+                {plan.sessionId && (
+                  <div className="flex items-center space-x-1 text-xs text-gray-500">
+                    <Hash className="w-3 h-3" />
+                    <span className="font-mono">{plan.sessionId.substring(0, 8)}</span>
+                  </div>
+                )}
+
+                {plan.metadata && (plan.metadata as any)?.cwd && (
+                  <div className="flex items-center space-x-1 text-xs text-gray-500">
+                    <Monitor className="w-3 h-3" />
+                    <span className="font-mono">
+                      {((plan.metadata as any).cwd as string).split('/').pop()}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2 ml-4">
+              <select
+                value={plan.status}
+                onChange={(e) => handleStatusChange(plan, e.target.value)}
+                className="text-xs border border-gray-300 rounded px-2 py-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                disabled={updatePlanMutation.isPending}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <option value="accepted">Accepted</option>
+                <option value="implemented">Implemented</option>
+                <option value="archived">Archived</option>
+              </select>
+              
+              <button
+                onClick={() => handleDelete(plan.id)}
+                className="p-1 text-gray-400 hover:text-red-500 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                title="Delete plan"
+                data-testid={`claude-plan-delete-${plan.id}`}
+              >
+                <MoreHorizontal className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="space-y-4">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="animate-pulse">
+            <div className="flex items-start space-x-3 p-4 bg-gray-100 rounded-lg">
+              <div className="w-5 h-5 bg-gray-300 rounded-full mt-1" />
+              <div className="flex-1">
+                <div className="w-3/4 h-4 bg-gray-300 rounded mb-2" />
+                <div className="w-full h-3 bg-gray-200 rounded mb-2" />
+                <div className="w-1/2 h-3 bg-gray-200 rounded mb-3" />
+                <div className="flex space-x-2">
+                  <div className="w-16 h-5 bg-gray-300 rounded" />
+                  <div className="w-20 h-5 bg-gray-300 rounded" />
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
@@ -66,125 +241,51 @@ export const PlansList: React.FC<PlansListProps> = ({ projectId }) => {
 
   return (
     <div className="space-y-4">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-gray-900">Claude Code Plans</h2>
-        <span className="text-sm text-gray-500">
-          {plans.length} plan{plans.length !== 1 ? 's' : ''}
-        </span>
+        <div className="flex items-center space-x-3">
+          <FileText className="w-5 h-5 text-blue-600" />
+          <h3 className="text-lg font-semibold text-gray-900">Claude Code Plans</h3>
+          <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded-md text-sm font-medium">
+            {plans.length}
+          </span>
+        </div>
+
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => refetch()}
+            className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+            data-testid="claude-plan-refresh-button"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>Refresh</span>
+          </button>
+
+          {selectedPlans.length > 0 && (
+            <span className="text-sm text-gray-500">
+              {selectedPlans.length} selected
+            </span>
+          )}
+        </div>
       </div>
 
-      {plans.length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 rounded-lg">
-          <div className="text-gray-400 mb-2">
-            <svg className="mx-auto h-12 w-12" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-1">No plans yet</h3>
-          <p className="text-gray-500">
-            Plans from Claude Code's plan mode will appear here automatically.
-          </p>
+      {/* Plans List */}
+      {plans.length > 0 ? (
+        <div className="space-y-3">
+          {plans.map(renderPlan)}
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Plans List */}
-          <div className="space-y-3">
-            {plans.map((plan: ClaudeCodePlan) => (
-              <div
-                key={plan.id}
-                className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                  selectedPlan?.id === plan.id
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-                onClick={() => setSelectedPlan(plan)}
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <h3 className="font-medium text-gray-900 truncate">{plan.title}</h3>
-                  <span className={`px-2 py-1 text-xs rounded-full ${getStatusColor(plan.status)}`}>
-                    {plan.status}
-                  </span>
-                </div>
-                <p className="text-sm text-gray-600 mb-2 line-clamp-2">
-                  {plan.content.substring(0, 100)}...
-                </p>
-                <div className="flex items-center justify-between text-xs text-gray-400">
-                  <span>Captured {formatDate(plan.capturedAt)}</span>
-                  {plan.sessionId && (
-                    <span className="font-mono">{plan.sessionId.substring(0, 8)}...</span>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Plan Details */}
-          <div className="lg:sticky lg:top-4">
-            {selectedPlan ? (
-              <div className="border rounded-lg p-6 bg-white">
-                <div className="flex items-start justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">{selectedPlan.title}</h3>
-                  <div className="flex items-center space-x-2">
-                    <select
-                      value={selectedPlan.status}
-                      onChange={(e) => handleStatusChange(selectedPlan, e.target.value)}
-                      className="text-sm border border-gray-300 rounded px-2 py-1"
-                      disabled={updatePlanMutation.isPending}
-                    >
-                      <option value="accepted">Accepted</option>
-                      <option value="implemented">Implemented</option>
-                      <option value="archived">Archived</option>
-                    </select>
-                    <button
-                      onClick={() => handleDelete(selectedPlan)}
-                      className="text-red-500 hover:text-red-700 p-1"
-                      disabled={deletePlanMutation.isPending}
-                    >
-                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="prose prose-sm max-w-none mb-4">
-                  <pre className="whitespace-pre-wrap text-sm text-gray-700 bg-gray-50 p-4 rounded border">
-                    {selectedPlan.content}
-                  </pre>
-                </div>
-
-                <div className="border-t pt-4 space-y-2 text-sm text-gray-600">
-                  <div className="flex justify-between">
-                    <span>Captured:</span>
-                    <span>{formatDate(selectedPlan.capturedAt)}</span>
-                  </div>
-                  {selectedPlan.sessionId && (
-                    <div className="flex justify-between">
-                      <span>Session ID:</span>
-                      <span className="font-mono text-xs">{selectedPlan.sessionId}</span>
-                    </div>
-                  )}
-                  {selectedPlan.metadata && (
-                    <div className="flex justify-between">
-                      <span>Workspace:</span>
-                      <span className="font-mono text-xs">
-                        {(selectedPlan.metadata as any)?.cwd || 'Unknown'}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="border rounded-lg p-6 bg-gray-50 text-center">
-                <div className="text-gray-400 mb-2">
-                  <svg className="mx-auto h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                  </svg>
-                </div>
-                <p className="text-gray-500">Select a plan to view details</p>
-              </div>
-            )}
+        <div className="text-center py-12">
+          <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+          <h4 className="text-lg font-medium text-gray-900 mb-2">No Claude Code plans</h4>
+          <p className="text-gray-500 mb-6">
+            Plans from Claude Code's plan mode will appear here automatically.
+          </p>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-md mx-auto">
+            <p className="text-sm text-blue-800">
+              <strong>Tip:</strong> Use Claude Code's plan mode to create plans that persist in Baton. 
+              Configure the PostToolUse hook for ExitPlanMode to enable automatic plan capture.
+            </p>
           </div>
         </div>
       )}

@@ -15,12 +15,12 @@ import { ThemeProvider } from './hooks/useTheme';
 function AppContent() {
   const { data: projects } = useProjects();
   const [currentProjectId, setCurrentProjectId] = useState<string>('demo-project-1');
-  
+
   // Use first available project if demo project doesn't exist
   const activeProjectId = currentProjectId || projects?.[0]?.id || 'demo-project-1';
-  
-  const { connected, connecting, error, joinProject, leaveProject } = useWebSocket({ 
-    activeProjectId 
+
+  const { connected, connecting, error, joinProject, leaveProject } = useWebSocket({
+    activeProjectId
   });
 
   // Handle project room subscription when activeProjectId changes
@@ -28,7 +28,7 @@ function AppContent() {
     if (connected && activeProjectId) {
       // Leave all previous rooms and join the current project room
       joinProject(activeProjectId);
-      
+
       return () => {
         leaveProject(activeProjectId);
       };
@@ -38,7 +38,7 @@ function AppContent() {
   }, [connected, activeProjectId, joinProject, leaveProject]);
 
   return (
-    <Layout 
+    <Layout
       currentProjectId={activeProjectId}
       onProjectChange={setCurrentProjectId}
       websocketStatus={{ connected, connecting, error }}
@@ -55,12 +55,10 @@ function AppContent() {
             {/* Claude Code Integration Panel */}
             <div className="lg:col-span-1 space-y-6 overflow-y-auto">
               {/* Claude Code Plans */}
-              <div className="bg-white rounded-lg shadow-sm border">
-                <PlansList projectId={activeProjectId} />
-              </div>
+              <PlansList projectId={activeProjectId} />
 
               {/* Claude Todos */}
-              <ClaudeTodoList 
+              <ClaudeTodoList
                 projectId={activeProjectId}
                 onSync={() => {
                   // This could trigger a sync modal or action
