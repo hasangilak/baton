@@ -2,7 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 
 export class BatonToolProvider {
-  constructor(private prisma: PrismaClient, private workspaceManager?: any) {}
+  constructor(private prisma: PrismaClient, private workspaceManager?: any, private io?: any) {}
 
   async listTools(): Promise<Tool[]> {
     return [
@@ -1187,6 +1187,21 @@ export class BatonToolProvider {
         return processedCount;
       });
 
+      // Emit WebSocket event after successful database transaction
+      if (this.io && currentProjectId) {
+        try {
+          this.io.to(`project-${currentProjectId}`).emit('claude-mcp-operation-completed', {
+            projectId: currentProjectId,
+            operation: 'TodoWrite',
+            count: result,
+            action: 'todos-updated'
+          });
+        } catch (wsError) {
+          console.error('Failed to emit WebSocket event for claude-mcp-operation-completed:', wsError);
+          // Don't throw - WebSocket failure shouldn't break the main operation
+        }
+      }
+
       return {
         success: true,
         count: result,
@@ -1302,6 +1317,22 @@ export class BatonToolProvider {
         return tasks;
       });
 
+      // Emit WebSocket event after successful sync operation
+      if (this.io && currentProjectId) {
+        try {
+          this.io.to(`project-${currentProjectId}`).emit('claude-todos-synced-to-tasks', {
+            projectId: currentProjectId,
+            syncedCount: syncedTasks.length,
+            syncedTasks,
+            action: 'todos-to-tasks',
+            source: 'mcp'
+          });
+        } catch (wsError) {
+          console.error('Failed to emit WebSocket event for claude-todos-synced-to-tasks (MCP):', wsError);
+          // Don't throw - WebSocket failure shouldn't break the main operation
+        }
+      }
+
       return {
         success: true,
         syncedCount: syncedTasks.length,
@@ -1412,6 +1443,22 @@ export class BatonToolProvider {
         status: todo.status,
         priority: todo.priority
       }));
+
+      // Emit WebSocket event after successful sync operation
+      if (this.io && currentProjectId) {
+        try {
+          this.io.to(`project-${currentProjectId}`).emit('claude-tasks-synced-to-todos', {
+            projectId: currentProjectId,
+            syncedCount: syncedTodos.length,
+            syncedTodos: claudeFormattedTodos,
+            action: 'tasks-to-todos',
+            source: 'mcp'
+          });
+        } catch (wsError) {
+          console.error('Failed to emit WebSocket event for claude-tasks-synced-to-todos (MCP):', wsError);
+          // Don't throw - WebSocket failure shouldn't break the main operation
+        }
+      }
 
       return {
         success: true,

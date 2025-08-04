@@ -25,8 +25,8 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 3001;
 
-// Initialize MCP server for SSE transport
-const mcpServer = new BatonMCPServer();
+// Initialize MCP server for SSE transport with WebSocket support
+const mcpServer = new BatonMCPServer(io);
 
 // Middleware
 app.use(cors({

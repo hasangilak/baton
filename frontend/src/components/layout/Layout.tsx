@@ -7,12 +7,18 @@ interface LayoutProps {
   children: React.ReactNode;
   currentProjectId?: string;
   onProjectChange?: (projectId: string) => void;
+  websocketStatus?: {
+    connected: boolean;
+    connecting: boolean;
+    error: string | null;
+  };
 }
 
 export const Layout: React.FC<LayoutProps> = ({ 
   children, 
   currentProjectId, 
-  onProjectChange 
+  onProjectChange,
+  websocketStatus
 }) => {
   const [currentSection, setCurrentSection] = useState('tasks');
 
@@ -31,7 +37,7 @@ export const Layout: React.FC<LayoutProps> = ({
       />
       
       <div className="flex-1 flex flex-col min-w-0">
-        <Header currentSection={currentSection} />
+        <Header currentSection={currentSection} websocketStatus={websocketStatus} />
         
         <main className="flex-1 overflow-hidden">
           {children}

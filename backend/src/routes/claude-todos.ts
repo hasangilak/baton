@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { io } from '../index';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -154,6 +155,19 @@ router.post('/', async (req, res, next) => {
       return processedTodos;
     });
 
+    // Emit WebSocket event after successful database operations
+    try {
+      io.to(`project-${projectId}`).emit('claude-todos-batch-updated', {
+        projectId,
+        todos: result,
+        count: result.length,
+        action: 'batch-update'
+      });
+    } catch (wsError) {
+      console.error('Failed to emit WebSocket event for claude-todos-batch-updated:', wsError);
+      // Don't throw - WebSocket failure shouldn't break the main operation
+    }
+
     res.json({
       success: true,
       todos: result,
@@ -190,6 +204,22 @@ router.delete('/:id', async (req, res, next) => {
     await prisma.claudeTodo.delete({
       where: { id }
     });
+
+    // Emit WebSocket event after successful deletion
+    try {
+      io.to(`project-${todo.projectId}`).emit('claude-todo-deleted', {
+        projectId: todo.projectId,
+        todoId: id,
+        deletedTodo: {
+          id: todo.id,
+          content: todo.content,
+          syncedTask: todo.syncedTask
+        }
+      });
+    } catch (wsError) {
+      console.error('Failed to emit WebSocket event for claude-todo-deleted:', wsError);
+      // Don't throw - WebSocket failure shouldn't break the main operation
+    }
 
     res.json({
       success: true,
@@ -301,6 +331,19 @@ router.post('/sync-to-tasks', async (req, res, next) => {
       return tasks;
     });
 
+    // Emit WebSocket event after successful sync operation
+    try {
+      io.to(`project-${projectId}`).emit('claude-todos-synced-to-tasks', {
+        projectId,
+        syncedCount: syncedTasks.length,
+        syncedTasks,
+        action: 'todos-to-tasks'
+      });
+    } catch (wsError) {
+      console.error('Failed to emit WebSocket event for claude-todos-synced-to-tasks:', wsError);
+      // Don't throw - WebSocket failure shouldn't break the main operation
+    }
+
     res.json({
       success: true,
       syncedCount: syncedTasks.length,
@@ -402,6 +445,19 @@ router.post('/sync-from-tasks', async (req, res, next) => {
       status: todo.status,
       priority: todo.priority
     }));
+
+    // Emit WebSocket event after successful sync operation
+    try {
+      io.to(`project-${projectId}`).emit('claude-tasks-synced-to-todos', {
+        projectId,
+        syncedCount: syncedTodos.length,
+        syncedTodos: claudeFormattedTodos,
+        action: 'tasks-to-todos'
+      });
+    } catch (wsError) {
+      console.error('Failed to emit WebSocket event for claude-tasks-synced-to-todos:', wsError);
+      // Don't throw - WebSocket failure shouldn't break the main operation
+    }
 
     res.json({
       success: true,

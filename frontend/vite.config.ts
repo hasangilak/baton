@@ -13,10 +13,11 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
-    // Enable HMR for Docker
+    // Enable HMR - let it use default settings for localhost development
     hmr: {
       port: 5174,
-      host: '0.0.0.0',
+      // Use localhost instead of 0.0.0.0 for HMR WebSocket
+      clientPort: 5174,
     },
     // Use polling for file watching in Docker (more reliable)
     watch: {

@@ -29,7 +29,7 @@ export class BatonMCPServer {
   private sseTransports: Map<string, SSEServerTransport> = new Map();
   private connectionProjects: Map<string, string | null> = new Map(); // sessionId -> projectId
 
-  constructor() {
+  constructor(io?: any) {
     this.server = new Server(
       {
         name: "baton-mcp-server",
@@ -54,7 +54,7 @@ export class BatonMCPServer {
     this.prisma = new PrismaClient();
     this.workspaceManager = new BatonWorkspaceManager(this.prisma);
     this.resourceProvider = new BatonResourceProvider(this.prisma);
-    this.toolProvider = new BatonToolProvider(this.prisma, this.workspaceManager);
+    this.toolProvider = new BatonToolProvider(this.prisma, this.workspaceManager, io);
     this.promptProvider = new BatonPromptProvider(this.prisma);
 
     this.setupHandlers();

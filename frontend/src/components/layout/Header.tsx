@@ -1,8 +1,14 @@
 import React from 'react';
-import { Search, Bell, ChevronLeft, Plus, MoreHorizontal } from 'lucide-react';
+import { Search, Bell, ChevronLeft, Plus, MoreHorizontal, Wifi, WifiOff, Loader2 } from 'lucide-react';
+import clsx from 'clsx';
 
 interface HeaderProps {
   currentSection: string;
+  websocketStatus?: {
+    connected: boolean;
+    connecting: boolean;
+    error: string | null;
+  };
 }
 
 const sectionTitles: Record<string, string> = {
@@ -17,8 +23,43 @@ const sectionTitles: Record<string, string> = {
   support: 'Support',
 };
 
-export const Header: React.FC<HeaderProps> = ({ currentSection }) => {
+export const Header: React.FC<HeaderProps> = ({ currentSection, websocketStatus }) => {
   const title = sectionTitles[currentSection] || 'Baton';
+
+  const renderConnectionStatus = () => {
+    if (!websocketStatus) return null;
+
+    const { connected, connecting, error } = websocketStatus;
+
+    if (connecting) {
+      return (
+        <div className="flex items-center space-x-2 px-2 py-1 bg-yellow-50 text-yellow-700 rounded-md text-xs" title="Connecting to real-time updates...">
+          <Loader2 className="w-3 h-3 animate-spin" />
+          <span>Connecting</span>
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="flex items-center space-x-2 px-2 py-1 bg-red-50 text-red-700 rounded-md text-xs" title={`Connection error: ${error}`}>
+          <WifiOff className="w-3 h-3" />
+          <span>Offline</span>
+        </div>
+      );
+    }
+
+    if (connected) {
+      return (
+        <div className="flex items-center space-x-2 px-2 py-1 bg-green-50 text-green-700 rounded-md text-xs" title="Connected to real-time updates">
+          <Wifi className="w-3 h-3" />
+          <span>Live</span>
+        </div>
+      );
+    }
+
+    return null;
+  };
 
   return (
     <header className="bg-white border-b border-gray-200 px-6 py-4">
@@ -47,6 +88,9 @@ export const Header: React.FC<HeaderProps> = ({ currentSection }) => {
 
         {/* Right side - Actions and User */}
         <div className="flex items-center space-x-4">
+          {/* Connection Status */}
+          {renderConnectionStatus()}
+
           {/* Search */}
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
