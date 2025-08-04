@@ -279,7 +279,12 @@ export class BatonToolProvider {
         description: "Read all todos for the current project from Claude Code integration",
         inputSchema: {
           type: "object",
-          properties: {}
+          properties: {
+            projectId: {
+              type: "string",
+              description: "Optional: Specific project ID to read todos from (if not provided, will try to detect from workspace)"
+            }
+          }
         }
       },
       {
@@ -315,6 +320,10 @@ export class BatonToolProvider {
                 required: ["id", "content", "status", "priority"]
               },
               description: "Array of todos to write/update"
+            },
+            projectId: {
+              type: "string",
+              description: "Optional: Specific project ID to write todos to (if not provided, will try to detect from workspace)"
             }
           },
           required: ["todos"]
@@ -371,6 +380,19 @@ export class BatonToolProvider {
           type: "object",
           properties: {}
         }
+      },
+      {
+        name: "detect_workspace_project",
+        description: "Ask Claude Code to find and read the .baton-project file to detect current workspace project",
+        inputSchema: {
+          type: "object",
+          properties: {
+            searchPath: {
+              type: "string",
+              description: "Optional: Starting path to search for .baton-project file (defaults to current directory)"
+            }
+          }
+        }
       }
     ];
   }
@@ -399,6 +421,8 @@ export class BatonToolProvider {
         return this.associateWorkspaceProject(args);
       case "get_workspace_info":
         return this.getWorkspaceInfo(args);
+      case "detect_workspace_project":
+        return this.detectWorkspaceProject(args);
       case "TodoRead":
         return this.todoRead(args);
       case "TodoWrite":
@@ -1078,19 +1102,56 @@ export class BatonToolProvider {
     }
   }
 
-  private async todoRead(_args: any): Promise<any> {
+  private async todoRead(args: any): Promise<any> {
     try {
-      // Get current project ID from workspace manager
-      let currentProjectId: string | null = null;
+      const { projectId: providedProjectId } = args;
       
-      if (this.workspaceManager) {
+      // Use provided project ID if available, otherwise try to detect it
+      let currentProjectId: string | null = providedProjectId || null;
+      
+      if (!currentProjectId && this.workspaceManager) {
         currentProjectId = await this.workspaceManager.detectCurrentProject();
+        console.log(`🔍 Workspace detection result: ${currentProjectId || 'none'}`);
+      }
+      
+      // Validate project ID if provided
+      if (currentProjectId) {
+        const project = await this.prisma.project.findUnique({
+          where: { id: currentProjectId },
+          select: { id: true, name: true }
+        });
+        
+        if (!project) {
+          return {
+            success: false,
+            todos: [],
+            error: `Project with ID '${currentProjectId}' not found. Please check the project ID or use 'detect_workspace_project' tool.`
+          };
+        }
+        
+        console.log(`✅ Using project: ${project.name} (${project.id})`);
       }
       
       if (!currentProjectId) {
         return {
+          success: false,
           todos: [],
-          message: "No project associated with current workspace. Use 'associate_workspace_project' to link workspace to a project."
+          requiresWorkspaceDetection: true,
+          message: "No project context found. I need to find your .baton-project file to determine the correct project.",
+          instructions: {
+            message: "Please help me find your project configuration by running the 'detect_workspace_project' tool or by manually executing these commands:",
+            steps: [
+              {
+                command: "find . -name '.baton-project' -type f | head -1",
+                description: "Find the .baton-project file in the current workspace"
+              },
+              {
+                command: "cat [found-file-path]",
+                description: "Read the contents to get the project ID"
+              }
+            ],
+            expectedFormat: "Then use the detected projectId with the TodoRead tool"
+          }
         };
       }
 
@@ -1119,20 +1180,54 @@ export class BatonToolProvider {
 
   private async todoWrite(args: any): Promise<any> {
     try {
-      const { todos } = args;
+      const { todos, projectId: providedProjectId } = args;
       
-      // Get current project ID from workspace manager
-      let currentProjectId: string | null = null;
+      // Use provided project ID if available, otherwise try to detect it
+      let currentProjectId: string | null = providedProjectId || null;
       
-      if (this.workspaceManager) {
+      if (!currentProjectId && this.workspaceManager) {
         currentProjectId = await this.workspaceManager.detectCurrentProject();
+        console.log(`🔍 Workspace detection result: ${currentProjectId || 'none'}`);
+      }
+      
+      // Validate project ID if provided
+      if (currentProjectId) {
+        const project = await this.prisma.project.findUnique({
+          where: { id: currentProjectId },
+          select: { id: true, name: true }
+        });
+        
+        if (!project) {
+          return {
+            success: false,
+            count: 0,
+            error: `Project with ID '${currentProjectId}' not found. Please check the project ID or use 'detect_workspace_project' tool.`
+          };
+        }
+        
+        console.log(`✅ Using project: ${project.name} (${project.id})`);
       }
       
       if (!currentProjectId) {
         return {
           success: false,
           count: 0,
-          message: "No project associated with current workspace. Use 'associate_workspace_project' to link workspace to a project."
+          requiresWorkspaceDetection: true,
+          message: "No project context found. I need to find your .baton-project file to determine the correct project.",
+          instructions: {
+            message: "Please help me find your project configuration by running the 'detect_workspace_project' tool or by manually executing these commands:",
+            steps: [
+              {
+                command: "find . -name '.baton-project' -type f | head -1",
+                description: "Find the .baton-project file in the current workspace"
+              },
+              {
+                command: "cat [found-file-path]",
+                description: "Read the contents to get the project ID"
+              }
+            ],
+            expectedFormat: "Then use the detected projectId with the TodoWrite tool"
+          }
         };
       }
 
@@ -1471,6 +1566,37 @@ export class BatonToolProvider {
         success: false,
         syncedCount: 0,
         error: `Failed to sync tasks to todos: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+    }
+  }
+
+  private async detectWorkspaceProject(args: any): Promise<any> {
+    try {
+      const { searchPath = "." } = args;
+      
+      return {
+        success: true,
+        requiresClaudeCodeExecution: true,
+        instructions: {
+          message: "I need to find your project's .baton-project configuration file to determine the correct project context.",
+          steps: [
+            {
+              command: `find ${searchPath} -name '.baton-project' -type f | head -1`,
+              description: "Find the .baton-project file in the current workspace"
+            },
+            {
+              command: "cat [FOUND_FILE_PATH]",
+              description: "Read the contents of the .baton-project file to get the project ID"
+            }
+          ],
+          expectedFormat: "Please return just the projectId value from the JSON file (e.g., 'cmdx0019o0001ijdvw3z1bbbi')",
+          fallback: "If no .baton-project file is found, you can create one with: echo '{\"projectId\": \"your-project-id\"}' > .baton-project"
+        }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: `Failed to initiate workspace detection: ${error instanceof Error ? error.message : 'Unknown error'}`
       };
     }
   }

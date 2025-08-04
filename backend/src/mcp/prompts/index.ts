@@ -148,6 +148,17 @@ export class BatonPromptProvider {
             required: false
           }
         ]
+      },
+      {
+        name: "detect_baton_project",
+        description: "Guide user to find and read .baton-project configuration file",
+        arguments: [
+          {
+            name: "search_path",
+            description: "Starting directory to search for .baton-project file",
+            required: false
+          }
+        ]
       }
     ];
   }
@@ -170,6 +181,8 @@ export class BatonPromptProvider {
         return this.standupSummaryPrompt(args);
       case "code_review_checklist":
         return this.codeReviewChecklistPrompt(args);
+      case "detect_baton_project":
+        return this.detectBatonProjectPrompt(args);
       default:
         throw new Error(`Unknown prompt: ${name}`);
     }
@@ -712,6 +725,48 @@ Please provide a detailed checklist covering:
    - Change documentation
 
 Format as a practical checklist that can be used during actual code reviews.`
+        }
+      ]
+    };
+  }
+
+  private async detectBatonProjectPrompt(args: any): Promise<{ messages: any[] }> {
+    const { search_path = "." } = args;
+
+    return {
+      messages: [
+        {
+          role: "system",
+          content: `You are helping to detect the Baton project configuration. The user needs to find and read their .baton-project file to determine the correct project context for their workspace.
+
+This is a critical step for ensuring that all tasks and todos are associated with the correct project in the Baton task management system.`
+        },
+        {
+          role: "user",
+          content: `I need to find the .baton-project configuration file in the current workspace to determine the project context.
+
+Please help me by running these commands:
+
+1. **Find the .baton-project file:**
+   \`\`\`bash
+   find ${search_path} -name '.baton-project' -type f | head -1
+   \`\`\`
+
+2. **Read the file contents:**
+   After finding the file, please read its contents with:
+   \`\`\`bash
+   cat [FOUND_FILE_PATH]
+   \`\`\`
+
+3. **Extract the project ID:**
+   The file should contain JSON like:
+   \`\`\`json
+   {"projectId": "cmdx0019o0001ijdvw3z1bbbi"}
+   \`\`\`
+
+Please execute these commands and return just the **projectId value** from the JSON file.
+
+If no .baton-project file is found, please let me know so I can help you create one or associate this workspace with a Baton project.`
         }
       ]
     };
