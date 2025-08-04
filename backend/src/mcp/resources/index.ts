@@ -2,11 +2,51 @@ import { PrismaClient } from '@prisma/client';
 import { Resource } from "@modelcontextprotocol/sdk/types.js";
 
 export class BatonResourceProvider {
-  constructor(private prisma: PrismaClient) {}
+  constructor(private prisma: PrismaClient, private getCurrentProject?: () => string | null) {}
 
   async listResources(): Promise<Resource[]> {
-    const resources: Resource[] = [
-      // Project Resources
+    const resources: Resource[] = [];
+    const currentProjectId = this.getCurrentProject?.();
+
+    // Add workspace-specific resources if we have a current project
+    if (currentProjectId) {
+      const project = await this.prisma.project.findUnique({
+        where: { id: currentProjectId },
+        select: { name: true }
+      });
+
+      if (project) {
+        resources.push(
+          {
+            uri: "baton://workspace/current",
+            name: "Current Workspace Project",
+            description: `Current project: ${project.name}`,
+            mimeType: "application/json",
+          },
+          {
+            uri: "baton://workspace/tasks",
+            name: "My Tasks",
+            description: "Tasks in current workspace project",
+            mimeType: "application/json",
+          },
+          {
+            uri: "baton://workspace/tasks/kanban",
+            name: "My Kanban Board",
+            description: "Kanban board for current workspace project",
+            mimeType: "application/json",
+          },
+          {
+            uri: "baton://workspace/tasks/pending",
+            name: "My Pending Tasks",
+            description: "Pending tasks in current workspace project",
+            mimeType: "application/json",
+          }
+        );
+      }
+    }
+
+    // Add global project resources
+    resources.push(
       {
         uri: "baton://projects",
         name: "All Projects",
@@ -82,10 +122,17 @@ export class BatonResourceProvider {
 
   async readResource(uri: string): Promise<any> {
     const url = new URL(uri);
-    const path = url.pathname;
-    const pathParts = path.split('/').filter(Boolean);
+    // For baton:// URIs, the resource type is in hostname and path is in pathname
+    const resourceType = url.hostname;
+    const pathParts = url.pathname.split('/').filter(Boolean);
+    // Always prepend the hostname as the resource type
+    if (resourceType) {
+      pathParts.unshift(resourceType);
+    }
 
     switch (pathParts[0]) {
+      case 'workspace':
+        return this.handleWorkspaceResource(pathParts);
       case 'projects':
         return this.handleProjectResource(pathParts);
       case 'tasks':
@@ -95,7 +142,7 @@ export class BatonResourceProvider {
       case 'mcp-agents':
         return this.handleMCPAgentResource(pathParts);
       default:
-        throw new Error(`Unknown resource path: ${path}`);
+        throw new Error(`Unknown resource path: ${pathParts.join('/')}`);
     }
   }
 
@@ -313,5 +360,128 @@ export class BatonResourceProvider {
       },
       orderBy: { lastSeen: 'desc' }
     });
+  }
+
+  private async handleWorkspaceResource(pathParts: string[]): Promise<any> {
+    const currentProjectId = this.getCurrentProject?.();
+    
+    if (!currentProjectId) {
+      throw new Error('No workspace project detected. Please associate your workspace with a Baton project.');
+    }
+
+    if (pathParts[1] === 'current') {
+      // Current workspace project info
+      return this.prisma.project.findUnique({
+        where: { id: currentProjectId },
+        include: {
+          owner: {
+            select: { id: true, name: true, email: true, avatar: true }
+          },
+          tasks: {
+            include: {
+              assignee: {
+                select: { id: true, name: true, email: true, avatar: true }
+              },
+              createdBy: {
+                select: { id: true, name: true, email: true, avatar: true }
+              }
+            },
+            orderBy: [{ status: 'asc' }, { order: 'asc' }]
+          },
+          _count: {
+            select: { tasks: true }
+          }
+        }
+      });
+    }
+
+    if (pathParts[1] === 'tasks') {
+      if (pathParts[2] === 'kanban') {
+        // Kanban board for current project
+        const tasks = await this.prisma.task.findMany({
+          where: { projectId: currentProjectId },
+          include: {
+            assignee: {
+              select: { id: true, name: true, email: true, avatar: true }
+            },
+            createdBy: {
+              select: { id: true, name: true, email: true, avatar: true }
+            }
+          },
+          orderBy: [{ status: 'asc' }, { order: 'asc' }]
+        });
+
+        const kanban = {
+          todo: tasks.filter(t => t.status === 'todo').map(t => ({
+            ...t,
+            labels: t.labels ? JSON.parse(t.labels) : []
+          })),
+          in_progress: tasks.filter(t => t.status === 'in_progress').map(t => ({
+            ...t,
+            labels: t.labels ? JSON.parse(t.labels) : []
+          })),
+          done: tasks.filter(t => t.status === 'done').map(t => ({
+            ...t,
+            labels: t.labels ? JSON.parse(t.labels) : []
+          }))
+        };
+
+        return {
+          projectId: currentProjectId,
+          columns: kanban,
+          summary: {
+            total: tasks.length,
+            todo: kanban.todo.length,
+            in_progress: kanban.in_progress.length,
+            done: kanban.done.length
+          }
+        };
+      }
+
+      if (pathParts[2] === 'pending') {
+        // Pending tasks in current project
+        const tasks = await this.prisma.task.findMany({
+          where: {
+            projectId: currentProjectId,
+            status: { in: ['todo', 'in_progress'] }
+          },
+          include: {
+            assignee: {
+              select: { id: true, name: true, email: true, avatar: true }
+            },
+            createdBy: {
+              select: { id: true, name: true, email: true, avatar: true }
+            }
+          },
+          orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }]
+        });
+
+        return tasks.map(task => ({
+          ...task,
+          labels: task.labels ? JSON.parse(task.labels) : []
+        }));
+      }
+
+      // All tasks in current project
+      const tasks = await this.prisma.task.findMany({
+        where: { projectId: currentProjectId },
+        include: {
+          assignee: {
+            select: { id: true, name: true, email: true, avatar: true }
+          },
+          createdBy: {
+            select: { id: true, name: true, email: true, avatar: true }
+          }
+        },
+        orderBy: [{ status: 'asc' }, { order: 'asc' }]
+      });
+
+      return tasks.map(task => ({
+        ...task,
+        labels: task.labels ? JSON.parse(task.labels) : []
+      }));
+    }
+
+    throw new Error(`Unknown workspace resource path: ${pathParts.join('/')}`);
   }
 }

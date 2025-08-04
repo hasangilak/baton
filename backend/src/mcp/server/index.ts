@@ -15,6 +15,7 @@ import { PrismaClient } from '@prisma/client';
 import { BatonResourceProvider } from '../resources/index';
 import { BatonToolProvider } from '../tools/index';
 import { BatonPromptProvider } from '../prompts/index';
+import { BatonWorkspaceManager } from '../workspace/index';
 
 export class BatonMCPServer {
   private server: Server;
@@ -22,6 +23,8 @@ export class BatonMCPServer {
   private resourceProvider: BatonResourceProvider;
   private toolProvider: BatonToolProvider;
   private promptProvider: BatonPromptProvider;
+  private workspaceManager: BatonWorkspaceManager;
+  private currentProjectId: string | null = null;
 
   constructor() {
     this.server = new Server(
@@ -46,8 +49,9 @@ export class BatonMCPServer {
     );
 
     this.prisma = new PrismaClient();
-    this.resourceProvider = new BatonResourceProvider(this.prisma);
-    this.toolProvider = new BatonToolProvider(this.prisma);
+    this.workspaceManager = new BatonWorkspaceManager(this.prisma);
+    this.resourceProvider = new BatonResourceProvider(this.prisma, () => this.currentProjectId);
+    this.toolProvider = new BatonToolProvider(this.prisma, this.workspaceManager);
     this.promptProvider = new BatonPromptProvider(this.prisma);
 
     this.setupHandlers();
@@ -139,6 +143,9 @@ export class BatonMCPServer {
   }
 
   async startWebSocket(port: number = 3002): Promise<void> {
+    // Detect workspace project after Prisma client is ready
+    await this.detectWorkspaceProject();
+    
     const wss = new WebSocketServer({ port });
     
     wss.on('connection', async (ws) => {
@@ -196,6 +203,52 @@ export class BatonMCPServer {
     return new Promise((resolve) => {
       wss.on('listening', () => resolve());
     });
+  }
+
+  /**
+   * Detect current workspace project and update context
+   */
+  private async detectWorkspaceProject(): Promise<void> {
+    try {
+      const projectId = await this.workspaceManager.detectCurrentProject();
+      if (projectId) {
+        this.currentProjectId = projectId;
+        const project = await this.prisma.project.findUnique({
+          where: { id: projectId },
+          select: { name: true }
+        });
+        console.log(`🎯 Detected workspace project: ${project?.name} (${projectId})`);
+      } else {
+        console.log("📁 No workspace project detected - using global context");
+      }
+    } catch (error) {
+      console.warn("Failed to detect workspace project:", error);
+    }
+  }
+
+  /**
+   * Get current project context
+   */
+  getCurrentProject(): string | null {
+    return this.currentProjectId;
+  }
+
+  /**
+   * Associate current workspace with a project
+   */
+  async associateWorkspaceProject(projectId: string): Promise<boolean> {
+    try {
+      const success = await this.workspaceManager.associateWorkspaceWithProject(projectId);
+      if (success) {
+        this.currentProjectId = projectId;
+        // Notify clients that resources have changed
+        // TODO: Implement resource change notification
+      }
+      return success;
+    } catch (error) {
+      console.error("Failed to associate workspace project:", error);
+      return false;
+    }
   }
 
   async shutdown(): Promise<void> {

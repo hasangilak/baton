@@ -3,7 +3,7 @@ import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { z } from 'zod';
 
 export class BatonToolProvider {
-  constructor(private prisma: PrismaClient) {}
+  constructor(private prisma: PrismaClient, private workspaceManager?: any) {}
 
   async listTools(): Promise<Tool[]> {
     return [
@@ -272,6 +272,30 @@ export class BatonToolProvider {
             }
           }
         }
+      },
+      
+      // Workspace Management Tools
+      {
+        name: "associate_workspace_project",
+        description: "Associate current workspace with a Baton project",
+        inputSchema: {
+          type: "object",
+          properties: {
+            projectId: {
+              type: "string",
+              description: "Project ID to associate with current workspace"
+            }
+          },
+          required: ["projectId"]
+        }
+      },
+      {
+        name: "get_workspace_info",
+        description: "Get current workspace project information",
+        inputSchema: {
+          type: "object",
+          properties: {}
+        }
       }
     ];
   }
@@ -296,6 +320,10 @@ export class BatonToolProvider {
         return this.getProjectAnalytics(args);
       case "get_team_productivity":
         return this.getTeamProductivity(args);
+      case "associate_workspace_project":
+        return this.associateWorkspaceProject(args);
+      case "get_workspace_info":
+        return this.getWorkspaceInfo(args);
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -863,5 +891,100 @@ export class BatonToolProvider {
         teamMembers: teamStats.sort((a, b) => b.completionRate - a.completionRate)
       }
     };
+  }
+
+  private async associateWorkspaceProject(args: any): Promise<any> {
+    const { projectId } = args;
+    
+    if (!this.workspaceManager) {
+      throw new Error("Workspace manager not available");
+    }
+
+    try {
+      const success = await this.workspaceManager.associateWorkspaceWithProject(projectId);
+      
+      if (success) {
+        const project = await this.prisma.project.findUnique({
+          where: { id: projectId },
+          select: { name: true, description: true }
+        });
+
+        return {
+          success: true,
+          message: `Workspace associated with project "${project?.name}"`,
+          project: {
+            id: projectId,
+            name: project?.name,
+            description: project?.description
+          }
+        };
+      } else {
+        return {
+          success: false,
+          message: "Failed to associate workspace with project"
+        };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message: `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+    }
+  }
+
+  private async getWorkspaceInfo(args: any): Promise<any> {
+    if (!this.workspaceManager) {
+      return {
+        success: false,
+        message: "Workspace manager not available"
+      };
+    }
+
+    try {
+      const currentProjectId = await this.workspaceManager.detectCurrentProject();
+      
+      if (!currentProjectId) {
+        return {
+          success: true,
+          hasProject: false,
+          message: "No project associated with current workspace",
+          workspacePath: process.cwd(),
+          suggestions: "Run 'associate_workspace_project' to link this workspace to a Baton project"
+        };
+      }
+
+      const project = await this.prisma.project.findUnique({
+        where: { id: currentProjectId },
+        include: {
+          owner: {
+            select: { name: true, email: true }
+          },
+          _count: {
+            select: { tasks: true }
+          }
+        }
+      });
+
+      const mappings = await this.workspaceManager.listWorkspaceMappings();
+
+      return {
+        success: true,
+        hasProject: true,
+        currentProject: {
+          id: project?.id,
+          name: project?.name,
+          description: project?.description,
+          owner: project?.owner,
+          taskCount: project?._count?.tasks
+        },
+        workspacePath: process.cwd(),
+        allMappings: mappings
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Error getting workspace info: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+    }
   }
 }

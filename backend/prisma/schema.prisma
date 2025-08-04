@@ -37,9 +37,10 @@ model Project {
   updatedAt   DateTime @updatedAt
 
   // Relations
-  owner    User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  tasks    Task[]
-  mcpPlans MCPPlan[]
+  owner            User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  tasks            Task[]
+  mcpPlans         MCPPlan[]
+  workspaceMappings WorkspaceMapping[]
 
   @@map("projects")
 }
@@ -135,4 +136,18 @@ model MCPTask {
   plan MCPPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
 
   @@map("mcp_tasks")
+}
+
+model WorkspaceMapping {
+  id            String   @id @default(cuid())
+  workspacePath String   @unique
+  projectId     String
+  lastAccessed  DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("workspace_mappings")
 }
