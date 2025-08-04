@@ -72,7 +72,13 @@ app.get('/mcp/sse', async (req, res) => {
   }
 });
 
-app.post('/mcp/messages', async (req, res) => {
+app.post('/mcp/messages', (req, res, next) => {
+  // Set default Origin header for Claude Code compatibility if missing
+  if (!req.headers.origin) {
+    req.headers.origin = 'http://localhost:3001';
+  }
+  next();
+}, async (req, res) => {
   const sessionId = req.query.sessionId as string;
   console.log(`📨 MCP message received for session: ${sessionId}`);
   

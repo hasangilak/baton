@@ -217,7 +217,7 @@ export class BatonMCPServer {
     // Create SSE transport first to get session ID
     const transport = new SSEServerTransport(endpoint, res, {
       allowedOrigins: ['http://localhost:3001', 'http://localhost:5173'],
-      allowedHosts: ['localhost', '127.0.0.1'],
+      allowedHosts: ['localhost', '127.0.0.1', 'localhost:3001', '127.0.0.1:3001'],
       enableDnsRebindingProtection: true
     });
 
