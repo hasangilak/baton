@@ -34,6 +34,47 @@ const updatePlanSchema = z.object({
   status: z.enum(['pending', 'in_progress', 'completed', 'failed']).optional()
 });
 
+// GET /api/mcp/connection - Get MCP server connection information
+router.get('/connection', async (req, res, next) => {
+  try {
+    const { projectName, projectId } = req.query;
+    
+    let connectionUrl = 'ws://localhost:3002';
+    
+    if (projectId) {
+      connectionUrl += `?project=${encodeURIComponent(projectId as string)}`;
+    } else if (projectName) {
+      connectionUrl += `?projectName=${encodeURIComponent(projectName as string)}`;
+    }
+    
+    const response: ApiResponse = {
+      success: true,
+      data: {
+        websocket: {
+          url: connectionUrl,
+          description: 'WebSocket MCP server connection'
+        },
+        docker: {
+          host: 'localhost',
+          port: 3002,
+          protocol: 'ws',
+          description: 'Docker container WebSocket endpoint'
+        },
+        usage: {
+          claude_code: `ws://localhost:3002${projectName ? `?projectName=${encodeURIComponent(projectName as string)}` : ''}`,
+          cursor: connectionUrl,
+          windsurf: connectionUrl,
+          custom: connectionUrl
+        }
+      }
+    };
+
+    res.json(response);
+  } catch (error) {
+    next(error);
+  }
+});
+
 // GET /api/mcp/agents - Get all registered MCP agents
 router.get('/agents', async (_req, res, next) => {
   try {

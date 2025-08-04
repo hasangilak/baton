@@ -148,8 +148,26 @@ export class BatonMCPServer {
     
     const wss = new WebSocketServer({ port });
     
-    wss.on('connection', async (ws) => {
-      console.log("🔌 New MCP client connected via WebSocket");
+    wss.on('connection', async (ws, req) => {
+      const url = new URL(req.url || '', `http://${req.headers.host}`);
+      const projectId = url.searchParams.get('project');
+      const projectName = url.searchParams.get('projectName');
+      
+      console.log(`🔌 New MCP client connected via WebSocket${projectId ? ` (project: ${projectId})` : ''}${projectName ? ` (projectName: ${projectName})` : ''}`);
+      
+      // Set project context if provided
+      if (projectId) {
+        this.workspaceManager?.setCurrentProject(projectId);
+      } else if (projectName) {
+        // Look up project by name
+        const project = await this.prisma.project.findFirst({
+          where: { name: { contains: projectName, mode: 'insensitive' } }
+        });
+        if (project) {
+          this.workspaceManager?.setCurrentProject(project.id);
+          console.log(`📁 Found project: ${project.name} (${project.id})`);
+        }
+      }
       
       const transport = {
         async start() {},

@@ -10,6 +10,8 @@ export interface WorkspaceProjectMapping {
 }
 
 export class BatonWorkspaceManager {
+  private currentProjectId: string | null = null;
+  
   constructor(private prisma: PrismaClient) {}
 
   /**
@@ -202,6 +204,21 @@ export class BatonWorkspaceManager {
       console.warn('Could not fetch workspace mappings:', error);
       return [];
     }
+  }
+
+  /**
+   * Set current project context (for WebSocket connections with project parameters)
+   */
+  setCurrentProject(projectId: string): void {
+    this.currentProjectId = projectId;
+    console.log(`🎯 Set current project context: ${projectId}`);
+  }
+
+  /**
+   * Get current project ID
+   */
+  getCurrentProjectId(): string | null {
+    return this.currentProjectId;
   }
 
   /**

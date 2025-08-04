@@ -157,45 +157,42 @@ Baton includes a **fully compliant Model Context Protocol (MCP) server** with wo
 
 #### Prerequisites
 - [Claude Code](https://claude.ai/code) installed
-- Baton running locally (see Quick Start above)
+- Baton running with Docker (see Quick Start above)
 
 #### Setup Steps
 
-1. **Start Baton MCP Server**
+1. **Start Baton (Magic One-Command Setup)**
    ```bash
-   cd backend
-   npm run build
-   npm run mcp:stdio
+   docker compose up -d
    ```
+   That's it! The MCP server is automatically running on WebSocket port 3002.
 
-2. **Add MCP Server to Claude Code**
+2. **Get Your Project Connection URL**
    ```bash
-   claude mcp add baton --scope project -- node /absolute/path/to/baton/backend/dist/mcp-server.js
-   ```
+   # Visit the Baton frontend to see your projects
+   open http://localhost:5173
    
-   Or with environment variables:
-   ```bash
-   claude mcp add baton --scope project -e DATABASE_URL="postgresql://baton_user:baton_password@localhost:5432/baton_dev" -- node /absolute/path/to/baton/backend/dist/mcp-server.js
+   # Or get connection info via API (replace "My Project" with your project name)
+   curl "http://localhost:3001/api/mcp/connection?projectName=My Project"
    ```
 
-3. **Verify Integration**
+3. **Add MCP Server to Claude Code (WebSocket)**
+   ```bash
+   # Simple connection (auto-detects project)
+   claude mcp add baton-websocket --transport websocket --url ws://localhost:3002
+   
+   # Project-specific connection
+   claude mcp add baton-myproject --transport websocket --url "ws://localhost:3002?projectName=My Project"
+   ```
+
+4. **Verify Integration**
    ```bash
    claude mcp list
-   ```
-
-4. **Create Workspace Context**
-   Create a `.baton-project` file in your workspace root:
-   ```json
-   {
-     "projectId": "your-project-id",
-     "workspacePath": "/path/to/your/workspace",
-     "createdAt": "2025-01-01T00:00:00.000Z",
-     "version": "1.0.0"
-   }
+   claude mcp get baton-websocket
    ```
 
 #### Usage
-- **View Tasks**: Ask Claude "Show me my current tasks"
+- **View Tasks**: "Show me my current tasks"
 - **Create Tasks**: "Add a task to implement user authentication"
 - **Project Analytics**: "What's the status of my current project?"
 - **Planning**: "Create a project plan for a new feature"
@@ -207,34 +204,37 @@ Baton includes a **fully compliant Model Context Protocol (MCP) server** with wo
 
 #### Prerequisites
 - [Cursor IDE](https://cursor.sh/) installed
-- Baton running locally
+- Baton running with Docker
 
 #### Setup Steps
 
-1. **Install MCP Extension** (if available)
-   - Check Cursor marketplace for MCP support
-
-2. **Alternative: WebSocket Integration**
+1. **Start Baton**
    ```bash
-   # Start Baton in WebSocket mode
-   npm run mcp:websocket
+   docker compose up -d
    ```
 
-3. **Configure Cursor Settings**
-   Add to your Cursor settings:
+2. **Configure Cursor Settings**
+   Add to your Cursor settings (`.cursor/settings.json`):
    ```json
    {
      "mcp.servers": {
        "baton": {
          "transport": "websocket",
          "url": "ws://localhost:3002"
+       },
+       "baton-myproject": {
+         "transport": "websocket", 
+         "url": "ws://localhost:3002?projectName=My Project"
        }
      }
    }
    ```
 
-4. **Workspace Context**
-   Ensure `.baton-project` exists in your workspace root.
+3. **Get Project Connection URL**
+   ```bash
+   # Get connection info for your specific project
+   curl "http://localhost:3001/api/mcp/connection?projectName=My Project"
+   ```
 
 #### Usage
 - Access Baton resources through Cursor's MCP interface
@@ -248,13 +248,13 @@ Baton includes a **fully compliant Model Context Protocol (MCP) server** with wo
 
 #### Prerequisites
 - [Windsurf](https://codeium.com/windsurf) installed
-- Baton running locally
+- Baton running with Docker
 
 #### Setup Steps
 
-1. **Start MCP Server**
+1. **Start Baton**
    ```bash
-   npm run mcp:stdio
+   docker compose up -d
    ```
 
 2. **Configure Windsurf**
@@ -264,23 +264,27 @@ Baton includes a **fully compliant Model Context Protocol (MCP) server** with wo
      "mcp": {
        "servers": {
          "baton": {
-           "command": "node",
-           "args": ["/absolute/path/to/baton/backend/dist/mcp-server.js"],
-           "env": {
-             "DATABASE_URL": "postgresql://baton_user:baton_password@localhost:5432/baton_dev"
-           }
+           "transport": "websocket",
+           "url": "ws://localhost:3002"
+         },
+         "baton-myproject": {
+           "transport": "websocket",
+           "url": "ws://localhost:3002?projectName=My Project"
          }
        }
      }
    }
    ```
 
-3. **Workspace Association**
-   Create `.baton-project` in your project root.
+3. **Get Connection URL**
+   ```bash
+   # Get your project-specific connection URL
+   curl "http://localhost:3001/api/mcp/connection?projectName=My Project"
+   ```
 
 #### Usage
 - Leverage Windsurf's AI features with Baton context
-- Generate tasks from code analysis
+- Generate tasks from code analysis  
 - Project planning and management through AI chat
 
 </details>
