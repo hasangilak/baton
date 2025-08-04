@@ -43,7 +43,11 @@ services:
       # Exclude files that don't need to be watched
       - /app/.git
       - /app/dist
-    command: ["npm", "run", "dev"]
+    user: root
+    command: [
+      "sh", "-c", 
+      "echo '📦 Installing dependencies...' && npm install && echo '✅ Dependencies installed!' && npm run dev"
+    ]
     depends_on:
       postgres:
         condition: service_healthy
@@ -71,7 +75,11 @@ services:
       # Exclude files that don't need to be watched
       - /app/.git
       - /app/dist
-    command: ["npm", "run", "mcp:dev:websocket"]
+    user: root
+    command: [
+      "sh", "-c", 
+      "echo '📦 Installing dependencies...' && npm install && echo '✅ Dependencies installed!' && npm run mcp:dev:websocket"
+    ]
     depends_on:
       postgres:
         condition: service_healthy
