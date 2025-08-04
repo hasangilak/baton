@@ -219,7 +219,7 @@ router.put('/:id', async (req, res, next) => {
     }
     if (validatedData.status === 'done') {
       updateData.completedAt = new Date();
-    } else if (validatedData.status && validatedData.status !== 'done') {
+    } else if (validatedData.status && (validatedData.status === 'todo' || validatedData.status === 'in_progress')) {
       updateData.completedAt = null;
     }
 

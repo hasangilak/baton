@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   DndContext,
-  DragEndEvent,
-  DragOverEvent,
-  DragStartEvent,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
   PointerSensor,
   useSensor,
   useSensors,
@@ -16,7 +16,7 @@ import {
 
 import { KanbanColumn } from './KanbanColumn';
 import { TaskCard } from './TaskCard';
-import { apiService } from '../../services/api';
+import { useTasks, useReorderTask } from '../../hooks';
 import type { Task, TaskStatus } from '../../types';
 
 interface KanbanBoardProps {
@@ -45,9 +45,11 @@ const COLUMN_CONFIG = {
 };
 
 export const KanbanBoard: React.FC<KanbanBoardProps> = ({ projectId }) => {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
+  
+  // React Query hooks
+  const { data: tasks = [], isLoading, error, refetch } = useTasks(projectId);
+  const reorderTaskMutation = useReorderTask();
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -56,24 +58,6 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ projectId }) => {
       },
     })
   );
-
-  useEffect(() => {
-    loadTasks();
-  }, [projectId]);
-
-  const loadTasks = async () => {
-    try {
-      setLoading(true);
-      const response = await apiService.getTasks(projectId);
-      if (response.success && response.data) {
-        setTasks(response.data);
-      }
-    } catch (error) {
-      console.error('Failed to load tasks:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const getTasksByStatus = (status: TaskStatus): Task[] => {
     return tasks
@@ -86,7 +70,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ projectId }) => {
     setDraggedTask(task || null);
   };
 
-  const handleDragEnd = async (event: DragEndEvent) => {
+  const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     setDraggedTask(null);
 
@@ -113,47 +97,68 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ projectId }) => {
       newOrder = targetTask.order;
     }
 
-    const draggedTask = tasks.find(t => t.id === taskId);
-    if (!draggedTask || (draggedTask.status === newStatus && draggedTask.order === newOrder)) {
+    const draggedTaskData = tasks.find(t => t.id === taskId);
+    if (!draggedTaskData || (draggedTaskData.status === newStatus && draggedTaskData.order === newOrder)) {
       return;
     }
 
-    try {
-      // Optimistically update the UI
-      const updatedTasks = tasks.map(task => {
-        if (task.id === taskId) {
-          return { ...task, status: newStatus, order: newOrder };
-        }
-        return task;
-      });
-      setTasks(updatedTasks);
-
-      // Update on the server
-      await apiService.reorderTask(taskId, newStatus, newOrder, projectId);
-      
-      // Refresh tasks to get the correct order
-      loadTasks();
-    } catch (error) {
-      console.error('Failed to reorder task:', error);
-      // Revert optimistic update on error
-      loadTasks();
-    }
+    // Use React Query mutation with optimistic updates
+    reorderTaskMutation.mutate({
+      id: taskId,
+      newStatus,
+      newOrder,
+      projectId,
+    });
   };
 
   const handleDragOver = (event: DragOverEvent) => {
     // Handle drag over logic if needed
   };
 
-  if (loading) {
+  // Loading state
+  if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <div className="text-gray-500">Loading tasks...</div>
+        <div className="flex flex-col items-center space-y-2">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600"></div>
+          <div className="text-gray-500">Loading tasks...</div>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="text-red-500 text-center">
+            <div className="text-lg font-medium">Failed to load tasks</div>
+            <div className="text-sm">{error.message}</div>
+          </div>
+          <button 
+            onClick={() => refetch()}
+            className="btn-primary"
+          >
+            Try Again
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="flex-1 p-6">
+      {/* Show loading indicator during reorder operations */}
+      {reorderTaskMutation.isPending && (
+        <div className="fixed top-4 right-4 bg-blue-500 text-white px-4 py-2 rounded-lg shadow-lg z-50">
+          <div className="flex items-center space-x-2">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+            <span>Updating task...</span>
+          </div>
+        </div>
+      )}
+      
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}

@@ -5,12 +5,13 @@ Baton is a modern task management system designed to work seamlessly with AI cod
 ## Features
 
 - 🎯 **Kanban Board**: Visual task management with drag-and-drop functionality
-- 🤖 **MCP Integration**: Direct integration with AI code agents
+- 🤖 **True MCP Compliance**: Official Model Context Protocol server with JSON-RPC 2.0
 - 🔄 **Real-time Updates**: Collaborative features with WebSocket support
 - 📊 **Project Management**: Support for multiple projects
 - 🏷️ **Task Organization**: Labels, priorities, due dates, and assignees
 - 📱 **Modern UI**: Clean, responsive design built with React and Tailwind CSS
 - 🐳 **Docker Support**: Easy deployment with Docker containers
+- 🤝 **AI Agent Integration**: Resources, Tools, and Prompts for AI interactions
 
 ## Architecture
 
@@ -42,6 +43,7 @@ Baton is a modern task management system designed to work seamlessly with AI cod
 3. **Access the application**
    - Frontend: http://localhost:5173
    - Backend API: http://localhost:3001
+   - MCP Server: ws://localhost:3002 (WebSocket) or STDIO
    - API Health Check: http://localhost:3001/health
 
 ### Local Development
@@ -127,37 +129,58 @@ baton/
 
 ## MCP Integration
 
-Baton is designed to work with AI code agents through the Model Context Protocol. AI agents can:
+Baton includes a **fully compliant Model Context Protocol (MCP) server** that enables seamless integration with AI agents like Claude Desktop and Claude Code.
 
-1. **Register themselves** with the system
-2. **Submit task plans** with structured todo lists
-3. **Update plan status** as work progresses
-4. **Convert plans to tasks** for team collaboration
+### 🎯 True MCP Compliance
 
-### Example MCP Plan Submission
+- ✅ **JSON-RPC 2.0 messaging** with proper lifecycle management
+- ✅ **WebSocket & STDIO transport** for flexible connectivity  
+- ✅ **Resources** - Read-only access to projects, tasks, and analytics
+- ✅ **Tools** - Execute actions like creating tasks, updating projects
+- ✅ **Prompts** - Templated workflows for project planning and analysis
 
+### Quick MCP Setup
+
+#### For Claude Desktop
 ```json
 {
-  "title": "Implement user authentication",
-  "description": "Add JWT-based authentication system",
-  "agentName": "CodeAssistant",
-  "projectId": "project-123",
-  "tasks": [
-    {
-      "title": "Set up JWT middleware",
-      "description": "Configure JWT authentication middleware",
-      "priority": "high",
-      "order": 0
-    },
-    {
-      "title": "Create login endpoint",
-      "description": "Implement user login with JWT tokens",
-      "priority": "high",
-      "order": 1
+  "mcpServers": {
+    "baton": {
+      "command": "node",
+      "args": ["/path/to/baton/backend/dist/mcp-server.js"],
+      "env": {
+        "DATABASE_URL": "postgresql://baton_user:baton_password@localhost:5432/baton_dev"
+      }
     }
-  ]
+  }
 }
 ```
+
+#### For WebSocket Connections
+```bash
+# Start MCP server in WebSocket mode
+npm run mcp:websocket
+
+# Connect to ws://localhost:3002
+```
+
+### Available MCP Resources
+- `@baton://projects` - All projects
+- `@baton://tasks/pending` - Pending tasks  
+- `@baton://projects/{id}/tasks/kanban` - Kanban board view
+
+### Available MCP Tools
+- `create_project` - Create new projects
+- `create_task` - Add tasks to projects
+- `get_project_analytics` - Get project insights
+- `create_mcp_plan` - Generate AI task plans
+
+### Available MCP Prompts
+- `create_project_plan` - Generate comprehensive project plans
+- `analyze_project_status` - Analyze project health
+- `sprint_planning` - Create sprint plans
+
+📚 **Full MCP Documentation**: See [docs/MCP_INTEGRATION.md](docs/MCP_INTEGRATION.md) for complete details.
 
 ## Development
 

@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "baton": {
+      "command": "node",
+      "args": [
+        "/path/to/baton/backend/dist/mcp-server.js"
+      ],
+      "env": {
+        "DATABASE_URL": "postgresql://baton_user:baton_password@localhost:5432/baton_dev"
+      }
+    }
+  }
+}

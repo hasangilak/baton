@@ -7,6 +7,8 @@
     "build": "tsc",
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "start": "node dist/index.js",
+    "mcp": "ts-node src/mcp-server.ts",
+    "mcp:websocket": "MCP_TRANSPORT_MODE=websocket ts-node src/mcp-server.ts",
     "lint": "eslint src/**/*.ts",
     "test": "jest",
     "db:migrate": "prisma migrate dev",
@@ -16,7 +18,11 @@
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
   },
-  "keywords": ["task-manager", "mcp", "ai-agents"],
+  "keywords": [
+    "task-manager",
+    "mcp",
+    "ai-agents"
+  ],
   "author": "",
   "license": "MIT",
   "devDependencies": {
@@ -35,14 +41,17 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.1",
+    "@prisma/client": "^5.9.1",
+    "@types/ws": "^8.18.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.1",
     "express": "^4.18.2",
     "pg": "^8.11.3",
     "prisma": "^5.9.1",
-    "@prisma/client": "^5.9.1",
     "socket.io": "^4.7.4",
     "uuid": "^9.0.1",
+    "ws": "^8.18.3",
     "zod": "^3.22.4"
   }
 }

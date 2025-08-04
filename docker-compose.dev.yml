@@ -46,6 +46,30 @@ services:
     networks:
       - baton-network
 
+  # Development MCP Server with hot reload
+  mcp-server:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+      target: development
+    container_name: baton-mcp-server-dev
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_URL=postgresql://baton_user:baton_password@postgres:5432/baton_dev
+      - MCP_TRANSPORT_MODE=websocket
+      - MCP_SERVER_PORT=3002
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    command: ["npm", "run", "mcp:websocket"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - baton-network
+
   # Development frontend with hot reload
   frontend:
     build:

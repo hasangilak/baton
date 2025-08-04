@@ -1,5 +1,5 @@
 # Development Dockerfile for Baton Frontend
-FROM node:18-alpine AS development
+FROM node:20-alpine AS development
 
 WORKDIR /app
 
@@ -24,6 +24,9 @@ EXPOSE 5173
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:5173/ || exit 1
+
+# Set Node.js options for crypto compatibility
+ENV NODE_OPTIONS="--openssl-legacy-provider"
 
 # Default command (can be overridden in docker-compose)
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

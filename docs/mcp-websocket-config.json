@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "baton-websocket": {
+      "transport": {
+        "type": "websocket",
+        "url": "ws://localhost:3002"
+      },
+      "capabilities": {
+        "resources": true,
+        "tools": true,
+        "prompts": true
+      },
+      "description": "Baton task manager with MCP integration"
+    }
+  }
+}

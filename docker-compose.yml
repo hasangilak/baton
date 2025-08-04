@@ -49,6 +49,33 @@ services:
       start_period: 40s
     restart: unless-stopped
 
+  # MCP Server service
+  mcp-server:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: baton-mcp-server
+    ports:
+      - "3002:3002"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://baton_user:baton_password@postgres:5432/baton
+      - MCP_TRANSPORT_MODE=websocket
+      - MCP_SERVER_PORT=3002
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - baton-network
+    command: ["dumb-init", "npm", "run", "mcp:websocket"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
   # Frontend service
   frontend:
     build:
