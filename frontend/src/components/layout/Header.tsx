@@ -2,6 +2,8 @@ import React from 'react';
 import { Search, Bell, ChevronLeft, Plus, MoreHorizontal, Wifi, WifiOff, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
 
+// HMR is now working! ✅
+
 interface HeaderProps {
   currentSection: string;
   websocketStatus?: {
