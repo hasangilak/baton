@@ -98,6 +98,52 @@ That's it! Baton is running with a seeded demo project and tasks.
 - **Todo Lists**: Claude Code plan mode automatically syncs with Baton
 - **Bidirectional Sync**: "Sync my current todos to Baton tasks"
 
+## 📝 Claude Code Memory Configuration
+
+**IMPORTANT**: For optimal integration, copy this entire block to your Claude Code memory:
+
+```
+**IMPORTANT**: For optimal integration, add this to your Claude Code memory to ensure seamless todo synchronization:
+
+### **Mandatory Workflow Process**
+
+**ABSOLUTE REQUIREMENT**: ALL plans, todos, and task management MUST use Baton MCP integration. This is NON-NEGOTIABLE.
+
+**For ALL todo/planning work:**
+
+1. **Todo Creation**
+   ```
+   ALWAYS: mcp__baton__TodoWrite({ todos: [...] })
+   NEVER:  TodoWrite({ todos: [...] })
+   ```
+
+2. **Todo Reading/Verification**
+   ```
+   ALWAYS: mcp__baton__TodoRead()
+   NEVER:  TodoRead()
+   ```
+
+3. **Verification Steps**
+   - After creating todos, ALWAYS verify with `mcp__baton__TodoRead()`
+   - Check backend logs for MCP tool execution confirmation
+   - Confirm todos appear in Baton frontend via real-time updates
+
+4. **Additional MCP Tools Available**
+   - `mcp__baton__sync_todos_to_tasks` - Convert Claude todos to Baton tasks
+   - `mcp__baton__sync_tasks_to_todos` - Sync Baton task updates back to Claude
+   - `mcp__baton__create_task` - Create tasks directly in Baton
+   - `mcp__baton__move_task` - Update task status/position
+
+### **Why This Matters**
+- **User Expectation**: Users expect ALL Claude Code planning work to appear in Baton frontend immediately
+- **Real-time Sync**: MCP integration provides instant WebSocket updates to the UI
+- **Persistent Storage**: Local todos disappear when Claude Code session ends
+- **Team Collaboration**: Baton todos are visible to entire team, local todos are isolated
+- **Data Integrity**: Baton provides proper database storage with full CRUD operations
+```
+
+**Simply copy the entire code block above and paste it into your Claude Code memory for seamless integration.**
+
 ## 🏗️ Multi-Project Workspace System
 
 Baton uses a **single MCP server instance** that automatically detects which project you're working on:
