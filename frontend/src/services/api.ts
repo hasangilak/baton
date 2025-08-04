@@ -12,7 +12,11 @@ import type {
   CreateClaudeTodosRequest,
   SyncTodosToTasksRequest,
   SyncTasksToTodosRequest,
-  SyncResponse
+  SyncResponse,
+  ClaudeCodePlan,
+  ClaudeCodePlansResponse,
+  CapturePlanRequest,
+  ClaudeCodePlanStatus
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -244,6 +248,47 @@ class ApiService {
       throw new Error('Failed to sync tasks to todos');
     }
     return response.json();
+  }
+
+  // Claude Code Plans Integration
+  async getPlans(projectId: string, status?: string, limit = 50, offset = 0): Promise<ClaudeCodePlansResponse> {
+    const params = new URLSearchParams({ 
+      projectId,
+      limit: limit.toString(),
+      offset: offset.toString()
+    });
+    if (status) params.append('status', status);
+    
+    const response = await this.request<ClaudeCodePlansResponse>(`/api/plans?${params.toString()}`);
+    return response.data || response; // Handle both wrapped and direct responses
+  }
+
+  async getPlan(id: string): Promise<ApiResponse<ClaudeCodePlan>> {
+    return this.request<ClaudeCodePlan>(`/api/plans/${id}`);
+  }
+
+  async capturePlan(data: CapturePlanRequest): Promise<ApiResponse<ClaudeCodePlan>> {
+    return this.request<ClaudeCodePlan>('/api/plans/capture', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updatePlan(id: string, data: {
+    title?: string;
+    status?: ClaudeCodePlanStatus;
+    metadata?: any;
+  }): Promise<ApiResponse<ClaudeCodePlan>> {
+    return this.request<ClaudeCodePlan>(`/api/plans/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deletePlan(id: string): Promise<ApiResponse<void>> {
+    return this.request<void>(`/api/plans/${id}`, {
+      method: 'DELETE',
+    });
   }
 
   // Generic HTTP methods for hooks compatibility

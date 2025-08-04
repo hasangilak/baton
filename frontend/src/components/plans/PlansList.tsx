@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { api } from '../../services/api';
-import type { ClaudeCodePlan } from '../../types';
+import { usePlans, useUpdatePlan, useDeletePlan } from '../../hooks';
+import type { ClaudeCodePlan, ClaudeCodePlanStatus } from '../../types';
 
 interface PlansListProps {
   projectId: string;
@@ -9,38 +8,27 @@ interface PlansListProps {
 
 export const PlansList: React.FC<PlansListProps> = ({ projectId }) => {
   const [selectedPlan, setSelectedPlan] = useState<ClaudeCodePlan | null>(null);
-  const queryClient = useQueryClient();
 
-  const { data: plansData, isLoading, error } = useQuery({
-    queryKey: ['plans', projectId],
-    queryFn: () => api.get(`/api/plans?projectId=${projectId}`).then(res => res.data),
-    refetchInterval: 30000, // Refetch every 30 seconds
-  });
-
-  const updatePlanMutation = useMutation({
-    mutationFn: (data: { id: string; status: string }) =>
-      api.put(`/api/plans/${data.id}`, { status: data.status }).then((res: { data: any }) => res.data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['plans', projectId] });
-    },
-  });
-
-  const deletePlanMutation = useMutation({
-    mutationFn: (id: string) => api.delete(`/api/plans/${id}`).then(res => res.data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['plans', projectId] });
-      setSelectedPlan(null);
-    },
-  });
+  // Use the custom hooks for plans data and mutations
+  const { data: plansData, isLoading, error } = usePlans(projectId);
+  const updatePlanMutation = useUpdatePlan();
+  const deletePlanMutation = useDeletePlan();
 
   const plans = plansData?.plans || [];
 
   const handleStatusChange = (plan: ClaudeCodePlan, newStatus: string) => {
-    updatePlanMutation.mutate({ id: plan.id, status: newStatus });
+    updatePlanMutation.mutate({ 
+      id: plan.id, 
+      data: { status: newStatus as ClaudeCodePlanStatus }
+    });
   };
 
   const handleDelete = (plan: ClaudeCodePlan) => {
     if (window.confirm('Are you sure you want to delete this plan?')) {
+      // Clear selection if deleting the currently selected plan
+      if (selectedPlan?.id === plan.id) {
+        setSelectedPlan(null);
+      }
       deletePlanMutation.mutate(plan.id);
     }
   };
@@ -69,7 +57,9 @@ export const PlansList: React.FC<PlansListProps> = ({ projectId }) => {
   if (error) {
     return (
       <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-        <p className="text-red-600">Error loading plans: {error.message}</p>
+        <p className="text-red-600">
+          Error loading plans: {error instanceof Error ? error.message : 'Unknown error'}
+        </p>
       </div>
     );
   }

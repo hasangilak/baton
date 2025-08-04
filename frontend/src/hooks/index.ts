@@ -42,3 +42,13 @@ export {
   useSyncTasksToTodos,
   claudeTodosKeys,
 } from './useClaudeTodos';
+
+// Claude Code Plans hooks  
+export {
+  usePlans,
+  usePlan,
+  useCapturePlan,
+  useUpdatePlan,
+  useDeletePlan,
+  planQueryKeys,
+} from './usePlans';

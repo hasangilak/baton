@@ -65,4 +65,13 @@ export const queryKeys = {
     details: () => [...queryKeys.mcpPlans.all, 'detail'] as const,
     detail: (id: string) => [...queryKeys.mcpPlans.details(), id] as const,
   },
+  
+  // Claude Code Plans
+  plans: {
+    all: ['plans'] as const,
+    lists: () => [...queryKeys.plans.all, 'list'] as const,
+    list: (filters: { projectId: string; status?: string }) => [...queryKeys.plans.lists(), filters] as const,
+    details: () => [...queryKeys.plans.all, 'detail'] as const,
+    detail: (id: string) => [...queryKeys.plans.details(), id] as const,
+  },
 } as const;
