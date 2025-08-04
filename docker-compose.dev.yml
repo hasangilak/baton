@@ -36,9 +36,13 @@ services:
       - DATABASE_URL=postgresql://baton_user:baton_password@postgres:5432/baton_dev
       - CLIENT_URL=http://localhost:5173
       - MCP_SERVER_PORT=3002
+      - CHOKIDAR_USEPOLLING=true
     volumes:
       - ./backend:/app
       - /app/node_modules
+      # Exclude files that don't need to be watched
+      - /app/.git
+      - /app/dist
     command: ["npm", "run", "dev"]
     depends_on:
       postgres:
@@ -60,10 +64,14 @@ services:
       - DATABASE_URL=postgresql://baton_user:baton_password@postgres:5432/baton_dev
       - MCP_TRANSPORT_MODE=websocket
       - MCP_SERVER_PORT=3002
+      - CHOKIDAR_USEPOLLING=true
     volumes:
       - ./backend:/app
       - /app/node_modules
-    command: ["npm", "run", "mcp:websocket"]
+      # Exclude files that don't need to be watched
+      - /app/.git
+      - /app/dist
+    command: ["npm", "run", "mcp:dev:websocket"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -79,48 +87,21 @@ services:
     container_name: baton-frontend-dev
     ports:
       - "5173:5173"
+      - "5174:5174"  # HMR WebSocket port
     environment:
       - VITE_API_URL=http://localhost:3001
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
     volumes:
       - ./frontend:/app
       - /app/node_modules
+      # Exclude files that don't need to be watched
+      - /app/.git
+      - /app/dist
     command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
     networks:
       - baton-network
 
-  # Database migration service for development
-  db-migrate:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.dev
-      target: development
-    container_name: baton-db-migrate-dev
-    environment:
-      - DATABASE_URL=postgresql://baton_user:baton_password@postgres:5432/baton_dev
-    networks:
-      - baton-network
-    command: ["dumb-init", "npx", "prisma", "migrate", "deploy"]
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: "no"
-
-  # Database seeding service for development
-  db-seed:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.dev
-      target: development
-    container_name: baton-db-seed-dev
-    environment:
-      - DATABASE_URL=postgresql://baton_user:baton_password@postgres:5432/baton_dev
-    networks:
-      - baton-network
-    command: ["dumb-init", "npx", "prisma", "db", "seed"]
-    depends_on:
-      db-migrate:
-        condition: service_completed_successfully
-    restart: "no"
 
 volumes:
   postgres_dev_data:

@@ -8,6 +8,16 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
+    // Enable HMR for Docker
+    hmr: {
+      port: 5174,
+      host: '0.0.0.0',
+    },
+    // Use polling for file watching in Docker (more reliable)
+    watch: {
+      usePolling: true,
+      interval: 1000,
+    },
   },
   define: {
     global: 'globalThis',
