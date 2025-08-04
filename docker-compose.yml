@@ -1,6 +1,28 @@
 version: '3.8'
 
 services:
+  # PostgreSQL database
+  postgres:
+    image: postgres:15-alpine
+    container_name: baton-postgres
+    environment:
+      - POSTGRES_DB=baton
+      - POSTGRES_USER=baton_user
+      - POSTGRES_PASSWORD=baton_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - baton-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U baton_user -d baton"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+
   # Backend service
   backend:
     build:
@@ -11,11 +33,12 @@ services:
       - "3001:3001"
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=file:./data/baton.db
+      - DATABASE_URL=postgresql://baton_user:baton_password@postgres:5432/baton
       - CLIENT_URL=http://localhost:5173
       - MCP_SERVER_PORT=3002
-    volumes:
-      - backend_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks:
       - baton-network
     healthcheck:
@@ -57,14 +80,13 @@ services:
       dockerfile: Dockerfile
     container_name: baton-db-migrate
     environment:
-      - DATABASE_URL=file:./data/baton.db
-    volumes:
-      - backend_data:/app/data
+      - DATABASE_URL=postgresql://baton_user:baton_password@postgres:5432/baton
     networks:
       - baton-network
     command: ["dumb-init", "npx", "prisma", "migrate", "deploy"]
     depends_on:
-      - backend
+      postgres:
+        condition: service_healthy
     restart: "no"
 
   # Optional: Database seeding service
@@ -74,9 +96,7 @@ services:
       dockerfile: Dockerfile
     container_name: baton-db-seed
     environment:
-      - DATABASE_URL=file:./data/baton.db
-    volumes:
-      - backend_data:/app/data
+      - DATABASE_URL=postgresql://baton_user:baton_password@postgres:5432/baton
     networks:
       - baton-network
     command: ["dumb-init", "npx", "prisma", "db", "seed"]
@@ -88,7 +108,7 @@ services:
       - seed
 
 volumes:
-  backend_data:
+  postgres_data:
     driver: local
 
 networks:

@@ -16,7 +16,7 @@ Baton is a modern task management system designed to work seamlessly with AI cod
 
 - **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS
 - **Backend**: Node.js + Express + TypeScript + Prisma
-- **Database**: SQLite (easily configurable to PostgreSQL/MySQL)
+- **Database**: PostgreSQL with automatic Docker setup
 - **Real-time**: Socket.IO for collaborative features
 - **Containerization**: Docker with multi-stage builds
 
@@ -173,6 +173,9 @@ npm test
 ```
 
 ### Database Management
+
+Baton uses PostgreSQL as its primary database. When running with Docker, PostgreSQL is automatically set up and configured.
+
 ```bash
 # Create new migration
 npx prisma migrate dev --name <migration-name>
@@ -182,13 +185,24 @@ npx prisma migrate reset
 
 # View database
 npx prisma studio
+
+# Connect to PostgreSQL directly (when running with Docker)
+docker exec -it baton-postgres psql -U baton_user -d baton
+
+# Generate Prisma client after schema changes
+npx prisma generate
 ```
+
+#### Database Configuration
+- **Production**: `postgresql://baton_user:baton_password@postgres:5432/baton`
+- **Development**: `postgresql://baton_user:baton_password@postgres:5432/baton_dev`
+- **Local**: `postgresql://baton_user:baton_password@localhost:5432/baton_dev`
 
 ### Environment Variables
 
 #### Backend (.env)
 ```
-DATABASE_URL="file:./dev.db"
+DATABASE_URL="postgresql://baton_user:baton_password@localhost:5432/baton_dev"
 PORT=3001
 NODE_ENV=development
 CLIENT_URL="http://localhost:5173"
