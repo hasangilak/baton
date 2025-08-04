@@ -133,6 +133,13 @@ That's it! Baton is running with a seeded demo project and tasks.
    - `mcp__baton__sync_tasks_to_todos` - Sync Baton task updates back to Claude
    - `mcp__baton__create_task` - Create tasks directly in Baton
    - `mcp__baton__move_task` - Update task status/position
+   - `mcp__baton__detect_workspace_project` - Find and read .baton-project file for project context
+
+### **Project Context & Detection**
+- All todos automatically inherit current project context
+- Use `mcp__baton__detect_workspace_project()` if TodoRead/TodoWrite fails with "No project context found"
+- Follow the tool's instructions to locate and read your .baton-project configuration file
+- Cross-project todo management supported
 
 ### **Why This Matters**
 - **User Expectation**: Users expect ALL Claude Code planning work to appear in Baton frontend immediately
