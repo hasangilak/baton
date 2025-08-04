@@ -34,7 +34,7 @@ services:
     environment:
       - NODE_ENV=development
       - DATABASE_URL=postgresql://baton_user:baton_password@postgres:5432/baton_dev
-      - CLIENT_URL=http://localhost:5173
+      - CLIENT_URL=http://localhost:5175
       - MCP_SERVER_PORT=3002
       - CHOKIDAR_USEPOLLING=true
     volumes:
@@ -87,7 +87,7 @@ services:
     container_name: baton-frontend-dev
     ports:
       - "5173:5173"
-      - "5174:5174"  # HMR WebSocket port
+      - "5176:5174"  # HMR WebSocket port
     environment:
       - VITE_API_URL=http://localhost:3001
       - CHOKIDAR_USEPOLLING=true
@@ -98,7 +98,11 @@ services:
       # Exclude files that don't need to be watched
       - /app/.git
       - /app/dist
-    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+    user: root
+    command: [
+      "sh", "-c", 
+      "echo '📦 Installing dependencies...' && npm install && echo '✅ Dependencies installed!' && npm run dev -- --host 0.0.0.0"
+    ]
     networks:
       - baton-network
 

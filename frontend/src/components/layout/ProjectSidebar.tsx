@@ -162,7 +162,7 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
             
             {/* Context Menu */}
             {contextMenuProject === project.id && (
-              <div className="absolute right-0 top-8 w-48 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-50">
+              <div className="absolute right-0 top-8 w-48 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-40">
                 <div className="py-1">
                   <button
                     onClick={(e) => {

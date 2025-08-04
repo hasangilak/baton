@@ -16,6 +16,12 @@
     "moduleDetection": "force",
     "noEmit": true,
     
+    /* Path Mapping */
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    
     /* Interop Constraints */
     "isolatedModules": true,
     "allowSyntheticDefaultImports": true,

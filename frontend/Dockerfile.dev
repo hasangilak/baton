@@ -9,13 +9,16 @@ COPY package*.json ./
 # Install all dependencies (including dev dependencies)
 RUN npm ci
 
+# No need for install script - dependencies handled in docker-compose
+
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
 
-# Set proper permissions
+# Set proper permissions (including the install script)
 RUN chown -R nodejs:nodejs /app
 
+# Switch to nodejs user for security
 USER nodejs
 
 # Expose ports (5173 for app, 5174 for HMR WebSocket)
@@ -28,5 +31,5 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 # Set Node.js options for crypto compatibility
 ENV NODE_OPTIONS="--openssl-legacy-provider"
 
-# Default command (can be overridden in docker-compose)
+# Default command (overridden in docker-compose for dev dependency management)
 CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

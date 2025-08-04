@@ -1,9 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, Folder, Palette } from 'lucide-react';
-import clsx from 'clsx';
+import { Folder, Palette } from 'lucide-react';
 import { useCreateProject } from '../../hooks/useProjects';
 import { useToast } from '../../hooks/useToast';
 import type { CreateProjectRequest } from '../../types';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 interface CreateProjectModalProps {
   isOpen: boolean;
@@ -85,129 +94,112 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex min-h-screen items-center justify-center px-4 pt-4 pb-20 text-center sm:block sm:p-0">
-        {/* Background overlay */}
-        <div 
-          className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
-          onClick={handleClose}
-        />
-
-        {/* Modal */}
-        <div className="inline-block transform overflow-hidden rounded-lg bg-white px-4 pt-5 pb-4 text-left align-bottom shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6 sm:align-middle">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                <Folder className="w-5 h-5 text-blue-600" />
-              </div>
-              <h3 className="text-lg font-semibold text-gray-900">
-                Create New Project
-              </h3>
+    <Dialog open={isOpen} onOpenChange={handleClose}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <div className="flex items-center space-x-3 mb-2">
+            <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+              <Folder className="w-5 h-5 text-blue-600" />
             </div>
-            <button
-              onClick={handleClose}
-              className="text-gray-400 hover:text-gray-500 transition-colors"
-            >
-              <X className="w-6 h-6" />
-            </button>
+            <DialogTitle className="text-lg font-semibold text-gray-900">
+              Create New Project
+            </DialogTitle>
+          </div>
+          <DialogDescription className="text-sm text-gray-600">
+            Create a new project to organize your tasks and collaborate with your team.
+          </DialogDescription>
+        </DialogHeader>
+
+        <form id="create-project-form" onSubmit={handleSubmit} className="space-y-6">
+          {/* Project Name */}
+          <div>
+            <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
+              Project Name *
+            </label>
+            <input
+              type="text"
+              id="name"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              className={cn(
+                'w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500',
+                errors.name ? 'border-red-300' : 'border-gray-300'
+              )}
+              placeholder="Enter project name"
+              autoFocus
+            />
+            {errors.name && (
+              <p className="text-sm text-red-600 mt-1">{errors.name}</p>
+            )}
           </div>
 
-          {/* Form */}
-          <form id="create-project-form" onSubmit={handleSubmit} className="space-y-6">
-            {/* Project Name */}
-            <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">
-                Project Name *
-              </label>
-              <input
-                type="text"
-                id="name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className={clsx(
-                  'w-full px-3 py-2 border rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500',
-                  errors.name ? 'border-red-300' : 'border-gray-300'
-                )}
-                placeholder="Enter project name"
-                autoFocus
-              />
-              {errors.name && (
-                <p className="text-sm text-red-600 mt-1">{errors.name}</p>
-              )}
-            </div>
+          {/* Description */}
+          <div>
+            <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
+              Description
+            </label>
+            <textarea
+              id="description"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Describe your project (optional)"
+            />
+          </div>
 
-            {/* Description */}
-            <div>
-              <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
-                Description
-              </label>
-              <textarea
-                id="description"
-                value={formData.description}
-                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                placeholder="Describe your project (optional)"
-              />
+          {/* Color Selection */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-3">
+              <Palette className="w-4 h-4 inline mr-2" />
+              Project Color
+            </label>
+            <div className="grid grid-cols-6 gap-3">
+              {colorOptions.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  onClick={() => setFormData({ ...formData, color })}
+                  className={cn(
+                    'w-8 h-8 rounded-full border-2 transition-all duration-200',
+                    formData.color === color 
+                      ? 'border-gray-900 scale-110' 
+                      : 'border-gray-300 hover:border-gray-400'
+                  )}
+                  style={{ backgroundColor: color }}
+                  title={color}
+                />
+              ))}
             </div>
+          </div>
 
-            {/* Color Selection */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-3">
-                <Palette className="w-4 h-4 inline mr-2" />
-                Project Color
-              </label>
-              <div className="grid grid-cols-6 gap-3">
-                {colorOptions.map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() => setFormData({ ...formData, color })}
-                    className={clsx(
-                      'w-8 h-8 rounded-full border-2 transition-all duration-200',
-                      formData.color === color 
-                        ? 'border-gray-900 scale-110' 
-                        : 'border-gray-300 hover:border-gray-400'
-                    )}
-                    style={{ backgroundColor: color }}
-                    title={color}
-                  />
-                ))}
-              </div>
+          {/* General Error */}
+          {errors.general && (
+            <div className="bg-red-50 border border-red-200 rounded-md p-3">
+              <p className="text-sm text-red-800">{errors.general}</p>
             </div>
-
-            {/* General Error */}
-            {errors.general && (
-              <div className="bg-red-50 border border-red-200 rounded-md p-3">
-                <p className="text-sm text-red-800">{errors.general}</p>
-              </div>
-            )}
-
-            {/* Actions */}
-            <div className="flex justify-end space-x-3 pt-4">
-              <button
-                type="button"
-                onClick={handleClose}
-                disabled={createProjectMutation.isPending}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={createProjectMutation.isPending}
-                className="px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {createProjectMutation.isPending ? 'Creating...' : 'Create Project'}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    </div>
+          )}
+        </form>
+        
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={handleClose}
+            disabled={createProjectMutation.isPending}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form="create-project-form"
+            disabled={createProjectMutation.isPending}
+          >
+            {createProjectMutation.isPending ? 'Creating...' : 'Create Project'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };
