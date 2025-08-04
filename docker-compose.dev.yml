@@ -34,7 +34,7 @@ services:
     environment:
       - NODE_ENV=development
       - DATABASE_URL=postgresql://baton_user:baton_password@postgres:5432/baton_dev
-      - CLIENT_URL=http://localhost:5175
+      - CLIENT_URL=http://localhost:5173
       - MCP_SERVER_PORT=3002
       - CHOKIDAR_USEPOLLING=true
     volumes:
