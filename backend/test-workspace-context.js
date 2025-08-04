@@ -4,7 +4,7 @@ async function testWorkspaceContext() {
   console.log('🧪 Testing MCP Server with Workspace Context');
   console.log('===============================================');
   
-  const ws = new WebSocket('ws://localhost:3006');
+  const ws = new WebSocket('ws://localhost:3002');
   let messageId = 0;
 
   ws.on('open', () => {
@@ -49,7 +49,7 @@ async function testWorkspaceContext() {
       
       if (workspaceResources.length > 0) {
         // Test reading workspace current project
-        console.log('\\n🔍 Testing workspace resource reading...');
+        console.log('\n🔍 Testing workspace resource reading...');
         ws.send(JSON.stringify({
           jsonrpc: '2.0',
           id: ++messageId,
@@ -66,7 +66,7 @@ async function testWorkspaceContext() {
         console.log('📊 Task count:', content.tasks?.length || 'N/A');
         
         // Test workspace info tool
-        console.log('\\n🔧 Testing workspace info tool...');
+        console.log('\n🔧 Testing workspace info tool...');
         ws.send(JSON.stringify({
           jsonrpc: '2.0',
           id: ++messageId,
@@ -100,7 +100,7 @@ async function testWorkspaceContext() {
   });
 
   ws.on('close', () => {
-    console.log('\\n🎯 Test completed!');
+    console.log('\n🎯 Test completed!');
   });
 }
 

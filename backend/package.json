@@ -14,6 +14,8 @@
     "mcp:dev:websocket": "MCP_TRANSPORT_MODE=websocket MCP_SERVER_PORT=3002 ts-node src/mcp-server.ts",
     "test:mcp": "node test-mcp.js",
     "test:mcp:db": "node test-mcp-db.js",
+    "test:mcp:ux": "node test-mcp-ux.js",
+    "test:ux:simple": "node test-ux-simple.js",
     "test:workspace": "node test-workspace-context.js",
     "lint": "eslint src/**/*.ts",
     "test": "jest",

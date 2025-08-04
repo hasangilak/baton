@@ -58,10 +58,22 @@ export class BatonMCPServer {
   }
 
   private setupHandlers() {
+    // Add general message logging
+    this.server.onerror = (error) => {
+      console.error('❌ MCP Server Error:', error);
+    };
+    
     // List Resources Handler
     this.server.setRequestHandler(ListResourcesRequestSchema, async () => {
-      const resources = await this.resourceProvider.listResources();
-      return { resources };
+      console.log('📜 Processing resources/list request...');
+      try {
+        const resources = await this.resourceProvider.listResources();
+        console.log(`✅ Found ${resources.length} resources`);
+        return { resources };
+      } catch (error) {
+        console.error('❌ Error in resources/list:', error);
+        throw error;
+      }
     });
 
     // Read Resource Handler
@@ -88,8 +100,15 @@ export class BatonMCPServer {
 
     // List Tools Handler
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-      const tools = await this.toolProvider.listTools();
-      return { tools };
+      console.log('🔧 Processing tools/list request...');
+      try {
+        const tools = await this.toolProvider.listTools();
+        console.log(`✅ Found ${tools.length} tools`);
+        return { tools };
+      } catch (error) {
+        console.error('❌ Error in tools/list:', error);
+        throw error;
+      }
     });
 
     // Call Tool Handler
@@ -155,25 +174,40 @@ export class BatonMCPServer {
       
       console.log(`🔌 New MCP client connected via WebSocket${projectId ? ` (project: ${projectId})` : ''}${projectName ? ` (projectName: ${projectName})` : ''}`);
       
-      // Set project context if provided
-      if (projectId) {
-        this.workspaceManager?.setCurrentProject(projectId);
-      } else if (projectName) {
-        // Look up project by name
-        const project = await this.prisma.project.findFirst({
-          where: { name: { contains: projectName, mode: 'insensitive' } }
-        });
-        if (project) {
-          this.workspaceManager?.setCurrentProject(project.id);
-          console.log(`📁 Found project: ${project.name} (${project.id})`);
+      // Set project context if provided (MUST complete before transport setup)
+      try {
+        if (projectId) {
+          this.currentProjectId = projectId;
+          this.workspaceManager?.setCurrentProject(projectId);
+          console.log(`🎯 Direct project context set: ${projectId}`);
+        } else if (projectName) {
+          // Look up project by name
+          console.log(`🔍 Looking up project: ${projectName}`);
+          const project = await this.prisma.project.findFirst({
+            where: { name: { contains: projectName, mode: 'insensitive' } }
+          });
+          if (project) {
+            this.currentProjectId = project.id;
+            this.workspaceManager?.setCurrentProject(project.id);
+            console.log(`📁 Found project: ${project.name} (${project.id})`);
+          } else {
+            console.log(`⚠️ Project not found: ${projectName}`);
+          }
         }
+        console.log('✅ Project context setup completed');
+      } catch (error) {
+        console.error('❌ Error setting project context:', error);
+        // Continue without project context
       }
       
       const transport = {
         async start() {},
         async send(message: any) {
           if (ws.readyState === ws.OPEN) {
+            console.log(`📤 Sending WebSocket message: ${message.method || message.id || 'response'}`);
             ws.send(JSON.stringify(message));
+          } else {
+            console.log(`⚠️ Cannot send message - WebSocket not open (state: ${ws.readyState})`);
           }
         },
         async close() {
@@ -187,11 +221,12 @@ export class BatonMCPServer {
       ws.on('message', (data) => {
         try {
           const message = JSON.parse(data.toString());
+          console.log(`📨 Received WebSocket message: ${message.method || message.id}`);
           if (transport.onmessage) {
             transport.onmessage(message);
           }
         } catch (error) {
-          console.error("Error parsing WebSocket message:", error);
+          console.error("❌ Error parsing WebSocket message:", error);
         }
       });
 
@@ -210,9 +245,11 @@ export class BatonMCPServer {
       });
 
       try {
+        console.log('🔗 Attempting to connect MCP transport...');
         await this.server.connect(transport);
+        console.log('✅ MCP transport connected successfully');
       } catch (error) {
-        console.error("Failed to connect MCP server:", error);
+        console.error("❌ Failed to connect MCP server:", error);
         ws.close();
       }
     });

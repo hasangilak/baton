@@ -16,7 +16,7 @@ class MCPTestClient {
   }
 
   async connectWebSocket(url = 'ws://localhost:3002') {
-    console.log('🔌 Testing WebSocket MCP connection...');
+    console.log(`🔌 Testing WebSocket MCP connection to ${url}...`);  
     
     return new Promise((resolve, reject) => {
       this.ws = new WebSocket(url);
@@ -162,10 +162,8 @@ class MCPTestClient {
     
     try {
       const result = await this.sendRequest('tools/call', {
-        name: 'get_project_analytics',
-        arguments: {
-          projectId: 'demo-project-1'
-        }
+        name: 'get_workspace_info',
+        arguments: {}
       });
       console.log('✅ Tool execution successful');
       console.log('Tool result:', JSON.stringify(result.content, null, 2));
@@ -209,6 +207,29 @@ class MCPTestClient {
       return result;
     } catch (error) {
       console.error('❌ Prompt execution failed:', error.message);
+      throw error;
+    }
+  }
+
+  async testProjectContextQuery() {
+    console.log('\n🎯 Testing project context with query parameters...');
+    
+    try {
+      // Close current connection and test with project name parameter
+      this.close();
+      await this.connectWebSocket('ws://localhost:3002?projectName=Demo%20Project');
+      
+      // Test basic initialization with project context
+      await this.testInitialization();
+      
+      // Test workspace-aware resources
+      const result = await this.sendRequest('resources/list');
+      const workspaceResources = result.resources.filter(r => r.uri.startsWith('baton://workspace'));
+      
+      console.log(`✅ Project context query successful - found ${workspaceResources.length} workspace resources`);
+      return result;
+    } catch (error) {
+      console.error('❌ Project context query failed:', error.message);
       throw error;
     }
   }
@@ -282,6 +303,7 @@ async function runAllTests() {
     { name: 'Tool Execution', fn: () => client.testToolExecution() },
     { name: 'Prompt Listing', fn: () => client.testPromptListing() },
     { name: 'Prompt Execution', fn: () => client.testPromptExecution() },
+    { name: 'Project Context Query', fn: () => client.testProjectContextQuery() },
     { name: 'STDIO Transport', fn: testSTDIOTransport }
   ];
 

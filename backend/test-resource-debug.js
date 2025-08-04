@@ -5,7 +5,7 @@ async function testResourceReading() {
   console.log('🔍 Starting focused resource reading test...');
   
   // Start WebSocket connection
-  const ws = new WebSocket('ws://localhost:3003');
+  const ws = new WebSocket('ws://localhost:3002');
   let messageId = 0;
   
   ws.on('open', async () => {
