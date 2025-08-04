@@ -15,7 +15,7 @@ AI-powered task management designed for seamless integration with Claude Code. B
 - **Plan Mode Sync** - Claude Code todos automatically sync with Baton
 - **Bidirectional Sync** - Convert between Claude todos and Baton tasks
 - **Context-Aware** - Automatic project detection based on workspace
-- **15 MCP Tools** - Create tasks, manage projects, analytics, and more
+- **16 MCP Tools** - Create tasks, manage projects, analytics, and more
 - **8 MCP Prompts** - Project planning, task breakdown, retrospectives
 
 ### 🏗️ Technical Features
@@ -105,48 +105,27 @@ That's it! Baton is running with a seeded demo project and tasks.
 ````
 **IMPORTANT**: For optimal integration, add this to your Claude Code memory to ensure seamless todo synchronization:
 
-### **Mandatory Workflow Process**
-
+#### **Mandatory Workflow Process**
 **ABSOLUTE REQUIREMENT**: ALL plans, todos, and task management MUST use Baton MCP integration. This is NON-NEGOTIABLE.
-
 **For ALL todo/planning work:**
+
+0. **Project Id**
+```
+    ALWAYS: recall detect workspace project from baton mcp to find the projectId so we can have it in context for TodoWrite and TodoRead usage
+```
 
 1. **Todo Creation**
    ```
-   ALWAYS: mcp__baton__TodoWrite({ todos: [...] })
-   NEVER:  TodoWrite({ todos: [...] })
+   baton mcp tool: TodoWrite({ todos: [...] })
    ```
 
 2. **Todo Reading/Verification**
    ```
-   ALWAYS: mcp__baton__TodoRead()
-   NEVER:  TodoRead()
+   baton mcp tool: TodoRead()
    ```
 
 3. **Verification Steps**
-   - After creating todos, ALWAYS verify with `mcp__baton__TodoRead()`
-   - Check backend logs for MCP tool execution confirmation
-   - Confirm todos appear in Baton frontend via real-time updates
-
-4. **Additional MCP Tools Available**
-   - `mcp__baton__sync_todos_to_tasks` - Convert Claude todos to Baton tasks
-   - `mcp__baton__sync_tasks_to_todos` - Sync Baton task updates back to Claude
-   - `mcp__baton__create_task` - Create tasks directly in Baton
-   - `mcp__baton__move_task` - Update task status/position
-   - `mcp__baton__detect_workspace_project` - Find and read .baton-project file for project context
-
-### **Project Context & Detection**
-- All todos automatically inherit current project context
-- Use `mcp__baton__detect_workspace_project()` if TodoRead/TodoWrite fails with "No project context found"
-- Follow the tool's instructions to locate and read your .baton-project configuration file
-- Cross-project todo management supported
-
-### **Why This Matters**
-- **User Expectation**: Users expect ALL Claude Code planning work to appear in Baton frontend immediately
-- **Real-time Sync**: MCP integration provides instant WebSocket updates to the UI
-- **Persistent Storage**: Local todos disappear when Claude Code session ends
-- **Team Collaboration**: Baton todos are visible to entire team, local todos are isolated
-- **Data Integrity**: Baton provides proper database storage with full CRUD operations
+   - After creating todos, ALWAYS verify with baton mcp tools: `detect_workspace_project` and `TodoRead()`
 ````
 
 **Simply copy the entire code block above and paste it into your Claude Code memory for seamless integration.**
@@ -189,6 +168,48 @@ echo '{"projectId": "your-project-id-from-baton"}' > .baton-project
 **Option 3: Use MCP tool**
 - Ask Claude Code: "Associate this workspace with [Project Name]"
 - The tool will create the necessary mappings
+
+## 🔧 Complete MCP Tools Reference
+
+Baton provides **16 powerful MCP tools** for comprehensive task and project management from Claude Code:
+
+### 📋 Project Management Tools
+- **`create_project`** - Create new projects with name, description, and color
+- **`update_project`** - Update existing project details and settings
+
+### ✅ Task Management Tools  
+- **`create_task`** - Create tasks with titles, descriptions, priorities, due dates, and labels
+- **`update_task`** - Update any task properties including status and assignments
+- **`move_task`** - Move tasks between columns (todo, in_progress, done) with ordering
+
+### 🤖 Claude Code Integration Tools
+- **`TodoRead`** - Read all Claude Code todos for current project
+- **`TodoWrite`** - Write/update Claude Code todos with full CRUD operations
+- **`sync_todos_to_tasks`** - Convert Claude Code todos into Baton tasks
+- **`sync_tasks_to_todos`** - Sync Baton task updates back to Claude Code todos
+
+### 🎯 MCP Plan Management Tools
+- **`create_mcp_plan`** - Create structured plans with tasks from AI agents
+- **`convert_mcp_plan`** - Convert MCP plans into actionable project tasks
+
+### 📊 Analytics & Reporting Tools
+- **`get_project_analytics`** - Get detailed project insights, completion rates, and metrics
+- **`get_team_productivity`** - Analyze team performance and productivity trends
+
+### 🗂️ Workspace Management Tools
+- **`detect_workspace_project`** - Find and read .baton-project files for project context
+- **`associate_workspace_project`** - Link current workspace to a Baton project
+- **`get_workspace_info`** - Get current workspace and project information
+
+### Usage Examples
+```bash
+# In Claude Code, you can use natural language:
+"Create a new project called 'Mobile App'"
+"Add a high-priority task to implement user authentication"
+"Show me analytics for my current project"
+"Sync my current todos to Baton tasks"
+"What's my team's productivity this month?"
+```
 
 ## 🛠️ Development
 

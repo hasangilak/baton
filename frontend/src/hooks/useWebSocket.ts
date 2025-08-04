@@ -7,6 +7,7 @@ import { queryKeys } from '../lib/queryClient';
 interface WebSocketHookOptions {
   url?: string;
   autoConnect?: boolean;
+  activeProjectId?: string;
 }
 
 interface WebSocketState {
@@ -18,7 +19,8 @@ interface WebSocketState {
 export const useWebSocket = (options: WebSocketHookOptions = {}) => {
   const {
     url = import.meta.env.VITE_API_URL || 'http://localhost:3001',
-    autoConnect = true
+    autoConnect = true,
+    activeProjectId
   } = options;
 
   const socketRef = useRef<Socket | null>(null);
@@ -81,10 +83,20 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
     setupEventListeners(socket);
   }, [url, queryClient]);
 
+  // Helper function to validate if event should be processed for current project
+  const shouldProcessEvent = useCallback((eventProjectId: string) => {
+    if (!activeProjectId) return true; // Process all events if no active project filter
+    return eventProjectId === activeProjectId;
+  }, [activeProjectId]);
+
   const setupEventListeners = useCallback((socket: Socket) => {
     // Task events (existing)
     socket.on('task-created', (task) => {
       console.log('📋 Task created:', task);
+      if (!shouldProcessEvent(task.projectId)) {
+        console.log('🚫 Ignoring task-created event for inactive project:', task.projectId);
+        return;
+      }
       queryClient.invalidateQueries({ 
         queryKey: queryKeys.tasks.list({ projectId: task.projectId })
       });
@@ -92,6 +104,10 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
 
     socket.on('task-updated', (task) => {
       console.log('📋 Task updated:', task);
+      if (!shouldProcessEvent(task.projectId)) {
+        console.log('🚫 Ignoring task-updated event for inactive project:', task.projectId);
+        return;
+      }
       queryClient.setQueryData(queryKeys.tasks.detail(task.id), task);
       queryClient.invalidateQueries({ 
         queryKey: queryKeys.tasks.list({ projectId: task.projectId })
@@ -100,12 +116,20 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
 
     socket.on('task-deleted', (data) => {
       console.log('📋 Task deleted:', data);
+      if (!shouldProcessEvent(data.projectId)) {
+        console.log('🚫 Ignoring task-deleted event for inactive project:', data.projectId);
+        return;
+      }
       queryClient.removeQueries({ queryKey: queryKeys.tasks.detail(data.id) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.lists() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.list({ projectId: data.projectId }) });
     });
 
     socket.on('task-reordered', (task) => {
       console.log('📋 Task reordered:', task);
+      if (!shouldProcessEvent(task.projectId)) {
+        console.log('🚫 Ignoring task-reordered event for inactive project:', task.projectId);
+        return;
+      }
       queryClient.setQueryData(queryKeys.tasks.detail(task.id), task);
       queryClient.invalidateQueries({ 
         queryKey: queryKeys.tasks.list({ projectId: task.projectId })
@@ -115,6 +139,10 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
     // Claude todo events (new)
     socket.on('claude-todo-created', (todo) => {
       console.log('🤖 Claude todo created:', todo);
+      if (!shouldProcessEvent(todo.projectId)) {
+        console.log('🚫 Ignoring claude-todo-created event for inactive project:', todo.projectId);
+        return;
+      }
       queryClient.invalidateQueries({ 
         queryKey: claudeTodosKeys.byProject(todo.projectId)
       });
@@ -122,6 +150,10 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
 
     socket.on('claude-todo-updated', (todo) => {
       console.log('🤖 Claude todo updated:', todo);
+      if (!shouldProcessEvent(todo.projectId)) {
+        console.log('🚫 Ignoring claude-todo-updated event for inactive project:', todo.projectId);
+        return;
+      }
       queryClient.invalidateQueries({ 
         queryKey: claudeTodosKeys.byProject(todo.projectId)
       });
@@ -129,6 +161,10 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
 
     socket.on('claude-todo-deleted', (data) => {
       console.log('🤖 Claude todo deleted:', data);
+      if (!shouldProcessEvent(data.projectId)) {
+        console.log('🚫 Ignoring claude-todo-deleted event for inactive project:', data.projectId);
+        return;
+      }
       queryClient.invalidateQueries({ 
         queryKey: claudeTodosKeys.byProject(data.projectId)
       });
@@ -136,6 +172,10 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
 
     socket.on('claude-todos-batch-updated', (data) => {
       console.log('🤖 Claude todos batch updated:', data);
+      if (!shouldProcessEvent(data.projectId)) {
+        console.log('🚫 Ignoring claude-todos-batch-updated event for inactive project:', data.projectId);
+        return;
+      }
       queryClient.invalidateQueries({ 
         queryKey: claudeTodosKeys.byProject(data.projectId)
       });
@@ -144,6 +184,10 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
     // Sync events
     socket.on('claude-todos-synced-to-tasks', (data) => {
       console.log('🔄 Claude todos synced to tasks:', data);
+      if (!shouldProcessEvent(data.projectId)) {
+        console.log('🚫 Ignoring claude-todos-synced-to-tasks event for inactive project:', data.projectId);
+        return;
+      }
       queryClient.invalidateQueries({ 
         queryKey: claudeTodosKeys.byProject(data.projectId)
       });
@@ -154,6 +198,10 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
 
     socket.on('claude-tasks-synced-to-todos', (data) => {
       console.log('🔄 Claude tasks synced to todos:', data);
+      if (!shouldProcessEvent(data.projectId)) {
+        console.log('🚫 Ignoring claude-tasks-synced-to-todos event for inactive project:', data.projectId);
+        return;
+      }
       queryClient.invalidateQueries({ 
         queryKey: claudeTodosKeys.byProject(data.projectId)
       });
@@ -165,11 +213,15 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
     // MCP events
     socket.on('claude-mcp-operation-completed', (data) => {
       console.log('⚡ Claude MCP operation completed:', data);
+      if (!shouldProcessEvent(data.projectId)) {
+        console.log('🚫 Ignoring claude-mcp-operation-completed event for inactive project:', data.projectId);
+        return;
+      }
       queryClient.invalidateQueries({ 
         queryKey: claudeTodosKeys.byProject(data.projectId)
       });
     });
-  }, [queryClient]);
+  }, [queryClient, shouldProcessEvent]);
 
   const disconnect = useCallback(() => {
     if (socketRef.current) {

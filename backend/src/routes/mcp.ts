@@ -431,7 +431,11 @@ router.post('/plans/:id/convert', async (req, res, next) => {
     });
 
     // Emit real-time updates
-    io.to(`project-${plan.projectId}`).emit('mcp-plan-converted', { planId: id, tasks: convertedTasks });
+    io.to(`project-${plan.projectId}`).emit('mcp-plan-converted', { 
+      projectId: plan.projectId,
+      planId: id, 
+      tasks: convertedTasks 
+    });
 
     const response: ApiResponse = {
       success: true,
@@ -466,7 +470,10 @@ router.delete('/plans/:id', async (req, res, next) => {
     });
 
     // Emit real-time update
-    io.to(`project-${plan.projectId}`).emit('mcp-plan-deleted', { id });
+    io.to(`project-${plan.projectId}`).emit('mcp-plan-deleted', { 
+      projectId: plan.projectId,
+      id 
+    });
 
     const response: ApiResponse = {
       success: true,

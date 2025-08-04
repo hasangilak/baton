@@ -14,10 +14,13 @@ import { ThemeProvider } from './hooks/useTheme';
 function AppContent() {
   const { data: projects } = useProjects();
   const [currentProjectId, setCurrentProjectId] = useState<string>('demo-project-1');
-  const { connected, connecting, error, joinProject, leaveProject } = useWebSocket();
-
+  
   // Use first available project if demo project doesn't exist
   const activeProjectId = currentProjectId || projects?.[0]?.id || 'demo-project-1';
+  
+  const { connected, connecting, error, joinProject, leaveProject } = useWebSocket({ 
+    activeProjectId 
+  });
 
   // Handle project room subscription when activeProjectId changes
   useEffect(() => {

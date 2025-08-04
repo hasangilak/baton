@@ -284,7 +284,10 @@ router.delete('/:id', async (req, res, next) => {
     });
 
     // Emit real-time update
-    io.to(`project-${task.projectId}`).emit('task-deleted', { id });
+    io.to(`project-${task.projectId}`).emit('task-deleted', { 
+      projectId: task.projectId,
+      id 
+    });
 
     const response: ApiResponse = {
       success: true,
