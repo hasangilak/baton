@@ -16,7 +16,7 @@ export class BatonWorkspaceManager {
    * This method is deprecated as the backend runs in Docker and cannot access host filesystem.
    * Project context should be provided explicitly via MCP tool parameters.
    */
-  async detectCurrentProject(workspacePath?: string): Promise<string | null> {
+  async detectCurrentProject(): Promise<string | null> {
     console.warn('⚠️  detectCurrentProject() is deprecated. Backend runs in Docker and cannot access host filesystem. Please provide projectId explicitly.');
     return null;
   }
@@ -24,7 +24,7 @@ export class BatonWorkspaceManager {
   /**
    * This method is deprecated as the backend runs in Docker and cannot write to host filesystem.
    */
-  async createProjectConfig(workspacePath: string, projectId: string): Promise<void> {
+  async createProjectConfig(): Promise<void> {
     console.warn('⚠️  createProjectConfig() is deprecated. Backend runs in Docker and cannot write to host filesystem.');
   }
 
@@ -62,55 +62,6 @@ export class BatonWorkspaceManager {
     } catch (error) {
       console.warn('Could not create workspace mapping:', error);
       return false;
-    }
-  }
-
-  /**
-   * Get workspace mapping from database
-   */
-  private async getWorkspaceMapping(workspacePath: string): Promise<WorkspaceProjectMapping | null> {
-    try {
-      const mapping = await this.prisma.workspaceMapping.findUnique({
-        where: { workspacePath },
-        include: {
-          project: {
-            select: { name: true }
-          }
-        }
-      });
-
-      if (mapping) {
-        return {
-          workspacePath: mapping.workspacePath,
-          projectId: mapping.projectId,
-          projectName: mapping.project.name,
-          lastAccessed: mapping.lastAccessed
-        };
-      }
-    } catch (error) {
-      // Table might not exist yet
-      console.warn('Workspace mapping table not found, skipping database lookup');
-    }
-
-    return null;
-  }
-
-  /**
-   * Update last accessed timestamp
-   */
-  private async updateLastAccessed(projectId: string, workspacePath: string): Promise<void> {
-    try {
-      await this.prisma.workspaceMapping.upsert({
-        where: { workspacePath },
-        update: { lastAccessed: new Date() },
-        create: {
-          workspacePath,
-          projectId,
-          lastAccessed: new Date()
-        }
-      });
-    } catch (error) {
-      // Ignore errors if table doesn't exist
     }
   }
 

@@ -5,6 +5,7 @@ import { Layout } from './components/layout/Layout';
 import { KanbanBoard } from './components/kanban/KanbanBoard';
 import { ClaudeTodoList } from './components/claude/ClaudeTodoList';
 import { SyncPanel } from './components/claude/SyncPanel';
+import { PlansList } from './components/plans/PlansList';
 import { queryClient } from './lib/queryClient';
 import { useProjects } from './hooks/useProjects';
 import { useWebSocket } from './hooks/useWebSocket';
@@ -53,6 +54,11 @@ function AppContent() {
 
             {/* Claude Code Integration Panel */}
             <div className="lg:col-span-1 space-y-6 overflow-y-auto">
+              {/* Claude Code Plans */}
+              <div className="bg-white rounded-lg shadow-sm border">
+                <PlansList projectId={activeProjectId} />
+              </div>
+
               {/* Claude Todos */}
               <ClaudeTodoList 
                 projectId={activeProjectId}

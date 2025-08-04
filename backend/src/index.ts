@@ -10,6 +10,7 @@ import projectRoutes from './routes/projects';
 import taskRoutes from './routes/tasks';
 import mcpRoutes from './routes/mcp';
 import claudeTodosRoutes from './routes/claude-todos';
+import plansRoutes from './routes/plans';
 import { BatonMCPServer } from './mcp/server/index';
 
 dotenv.config();
@@ -44,6 +45,7 @@ app.use('/api/projects', projectRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/mcp', mcpRoutes);
 app.use('/api/claude-todos', claudeTodosRoutes);
+app.use('/api/plans', plansRoutes);
 
 // MCP SSE Transport Routes
 app.get('/mcp/sse', async (req, res) => {

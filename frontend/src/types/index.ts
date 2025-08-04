@@ -221,3 +221,45 @@ export interface SyncResponse {
   syncedTasks?: Task[];
   syncedTodos?: ClaudeTodo[];
 }
+
+// Claude Code Plan Mode Integration Types
+export type ClaudeCodePlanStatus = 'accepted' | 'implemented' | 'archived';
+
+export interface ClaudeCodePlan {
+  id: string;
+  title: string;
+  content: string;
+  status: ClaudeCodePlanStatus;
+  projectId: string;
+  sessionId?: string;
+  capturedAt: string;
+  createdAt: string;
+  updatedAt: string;
+  metadata?: any;
+  project?: {
+    id: string;
+    name: string;
+    color: string;
+  };
+}
+
+export interface ClaudeCodePlansResponse {
+  success: boolean;
+  plans: ClaudeCodePlan[];
+  pagination: {
+    total: number;
+    limit: number;
+    offset: number;
+    hasMore: boolean;
+  };
+}
+
+export interface CapturePlanRequest {
+  projectId: string;
+  title?: string;
+  content: string;
+  status?: ClaudeCodePlanStatus;
+  sessionId?: string;
+  capturedAt?: string;
+  metadata?: any;
+}

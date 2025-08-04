@@ -210,6 +210,42 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
       });
     });
 
+    // Plan events (new)
+    socket.on('plan:created', (plan) => {
+      console.log('📋 Plan created:', plan);
+      if (!shouldProcessEvent(plan.projectId)) {
+        console.log('🚫 Ignoring plan:created event for inactive project:', plan.projectId);
+        return;
+      }
+      queryClient.invalidateQueries({ 
+        queryKey: ['plans', plan.projectId]
+      });
+    });
+
+    socket.on('plan:updated', (plan) => {
+      console.log('📋 Plan updated:', plan);
+      if (!shouldProcessEvent(plan.projectId)) {
+        console.log('🚫 Ignoring plan:updated event for inactive project:', plan.projectId);
+        return;
+      }
+      queryClient.setQueryData(['plans', plan.id], plan);
+      queryClient.invalidateQueries({ 
+        queryKey: ['plans', plan.projectId]
+      });
+    });
+
+    socket.on('plan:deleted', (data) => {
+      console.log('📋 Plan deleted:', data);
+      if (data.projectId && !shouldProcessEvent(data.projectId)) {
+        console.log('🚫 Ignoring plan:deleted event for inactive project:', data.projectId);
+        return;
+      }
+      queryClient.removeQueries({ queryKey: ['plans', data.id] });
+      if (data.projectId) {
+        queryClient.invalidateQueries({ queryKey: ['plans', data.projectId] });
+      }
+    });
+
     // MCP events
     socket.on('claude-mcp-operation-completed', (data) => {
       console.log('⚡ Claude MCP operation completed:', data);

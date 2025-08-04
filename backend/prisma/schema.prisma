@@ -44,6 +44,7 @@ model Project {
   mcpPlans         MCPPlan[]
   claudeTodos      ClaudeTodo[]
   workspaceMappings WorkspaceMapping[]
+  claudeCodePlans  ClaudeCodePlan[]
 
   @@map("projects")
 }
@@ -178,4 +179,25 @@ model WorkspaceMapping {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@map("workspace_mappings")
+}
+
+model ClaudeCodePlan {
+  id          String   @id @default(cuid())
+  title       String
+  content     String   @db.Text
+  status      String   @default("accepted") // accepted, implemented, archived
+  projectId   String
+  sessionId   String?
+  capturedAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  metadata    Json?    // Store transcript path, cwd, etc.
+
+  // Relations
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("claude_code_plans")
+  @@index([projectId])
+  @@index([status])
+  @@index([capturedAt])
 }

@@ -267,6 +267,18 @@ class ApiService {
     return { data: await response.json() };
   }
 
+  async put(endpoint: string, data: any) {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      throw new Error(`PUT ${endpoint} failed`);
+    }
+    return { data: await response.json() };
+  }
+
   async delete(endpoint: string) {
     const response = await fetch(`${API_BASE_URL}${endpoint}`, {
       method: 'DELETE',
