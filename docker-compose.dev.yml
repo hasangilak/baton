@@ -88,6 +88,40 @@ services:
     networks:
       - baton-network
 
+  # Database migration service for development
+  db-migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+      target: development
+    container_name: baton-db-migrate-dev
+    environment:
+      - DATABASE_URL=postgresql://baton_user:baton_password@postgres:5432/baton_dev
+    networks:
+      - baton-network
+    command: ["dumb-init", "npx", "prisma", "migrate", "deploy"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  # Database seeding service for development
+  db-seed:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+      target: development
+    container_name: baton-db-seed-dev
+    environment:
+      - DATABASE_URL=postgresql://baton_user:baton_password@postgres:5432/baton_dev
+    networks:
+      - baton-network
+    command: ["dumb-init", "npx", "prisma", "db", "seed"]
+    depends_on:
+      db-migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
 volumes:
   postgres_dev_data:
 

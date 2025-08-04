@@ -111,7 +111,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ projectId }) => {
     });
   };
 
-  const handleDragOver = (event: DragOverEvent) => {
+  const handleDragOver = (_event: DragOverEvent) => {
     // Handle drag over logic if needed
   };
 

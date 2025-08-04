@@ -49,6 +49,8 @@ export function useCreateMCPPlan() {
       return response.data;
     },
     onSuccess: (newPlan) => {
+      if (!newPlan) return;
+      
       // Add plan to cache
       queryClient.setQueryData(queryKeys.mcpPlans.detail(newPlan.id), newPlan);
       
@@ -105,6 +107,8 @@ export function useUpdateMCPPlan() {
       return { previousPlan };
     },
     onSuccess: (updatedPlan) => {
+      if (!updatedPlan) return;
+      
       // Update the plan in cache
       queryClient.setQueryData(queryKeys.mcpPlans.detail(updatedPlan.id), updatedPlan);
       
@@ -119,7 +123,7 @@ export function useUpdateMCPPlan() {
       console.error('Failed to update MCP plan:', error);
       // TODO: Show error toast
     },
-    onSettled: (data, error, variables) => {
+    onSettled: (_data, _error, variables) => {
       // Always refetch after error or success
       queryClient.invalidateQueries({ queryKey: queryKeys.mcpPlans.detail(variables.id) });
     },
@@ -133,7 +137,7 @@ export function useConvertMCPPlan() {
   return useMutation({
     mutationFn: async (id: string) => {
       const response = await apiService.convertMCPPlan(id);
-      return { planId: id, tasks: response.data.tasks };
+      return { planId: id, tasks: response.data?.tasks || [] };
     },
     onSuccess: ({ planId, tasks }) => {
       // Get the plan to know which project to invalidate

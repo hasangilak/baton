@@ -39,6 +39,8 @@ export function useCreateTask() {
       return response.data;
     },
     onSuccess: (newTask) => {
+      if (!newTask) return;
+      
       // Add task to cache
       queryClient.setQueryData(queryKeys.tasks.detail(newTask.id), newTask);
       
@@ -85,6 +87,8 @@ export function useUpdateTask() {
       return { previousTask };
     },
     onSuccess: (updatedTask) => {
+      if (!updatedTask) return;
+      
       // Update the task in cache
       queryClient.setQueryData(queryKeys.tasks.detail(updatedTask.id), updatedTask);
       
@@ -101,7 +105,7 @@ export function useUpdateTask() {
       console.error('Failed to update task:', error);
       // TODO: Show error toast
     },
-    onSettled: (data, error, variables) => {
+    onSettled: (_data, _error, variables) => {
       // Always refetch after error or success
       queryClient.invalidateQueries({ queryKey: queryKeys.tasks.detail(variables.id) });
     },
@@ -117,7 +121,7 @@ export function useDeleteTask() {
       await apiService.deleteTask(id);
       return id;
     },
-    onSuccess: (deletedId, variables) => {
+    onSuccess: (deletedId, _variables) => {
       // Remove task from cache
       queryClient.removeQueries({ queryKey: queryKeys.tasks.detail(deletedId) });
       
@@ -184,6 +188,8 @@ export function useReorderTask() {
       return { previousTasks };
     },
     onSuccess: (updatedTask) => {
+      if (!updatedTask) return;
+      
       // Update the specific task in cache
       queryClient.setQueryData(queryKeys.tasks.detail(updatedTask.id), updatedTask);
       
@@ -203,7 +209,7 @@ export function useReorderTask() {
       console.error('Failed to reorder task:', error);
       // TODO: Show error toast
     },
-    onSettled: (data, error, variables) => {
+    onSettled: (_data, _error, variables) => {
       // Always refetch after error or success
       queryClient.invalidateQueries({ 
         queryKey: queryKeys.tasks.list({ projectId: variables.projectId })

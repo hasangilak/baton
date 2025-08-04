@@ -1,4 +1,3 @@
-import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { 
@@ -6,8 +5,7 @@ import {
   MessageCircle, 
   Link as LinkIcon, 
   MoreHorizontal,
-  AlertCircle,
-  Clock
+  AlertCircle
 } from 'lucide-react';
 import clsx from 'clsx';
 import { format, isToday, isPast } from 'date-fns';

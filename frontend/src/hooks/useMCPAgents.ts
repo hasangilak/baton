@@ -1,7 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiService } from '../services/api';
 import { queryKeys } from '../lib/queryClient';
-import type { MCPAgent } from '../types';
 
 // Query hook for fetching all MCP agents
 export function useMCPAgents() {
@@ -29,6 +28,8 @@ export function useRegisterMCPAgent() {
       return response.data;
     },
     onSuccess: (newAgent) => {
+      if (!newAgent) return;
+      
       // Add agent to cache
       queryClient.setQueryData(queryKeys.mcpAgents.detail(newAgent.id), newAgent);
       

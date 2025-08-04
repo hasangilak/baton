@@ -86,8 +86,8 @@ export class BatonResourceProvider {
         name: "MCP Agents",
         description: "Registered AI agents and their status",
         mimeType: "application/json",
-      },
-    ];
+      }
+    );
 
     // Add dynamic project-specific resources
     const projects = await this.prisma.project.findMany({

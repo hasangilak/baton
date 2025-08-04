@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiService } from '../services/api';
 import { queryKeys } from '../lib/queryClient';
-import type { Project, CreateProjectRequest, UpdateProjectRequest } from '../types';
+import type { CreateProjectRequest, UpdateProjectRequest } from '../types';
 
 // Query hook for fetching all projects
 export function useProjects() {
@@ -38,6 +38,8 @@ export function useCreateProject() {
       return response.data;
     },
     onSuccess: (newProject) => {
+      if (!newProject) return;
+      
       // Invalidate and refetch projects list
       queryClient.invalidateQueries({ queryKey: queryKeys.projects.lists() });
       
@@ -61,6 +63,8 @@ export function useUpdateProject() {
       return response.data;
     },
     onSuccess: (updatedProject) => {
+      if (!updatedProject) return;
+      
       // Update the project in the cache
       queryClient.setQueryData(queryKeys.projects.detail(updatedProject.id), updatedProject);
       
