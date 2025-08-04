@@ -12,14 +12,17 @@ Baton is a modern task management system designed to work seamlessly with AI cod
 - 📱 **Modern UI**: Clean, responsive design built with React and Tailwind CSS
 - 🐳 **Docker Support**: Easy deployment with Docker containers
 - 🤝 **AI Agent Integration**: Resources, Tools, and Prompts for AI interactions
+- ⚡ **Enterprise TypeScript**: 2025 best practices with strict mode and advanced type checking
+- 🔧 **Developer Experience**: Hot reload, type safety, and comprehensive error handling
 
 ## Architecture
 
-- **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS
-- **Backend**: Node.js + Express + TypeScript + Prisma
-- **Database**: PostgreSQL with automatic Docker setup
-- **Real-time**: Socket.IO for collaborative features
-- **Containerization**: Docker with multi-stage builds
+- **Frontend**: React 18 + TypeScript (2025 Standards) + TanStack Query + Vite + Tailwind CSS 4
+- **Backend**: Node.js 22 + Express + TypeScript (Strict Mode) + Prisma ORM
+- **Database**: PostgreSQL 15 with automatic Docker setup and migrations
+- **Real-time**: Socket.IO for collaborative features + WebSocket MCP transport
+- **Containerization**: Docker with multi-stage builds and health checks
+- **Type Safety**: Enterprise-grade TypeScript with `exactOptionalPropertyTypes` and `noUncheckedIndexedAccess`
 
 ## Quick Start
 
@@ -49,8 +52,9 @@ Baton is a modern task management system designed to work seamlessly with AI cod
 ### Local Development
 
 #### Prerequisites
-- Node.js 18+
+- Node.js 22+ (for TypeScript 2025 features)
 - npm or yarn
+- PostgreSQL 15+ (or use Docker)
 
 #### Backend Setup
 ```bash
@@ -75,21 +79,28 @@ npm run dev
 baton/
 ├── frontend/                 # React frontend application
 │   ├── src/
-│   │   ├── components/       # React components
+│   │   ├── components/       # React components (TypeScript strict mode)
 │   │   │   ├── layout/       # Layout components (Sidebar, Header)
-│   │   │   ├── kanban/       # Kanban board components
+│   │   │   ├── kanban/       # Kanban board components with drag-and-drop
 │   │   │   └── ui/           # Reusable UI components
-│   │   ├── services/         # API services
-│   │   ├── types/            # TypeScript type definitions
-│   │   ├── hooks/            # Custom React hooks
+│   │   ├── services/         # API services with type safety
+│   │   ├── types/            # TypeScript type definitions (2025 standards)
+│   │   ├── hooks/            # Custom React hooks with TanStack Query
+│   │   ├── lib/              # Query client and utility libraries
 │   │   └── utils/            # Utility functions
 │   ├── Dockerfile            # Production frontend container
 │   ├── Dockerfile.dev        # Development frontend container
 │   └── nginx.conf            # Nginx configuration
 ├── backend/                  # Node.js backend application
 │   ├── src/
-│   │   ├── routes/           # API route handlers
+│   │   ├── routes/           # API route handlers (strict TypeScript)
 │   │   ├── middleware/       # Express middleware
+│   │   ├── mcp/              # Model Context Protocol server
+│   │   │   ├── server/       # MCP server implementation
+│   │   │   ├── resources/    # MCP resource providers
+│   │   │   ├── tools/        # MCP tools for AI agents
+│   │   │   ├── prompts/      # MCP prompts for AI interactions
+│   │   │   └── workspace/    # Workspace context detection
 │   │   ├── services/         # Business logic services
 │   │   ├── types/            # TypeScript type definitions
 │   │   └── utils/            # Utility functions
@@ -417,6 +428,58 @@ docker logs baton-postgres
 
 </details>
 
+## TypeScript Excellence
+
+Baton implements **enterprise-grade TypeScript 2025 best practices** across the entire codebase:
+
+### 🎯 Type Safety Features
+
+- ✅ **Strict Mode**: Full strict type checking enabled
+- ✅ **Exact Optional Properties**: `exactOptionalPropertyTypes` prevents undefined vs missing property bugs
+- ✅ **Index Access Safety**: `noUncheckedIndexedAccess` ensures array/object access safety
+- ✅ **No Implicit Any**: All variables have explicit types
+- ✅ **Unused Code Detection**: `noUnusedLocals` and `noUnusedParameters` for clean code
+- ✅ **Advanced Checking**: `noImplicitOverride`, `noFallthroughCasesInSwitch`
+
+### 🏗️ Configuration Highlights
+
+**Backend TypeScript Config:**
+```json
+{
+  "strict": true,
+  "exactOptionalPropertyTypes": true,
+  "noUncheckedIndexedAccess": true,
+  "noImplicitOverride": true,
+  "target": "ES2022",
+  "moduleResolution": "node"
+}
+```
+
+**Frontend TypeScript Config:**
+```json
+{
+  "strict": true,
+  "exactOptionalPropertyTypes": true,
+  "noUncheckedIndexedAccess": true,
+  "moduleResolution": "bundler",
+  "jsx": "react-jsx"
+}
+```
+
+### 🛠️ Code Quality Standards
+
+- **Zero TypeScript Errors**: All code compiles without warnings or bypasses
+- **Proper Null Handling**: Consistent use of null coalescing (`?? null`)
+- **Type-Safe API Calls**: Prisma integration with strict type checking
+- **Modern Patterns**: Optional chaining, nullish coalescing, and type guards
+
+### 📦 Dependencies
+
+- **Node.js 22**: Latest LTS with enhanced TypeScript support
+- **TypeScript 5.x**: Latest compiler with advanced features
+- **TSLib**: Runtime helpers for modern TypeScript features
+- **Prisma**: Type-safe database client with generated types
+
 ## Development
 
 ### Running Tests
@@ -515,9 +578,15 @@ For support and questions:
 
 ## Roadmap
 
+- [x] **TypeScript 2025 Best Practices** - Enterprise-grade type safety
+- [x] **TanStack Query Integration** - Modern state management with caching
+- [x] **Docker Production Deployment** - One-command deployment with health checks
+- [x] **MCP Server Compliance** - Full Model Context Protocol implementation
 - [ ] User authentication and authorization
-- [ ] Advanced MCP integrations
-- [ ] Mobile application
-- [ ] Advanced reporting and analytics
-- [ ] Third-party integrations (GitHub, Slack, etc.)
+- [ ] Advanced MCP integrations with more AI editors
+- [ ] Mobile application with React Native
+- [ ] Advanced reporting and analytics dashboard
+- [ ] Third-party integrations (GitHub, Slack, Jira, etc.)
 - [ ] Plugin system for custom extensions
+- [ ] Real-time collaboration features
+- [ ] Performance monitoring and observability
