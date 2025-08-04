@@ -282,9 +282,10 @@ export class BatonToolProvider {
           properties: {
             projectId: {
               type: "string",
-              description: "Optional: Specific project ID to read todos from (if not provided, will try to detect from workspace)"
+              description: "Baton Project ID is required, if its not in the context call detect workspace project and get the projectId"
             }
-          }
+          },
+          required: ["projectId"]
         }
       },
       {
@@ -323,10 +324,10 @@ export class BatonToolProvider {
             },
             projectId: {
               type: "string",
-              description: "Optional: Specific project ID to write todos to (if not provided, will try to detect from workspace)"
+              description: "Baton Project ID is required, if its not in the context call detect workspace project and get the projectId"
             }
           },
-          required: ["todos"]
+          required: ["todos", "projectId"]
         }
       },
       {
@@ -1104,60 +1105,36 @@ export class BatonToolProvider {
 
   private async todoRead(args: any): Promise<any> {
     try {
-      const { projectId: providedProjectId } = args;
+      const { projectId } = args;
       
-      // Use provided project ID if available, otherwise try to detect it
-      let currentProjectId: string | null = providedProjectId || null;
-      
-      if (!currentProjectId && this.workspaceManager) {
-        currentProjectId = await this.workspaceManager.detectCurrentProject();
-        console.log(`🔍 Workspace detection result: ${currentProjectId || 'none'}`);
-      }
-      
-      // Validate project ID if provided
-      if (currentProjectId) {
-        const project = await this.prisma.project.findUnique({
-          where: { id: currentProjectId },
-          select: { id: true, name: true }
-        });
-        
-        if (!project) {
-          return {
-            success: false,
-            todos: [],
-            error: `Project with ID '${currentProjectId}' not found. Please check the project ID or use 'detect_workspace_project' tool.`
-          };
-        }
-        
-        console.log(`✅ Using project: ${project.name} (${project.id})`);
-      }
-      
-      if (!currentProjectId) {
+      // ProjectId is now required - no fallback detection
+      if (!projectId) {
         return {
           success: false,
           todos: [],
-          requiresWorkspaceDetection: true,
-          message: "No project context found. I need to find your .baton-project file to determine the correct project.",
-          instructions: {
-            message: "Please help me find your project configuration by running the 'detect_workspace_project' tool or by manually executing these commands:",
-            steps: [
-              {
-                command: "find . -name '.baton-project' -type f | head -1",
-                description: "Find the .baton-project file in the current workspace"
-              },
-              {
-                command: "cat [found-file-path]",
-                description: "Read the contents to get the project ID"
-              }
-            ],
-            expectedFormat: "Then use the detected projectId with the TodoRead tool"
-          }
+          error: "projectId is required. Backend runs in Docker and cannot detect workspace automatically."
         };
       }
+      
+      // Validate project exists
+      const project = await this.prisma.project.findUnique({
+        where: { id: projectId },
+        select: { id: true, name: true }
+      });
+      
+      if (!project) {
+        return {
+          success: false,
+          todos: [],
+          error: `Project with ID '${projectId}' not found. Please verify the project ID is correct.`
+        };
+      }
+      
+      console.log(`✅ Reading todos for project: ${project.name} (${project.id})`);
 
-      // Fetch all claude todos for the current project
+      // Fetch all claude todos for the project
       const claudeTodos = await this.prisma.claudeTodo.findMany({
-        where: { projectId: currentProjectId },
+        where: { projectId },
         orderBy: { orderIndex: 'asc' }
       });
 
@@ -1180,62 +1157,38 @@ export class BatonToolProvider {
 
   private async todoWrite(args: any): Promise<any> {
     try {
-      const { todos, projectId: providedProjectId } = args;
+      const { todos, projectId } = args;
       
-      // Use provided project ID if available, otherwise try to detect it
-      let currentProjectId: string | null = providedProjectId || null;
-      
-      if (!currentProjectId && this.workspaceManager) {
-        currentProjectId = await this.workspaceManager.detectCurrentProject();
-        console.log(`🔍 Workspace detection result: ${currentProjectId || 'none'}`);
-      }
-      
-      // Validate project ID if provided
-      if (currentProjectId) {
-        const project = await this.prisma.project.findUnique({
-          where: { id: currentProjectId },
-          select: { id: true, name: true }
-        });
-        
-        if (!project) {
-          return {
-            success: false,
-            count: 0,
-            error: `Project with ID '${currentProjectId}' not found. Please check the project ID or use 'detect_workspace_project' tool.`
-          };
-        }
-        
-        console.log(`✅ Using project: ${project.name} (${project.id})`);
-      }
-      
-      if (!currentProjectId) {
+      // ProjectId is now required - no fallback detection
+      if (!projectId) {
         return {
           success: false,
           count: 0,
-          requiresWorkspaceDetection: true,
-          message: "No project context found. I need to find your .baton-project file to determine the correct project.",
-          instructions: {
-            message: "Please help me find your project configuration by running the 'detect_workspace_project' tool or by manually executing these commands:",
-            steps: [
-              {
-                command: "find . -name '.baton-project' -type f | head -1",
-                description: "Find the .baton-project file in the current workspace"
-              },
-              {
-                command: "cat [found-file-path]",
-                description: "Read the contents to get the project ID"
-              }
-            ],
-            expectedFormat: "Then use the detected projectId with the TodoWrite tool"
-          }
+          error: "projectId is required. Backend runs in Docker and cannot detect workspace automatically."
         };
       }
+      
+      // Validate project exists
+      const project = await this.prisma.project.findUnique({
+        where: { id: projectId },
+        select: { id: true, name: true }
+      });
+      
+      if (!project) {
+        return {
+          success: false,
+          count: 0,
+          error: `Project with ID '${projectId}' not found. Please verify the project ID is correct.`
+        };
+      }
+      
+      console.log(`✅ Using project: ${project.name} (${project.id})`);
 
       // Use transaction to ensure data consistency
       const result = await this.prisma.$transaction(async (tx) => {
         // First, get existing todos to track what needs to be deleted
         const existingTodos = await tx.claudeTodo.findMany({
-          where: { projectId: currentProjectId! },
+          where: { projectId },
           select: { id: true }
         });
         
@@ -1248,7 +1201,7 @@ export class BatonToolProvider {
           await tx.claudeTodo.deleteMany({
             where: {
               id: { in: idsToDelete },
-              projectId: currentProjectId!
+              projectId
             }
           });
         }
@@ -1271,7 +1224,7 @@ export class BatonToolProvider {
               content: todo.content,
               status: todo.status,
               priority: todo.priority,
-              projectId: currentProjectId!,
+              projectId,
               orderIndex: i,
               createdBy: 'claude'
             }
@@ -1283,10 +1236,10 @@ export class BatonToolProvider {
       });
 
       // Emit WebSocket event after successful database transaction
-      if (this.io && currentProjectId) {
+      if (this.io) {
         try {
-          this.io.to(`project-${currentProjectId}`).emit('claude-mcp-operation-completed', {
-            projectId: currentProjectId,
+          this.io.to(`project-${projectId}`).emit('claude-mcp-operation-completed', {
+            projectId,
             operation: 'TodoWrite',
             count: result,
             action: 'todos-updated'

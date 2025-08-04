@@ -1,6 +1,4 @@
 import { PrismaClient } from '@prisma/client';
-import * as fs from 'fs';
-import * as path from 'path';
 
 export interface WorkspaceProjectMapping {
   workspacePath: string;
@@ -15,88 +13,23 @@ export class BatonWorkspaceManager {
   constructor(private prisma: PrismaClient) {}
 
   /**
-   * Detect the current project based on workspace context
+   * This method is deprecated as the backend runs in Docker and cannot access host filesystem.
+   * Project context should be provided explicitly via MCP tool parameters.
    */
   async detectCurrentProject(workspacePath?: string): Promise<string | null> {
-    const currentPath = workspacePath || process.cwd();
-    
-    // Method 1: Check for .baton-project file
-    const batonProjectFile = path.join(currentPath, '.baton-project');
-    if (fs.existsSync(batonProjectFile)) {
-      try {
-        const config = JSON.parse(fs.readFileSync(batonProjectFile, 'utf8'));
-        if (config.projectId) {
-          await this.updateLastAccessed(config.projectId, currentPath);
-          return config.projectId;
-        }
-      } catch (error) {
-        console.warn('Failed to read .baton-project file:', error);
-      }
-    }
-
-    // Method 2: Check for package.json with baton config
-    const packageJsonFile = path.join(currentPath, 'package.json');
-    if (fs.existsSync(packageJsonFile)) {
-      try {
-        const packageJson = JSON.parse(fs.readFileSync(packageJsonFile, 'utf8'));
-        if (packageJson.baton?.projectId) {
-          await this.updateLastAccessed(packageJson.baton.projectId, currentPath);
-          return packageJson.baton.projectId;
-        }
-      } catch (error) {
-        console.warn('Failed to read package.json baton config:', error);
-      }
-    }
-
-    // Method 3: Auto-match by workspace path or project name
-    const folderName = path.basename(currentPath);
-    const project = await this.prisma.project.findFirst({
-      where: {
-        OR: [
-          { name: { contains: folderName, mode: 'insensitive' } },
-          { description: { contains: folderName, mode: 'insensitive' } }
-        ]
-      }
-    });
-
-    if (project) {
-      // Auto-create .baton-project file for future use
-      await this.createProjectConfig(currentPath, project.id);
-      return project.id;
-    }
-
-    // Method 4: Check workspace mappings from database
-    const mapping = await this.getWorkspaceMapping(currentPath);
-    if (mapping) {
-      await this.updateLastAccessed(mapping.projectId, currentPath);
-      return mapping.projectId;
-    }
-
+    console.warn('⚠️  detectCurrentProject() is deprecated. Backend runs in Docker and cannot access host filesystem. Please provide projectId explicitly.');
     return null;
   }
 
   /**
-   * Create or update project configuration file
+   * This method is deprecated as the backend runs in Docker and cannot write to host filesystem.
    */
   async createProjectConfig(workspacePath: string, projectId: string): Promise<void> {
-    const configFile = path.join(workspacePath, '.baton-project');
-    const config = {
-      projectId,
-      workspacePath,
-      createdAt: new Date().toISOString(),
-      version: '1.0.0'
-    };
-
-    try {
-      fs.writeFileSync(configFile, JSON.stringify(config, null, 2));
-      console.log(`📁 Created .baton-project config for project ${projectId}`);
-    } catch (error) {
-      console.warn('Failed to create .baton-project file:', error);
-    }
+    console.warn('⚠️  createProjectConfig() is deprecated. Backend runs in Docker and cannot write to host filesystem.');
   }
 
   /**
-   * Associate current workspace with a Baton project
+   * Associate current workspace with a Baton project (database mapping only)
    */
   async associateWorkspaceWithProject(projectId: string, workspacePath?: string): Promise<boolean> {
     const currentPath = workspacePath || process.cwd();
@@ -110,25 +43,26 @@ export class BatonWorkspaceManager {
       throw new Error(`Project ${projectId} not found`);
     }
 
-    // Create workspace mapping in database
-    await this.prisma.workspaceMapping.upsert({
-      where: { workspacePath: currentPath },
-      update: {
-        projectId,
-        lastAccessed: new Date()
-      },
-      create: {
-        workspacePath: currentPath,
-        projectId,
-        lastAccessed: new Date()
-      }
-    });
-
-    // Create .baton-project file
-    await this.createProjectConfig(currentPath, projectId);
-
-    console.log(`✅ Associated workspace ${currentPath} with project ${project.name}`);
-    return true;
+    // Create workspace mapping in database only (no filesystem operations)
+    try {
+      await this.prisma.workspaceMapping.upsert({
+        where: { workspacePath: currentPath },
+        update: {
+          projectId,
+          lastAccessed: new Date()
+        },
+        create: {
+          workspacePath: currentPath,
+          projectId,
+          lastAccessed: new Date()
+        }
+      });
+      console.log(`✅ Associated workspace ${currentPath} with project ${project.name} (database only)`);
+      return true;
+    } catch (error) {
+      console.warn('Could not create workspace mapping:', error);
+      return false;
+    }
   }
 
   /**
