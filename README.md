@@ -102,7 +102,7 @@ That's it! Baton is running with a seeded demo project and tasks.
 
 **IMPORTANT**: For optimal integration, copy this entire block to your Claude Code memory:
 
-```
+````
 **IMPORTANT**: For optimal integration, add this to your Claude Code memory to ensure seamless todo synchronization:
 
 ### **Mandatory Workflow Process**
@@ -140,7 +140,7 @@ That's it! Baton is running with a seeded demo project and tasks.
 - **Persistent Storage**: Local todos disappear when Claude Code session ends
 - **Team Collaboration**: Baton todos are visible to entire team, local todos are isolated
 - **Data Integrity**: Baton provides proper database storage with full CRUD operations
-```
+````
 
 **Simply copy the entire code block above and paste it into your Claude Code memory for seamless integration.**
 
