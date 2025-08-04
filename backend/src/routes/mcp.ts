@@ -35,7 +35,7 @@ const updatePlanSchema = z.object({
 });
 
 // GET /api/mcp/agents - Get all registered MCP agents
-router.get('/agents', async (req, res, next) => {
+router.get('/agents', async (_req, res, next) => {
   try {
     const agents = await prisma.mCPAgent.findMany({
       include: {
@@ -63,7 +63,11 @@ router.post('/agents', async (req, res, next) => {
     const validatedData = registerAgentSchema.parse(req.body);
 
     const agent = await prisma.mCPAgent.create({
-      data: validatedData,
+      data: {
+        name: validatedData.name,
+        endpoint: validatedData.endpoint,
+        description: validatedData.description ?? null,
+      },
       include: {
         _count: {
           select: { plans: true }
@@ -220,7 +224,7 @@ router.post('/plans', async (req, res, next) => {
       const newPlan = await tx.mCPPlan.create({
         data: {
           title: validatedData.title,
-          description: validatedData.description,
+          description: validatedData.description ?? null,
           agentId: agent.id,
           agentName: validatedData.agentName,
           projectId: validatedData.projectId,
@@ -232,9 +236,11 @@ router.post('/plans', async (req, res, next) => {
       if (validatedData.tasks.length > 0) {
         await tx.mCPTask.createMany({
           data: validatedData.tasks.map((task, index) => ({
-            ...task,
+            title: task.title ?? 'Untitled Task',
+            description: task.description ?? null,
+            priority: task.priority ?? 'medium',
             planId: newPlan.id,
-            order: task.order || index
+            order: task.order ?? index
           }))
         });
       }
@@ -278,7 +284,11 @@ router.put('/plans/:id', async (req, res, next) => {
 
     const plan = await prisma.mCPPlan.update({
       where: { id },
-      data: validatedData,
+      data: {
+        ...(validatedData.title && { title: validatedData.title }),
+        ...(validatedData.description !== undefined && { description: validatedData.description }),
+        ...(validatedData.status && { status: validatedData.status })
+      },
       include: {
         agent: true,
         project: {

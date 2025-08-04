@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { createError } from '../middleware/errorHandler';
-import type { ApiResponse, CreateProjectRequest, UpdateProjectRequest } from '../types';
+import type { ApiResponse } from '../types';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -21,7 +21,7 @@ const updateProjectSchema = z.object({
 });
 
 // GET /api/projects - Get all projects
-router.get('/', async (req, res, next) => {
+router.get('/', async (_req, res, next) => {
   try {
     const projects = await prisma.project.findMany({
       include: {
@@ -110,7 +110,9 @@ router.post('/', async (req, res, next) => {
 
     const project = await prisma.project.create({
       data: {
-        ...validatedData,
+        name: validatedData.name,
+        description: validatedData.description ?? null,
+        color: validatedData.color ?? '#3b82f6',
         ownerId: dummyUserId
       },
       include: {
@@ -145,7 +147,11 @@ router.put('/:id', async (req, res, next) => {
 
     const project = await prisma.project.update({
       where: { id },
-      data: validatedData,
+      data: {
+        ...(validatedData.name && { name: validatedData.name }),
+        ...(validatedData.description !== undefined && { description: validatedData.description }),
+        ...(validatedData.color && { color: validatedData.color })
+      },
       include: {
         owner: {
           select: { id: true, name: true, email: true, avatar: true }

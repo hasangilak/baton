@@ -6,7 +6,10 @@ import type { MCPPlan, Task } from '../types';
 // Query hook for fetching MCP plans
 export function useMCPPlans(projectId?: string, agentId?: string) {
   return useQuery({
-    queryKey: queryKeys.mcpPlans.list({ projectId, agentId }),
+    queryKey: queryKeys.mcpPlans.list({ 
+      ...(projectId && { projectId }), 
+      ...(agentId && { agentId }) 
+    }),
     queryFn: async () => {
       const response = await apiService.getMCPPlans(projectId, agentId);
       return response.data;

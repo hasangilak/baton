@@ -161,9 +161,9 @@ export class BatonMCPServer {
         async close() {
           ws.close();
         },
-        onmessage: undefined as ((message: any) => void) | undefined,
-        onclose: undefined as (() => void) | undefined,
-        onerror: undefined as ((error: Error) => void) | undefined,
+        onmessage: (() => {}) as ((message: any) => void),
+        onclose: (() => {}) as (() => void),
+        onerror: (() => {}) as ((error: Error) => void),
       };
 
       ws.on('message', (data) => {

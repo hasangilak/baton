@@ -187,7 +187,7 @@ export class BatonResourceProvider {
     }
 
     const projectId = pathParts[1];
-    if (pathParts.length === 2) {
+    if (pathParts.length === 2 && projectId) {
       // Specific project
       return this.prisma.project.findUnique({
         where: { id: projectId },
@@ -217,7 +217,7 @@ export class BatonResourceProvider {
       if (pathParts[3] === 'kanban') {
         // Kanban board view
         const tasks = await this.prisma.task.findMany({
-          where: { projectId },
+          where: projectId ? { projectId } : {},
           include: {
             assignee: {
               select: { id: true, name: true, email: true, avatar: true }
@@ -259,7 +259,7 @@ export class BatonResourceProvider {
 
       // Project tasks
       const tasks = await this.prisma.task.findMany({
-        where: { projectId },
+        where: projectId ? { projectId } : {},
         include: {
           assignee: {
             select: { id: true, name: true, email: true, avatar: true }
@@ -333,7 +333,7 @@ export class BatonResourceProvider {
     throw new Error(`Unknown task resource path: ${pathParts.join('/')}`);
   }
 
-  private async handleMCPPlanResource(pathParts: string[]): Promise<any> {
+  private async handleMCPPlanResource(_pathParts: string[]): Promise<any> {
     return this.prisma.mCPPlan.findMany({
       include: {
         agent: true,
@@ -351,7 +351,7 @@ export class BatonResourceProvider {
     });
   }
 
-  private async handleMCPAgentResource(pathParts: string[]): Promise<any> {
+  private async handleMCPAgentResource(_pathParts: string[]): Promise<any> {
     return this.prisma.mCPAgent.findMany({
       include: {
         _count: {

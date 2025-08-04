@@ -38,7 +38,7 @@ app.use('/api/tasks', taskRoutes);
 app.use('/api/mcp', mcpRoutes);
 
 // Health check
-app.get('/health', (req, res) => {
+app.get('/health', (_req, res) => {
   res.status(200).json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),

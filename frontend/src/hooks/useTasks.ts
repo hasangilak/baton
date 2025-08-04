@@ -1,12 +1,15 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiService } from '../services/api';
 import { queryKeys } from '../lib/queryClient';
-import type { Task, CreateTaskRequest, UpdateTaskRequest } from '../types';
+import type { Task, TaskStatus, CreateTaskRequest, UpdateTaskRequest } from '../types';
 
 // Query hook for fetching tasks by project
 export function useTasks(projectId: string, status?: string) {
   return useQuery({
-    queryKey: queryKeys.tasks.list({ projectId, status }),
+    queryKey: queryKeys.tasks.list({ 
+      projectId, 
+      ...(status && { status }) 
+    }),
     queryFn: async () => {
       const response = await apiService.getTasks(projectId, status);
       return response.data;
@@ -170,12 +173,14 @@ export function useReorderTask() {
         
         if (taskIndex !== -1) {
           const task = updatedTasks[taskIndex];
-          updatedTasks[taskIndex] = {
-            ...task,
-            status: newStatus as any,
-            order: newOrder,
-            updatedAt: new Date().toISOString(),
-          };
+          if (task) {
+            updatedTasks[taskIndex] = {
+              ...task,
+              status: newStatus as TaskStatus,
+              order: newOrder,
+              updatedAt: new Date().toISOString(),
+            };
+          }
           
           // Update cache
           queryClient.setQueryData(

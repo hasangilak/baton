@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { createError } from '../middleware/errorHandler';
 import { io } from '../index';
-import type { ApiResponse, CreateTaskRequest, UpdateTaskRequest } from '../types';
+import type { ApiResponse } from '../types';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -161,7 +161,11 @@ router.post('/', async (req, res, next) => {
 
     const task = await prisma.task.create({
       data: {
-        ...validatedData,
+        title: validatedData.title,
+        description: validatedData.description ?? null,
+        status: validatedData.status ?? 'todo',
+        priority: validatedData.priority ?? 'medium',
+        assigneeId: validatedData.assigneeId ?? null,
         projectId,
         createdById: dummyUserId,
         dueDate: validatedData.dueDate ? new Date(validatedData.dueDate) : null,

@@ -1,6 +1,5 @@
 import { PrismaClient } from '@prisma/client';
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
-import { z } from 'zod';
 
 export class BatonToolProvider {
   constructor(private prisma: PrismaClient, private workspaceManager?: any) {}
@@ -932,7 +931,7 @@ export class BatonToolProvider {
     }
   }
 
-  private async getWorkspaceInfo(args: any): Promise<any> {
+  private async getWorkspaceInfo(_args: any): Promise<any> {
     if (!this.workspaceManager) {
       return {
         success: false,
