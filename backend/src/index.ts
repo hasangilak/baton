@@ -1,0 +1,77 @@
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+
+import { errorHandler } from './middleware/errorHandler';
+import { logger } from './middleware/logger';
+import projectRoutes from './routes/projects';
+import taskRoutes from './routes/tasks';
+import mcpRoutes from './routes/mcp';
+
+dotenv.config();
+
+const app = express();
+const server = createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: process.env.CLIENT_URL || "http://localhost:5173",
+    methods: ["GET", "POST"]
+  }
+});
+
+const PORT = process.env.PORT || 3001;
+
+// Middleware
+app.use(cors({
+  origin: process.env.CLIENT_URL || "http://localhost:5173",
+  credentials: true
+}));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+app.use(logger);
+
+// Routes
+app.use('/api/projects', projectRoutes);
+app.use('/api/tasks', taskRoutes);
+app.use('/api/mcp', mcpRoutes);
+
+// Health check
+app.get('/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    service: 'baton-backend'
+  });
+});
+
+// WebSocket connection handling
+io.on('connection', (socket) => {
+  console.log('Client connected:', socket.id);
+  
+  socket.on('join-project', (projectId: string) => {
+    socket.join(`project-${projectId}`);
+    console.log(`Socket ${socket.id} joined project ${projectId}`);
+  });
+  
+  socket.on('leave-project', (projectId: string) => {
+    socket.leave(`project-${projectId}`);
+    console.log(`Socket ${socket.id} left project ${projectId}`);
+  });
+  
+  socket.on('disconnect', () => {
+    console.log('Client disconnected:', socket.id);
+  });
+});
+
+// Error handling
+app.use(errorHandler);
+
+// Start server
+server.listen(PORT, () => {
+  console.log(`🚀 Baton backend server running on port ${PORT}`);
+  console.log(`📊 Health check available at http://localhost:${PORT}/health`);
+});
+
+export { io };

@@ -1,0 +1,51 @@
+/* Custom styles for Baton app */
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Custom scrollbar styles */
+.overflow-y-auto::-webkit-scrollbar {
+  width: 6px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Smooth transitions for drag and drop */
+.sortable-item {
+  transition: transform 0.2s ease-in-out;
+}
+
+.sortable-item.dragging {
+  transition: none;
+}
+
+/* Task card hover effects */
+.task-card:hover {
+  transform: translateY(-1px);
+}
+
+.task-card:hover .group-hover\:opacity-100 {
+  opacity: 1;
+}
