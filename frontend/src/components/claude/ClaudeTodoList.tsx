@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   CheckCircle2, 
   Circle, 
@@ -13,6 +13,7 @@ import {
 import clsx from 'clsx';
 import type { ClaudeTodo } from '../../types';
 import { useClaudeTodos, useDeleteClaudeTodo } from '../../hooks/useClaudeTodos';
+import { useWebSocket } from '../../hooks/useWebSocket';
 
 interface ClaudeTodoListProps {
   projectId: string;
@@ -44,8 +45,97 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
   const { data: todosResponse, isLoading, refetch } = useClaudeTodos(projectId);
   const deleteTodoMutation = useDeleteClaudeTodo();
   const [selectedTodos, setSelectedTodos] = useState<string[]>([]);
+  
+  // WebSocket integration for real-time updates
+  const { on, off } = useWebSocket({ activeProjectId: projectId });
+  const [localTodos, setLocalTodos] = useState<ClaudeTodo[]>([]);
 
-  const todos = todosResponse?.todos ?? [];
+  // Use WebSocket data if available, otherwise fall back to React Query data
+  const todos = localTodos.length > 0 ? localTodos : (todosResponse?.todos ?? []);
+
+  // Sync local todos with React Query data when it changes
+  useEffect(() => {
+    if (todosResponse?.todos) {
+      setLocalTodos(todosResponse.todos);
+    }
+  }, [todosResponse?.todos]);
+
+  // WebSocket event listeners for real-time updates
+  useEffect(() => {
+    if (!on || !off) return;
+
+    const handleBatchUpdate = (data: { projectId: string; todos: ClaudeTodo[]; action: string }) => {
+      console.log('🤖 ClaudeTodoList received batch update:', data);
+      if (data.projectId === projectId && data.todos) {
+        setLocalTodos(data.todos);
+      }
+    };
+
+    const handleTodoCreated = (todo: ClaudeTodo) => {
+      console.log('🤖 ClaudeTodoList received todo created:', todo);
+      if (todo.projectId === projectId) {
+        setLocalTodos(prev => [...prev, todo]);
+      }
+    };
+
+    const handleTodoUpdated = (todo: ClaudeTodo) => {
+      console.log('🤖 ClaudeTodoList received todo updated:', todo);
+      if (todo.projectId === projectId) {
+        setLocalTodos(prev => prev.map(t => t.id === todo.id ? todo : t));
+      }
+    };
+
+    const handleTodoDeleted = (data: { projectId: string; todoId: string; deletedTodo: any }) => {
+      console.log('🤖 ClaudeTodoList received todo deleted:', data);
+      if (data.projectId === projectId) {
+        setLocalTodos(prev => prev.filter(t => t.id !== data.todoId));
+      }
+    };
+
+    const handleSyncToTasks = (data: { projectId: string; syncedTasks: any[]; action: string }) => {
+      console.log('🤖 ClaudeTodoList received sync to tasks:', data);
+      if (data.projectId === projectId) {
+        // Refetch todos to get updated sync status
+        refetch();
+      }
+    };
+
+    const handleSyncFromTasks = (data: { projectId: string; syncedTodos: ClaudeTodo[]; action: string }) => {
+      console.log('🤖 ClaudeTodoList received sync from tasks:', data);
+      if (data.projectId === projectId) {
+        // Refetch todos to get the complete updated list
+        refetch();
+      }
+    };
+
+    const handleMCPOperation = (data: { projectId: string; operation: string; count: number; action: string }) => {
+      console.log('🤖 ClaudeTodoList received MCP operation:', data);
+      if (data.projectId === projectId && data.operation === 'TodoWrite') {
+        // MCP TodoWrite operation completed, refetch todos to get updated data
+        refetch();
+      }
+    };
+
+    // Register WebSocket event listeners
+    on('claude-todos-batch-updated', handleBatchUpdate);
+    on('claude-todo-created', handleTodoCreated);
+    on('claude-todo-updated', handleTodoUpdated);
+    on('claude-todo-deleted', handleTodoDeleted);
+    on('claude-todos-synced-to-tasks', handleSyncToTasks);
+    on('claude-tasks-synced-to-todos', handleSyncFromTasks);
+    on('claude-mcp-operation-completed', handleMCPOperation);
+
+    // Cleanup event listeners on unmount
+    return () => {
+      off('claude-todos-batch-updated', handleBatchUpdate);
+      off('claude-todo-created', handleTodoCreated);
+      off('claude-todo-updated', handleTodoUpdated);
+      off('claude-todo-deleted', handleTodoDeleted);
+      off('claude-todos-synced-to-tasks', handleSyncToTasks);
+      off('claude-tasks-synced-to-todos', handleSyncFromTasks);
+      off('claude-mcp-operation-completed', handleMCPOperation);
+    };
+  }, [on, off, projectId, refetch]);
 
   const handleTodoSelect = (todoId: string) => {
     setSelectedTodos(prev => 

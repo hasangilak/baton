@@ -3,3 +3,7 @@ backend/dist
 frontend/node_modules
 _debug
 .claude
+node_modules
+package.json
+package-lock.json
+e2e-websocket-debug.js

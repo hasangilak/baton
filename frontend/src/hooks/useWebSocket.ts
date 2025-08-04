@@ -16,6 +16,10 @@ interface WebSocketState {
   error: string | null;
 }
 
+// Global socket instance to ensure singleton
+let globalSocket: Socket | null = null;
+let globalSocketRefCount = 0;
+
 export const useWebSocket = (options: WebSocketHookOptions = {}) => {
   const {
     url = import.meta.env.VITE_API_URL || 'http://localhost:3001',
@@ -23,7 +27,7 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
     activeProjectId
   } = options;
 
-  const socketRef = useRef<Socket | null>(null);
+  const socketRef = useRef<Socket | null>(globalSocket);
   const queryClient = useQueryClient();
   const [state, setState] = useState<WebSocketState>({
     connected: false,
@@ -32,27 +36,41 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
   });
 
   const connect = useCallback(() => {
-    // Prevent multiple connections
-    if (socketRef.current?.connected) return;
+    // Use existing global socket if available
+    if (globalSocket?.connected) {
+      console.log('🔌 Reusing existing WebSocket connection');
+      socketRef.current = globalSocket;
+      setState({ connected: true, connecting: false, error: null });
+      setupEventListeners(globalSocket);
+      return;
+    }
+
+    // Prevent multiple connections - check both connected and connection state
+    if (socketRef.current?.connected || state.connecting || globalSocket?.io._readyState === 'opening') {
+      console.log('🔌 Skipping connection - already connected or connecting');
+      return;
+    }
 
     setState(prev => ({ ...prev, connecting: true, error: null }));
 
-    console.log('🔌 Connecting to Baton WebSocket at:', url);
+    console.log('🔌 Creating new WebSocket connection to:', url);
     
-    socketRef.current = io(url, {
+    const socket = io(url, {
       transports: ['websocket', 'polling'],
       timeout: 10000,
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionAttempts: 5,
       forceNew: false, // Reuse existing connection if available
+      autoConnect: true, // Explicitly enable auto-connect
       // Add a custom query to identify our socket
       query: {
         client: 'baton-frontend'
       }
     });
 
-    const socket = socketRef.current;
+    socketRef.current = socket;
+    globalSocket = socket;
 
     socket.on('connect', () => {
       console.log('🔌 WebSocket connected:', socket.id);
@@ -260,11 +278,16 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
   }, [queryClient, shouldProcessEvent]);
 
   const disconnect = useCallback(() => {
-    if (socketRef.current) {
-      console.log('🔌 Disconnecting WebSocket...');
+    // Only disconnect if this is the last reference
+    if (globalSocketRefCount <= 1 && socketRef.current) {
+      console.log('🔌 Disconnecting WebSocket (last reference)...');
       socketRef.current.disconnect();
       socketRef.current = null;
+      globalSocket = null;
       setState({ connected: false, connecting: false, error: null });
+    } else if (socketRef.current) {
+      console.log('🔌 Keeping WebSocket alive (other components using it)...');
+      socketRef.current = null;
     }
   }, []);
 
@@ -304,25 +327,69 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
     }
   }, []);
 
-  // Auto-connect on mount with strict mode protection
+  // Auto-connect on mount with proper strict mode handling
   useEffect(() => {
-    let isEffectActive = true;
+    let mounted = true;
+    let cleanupTimeout: ReturnType<typeof setTimeout> | null = null;
 
-    if (autoConnect && isEffectActive) {
+    // Increment reference count
+    globalSocketRefCount++;
+    console.log(`🔌 WebSocket reference count: ${globalSocketRefCount}`);
+
+    if (autoConnect && mounted) {
       connect();
     }
 
     return () => {
-      isEffectActive = false;
-      // In development with strict mode, delay disconnection to avoid premature cleanup
-      if (import.meta.env.DEV) {
-        setTimeout(() => {
-          if (!isEffectActive) {
-            disconnect();
+      mounted = false;
+      
+      // Decrement reference count
+      globalSocketRefCount--;
+      console.log(`🔌 WebSocket reference count: ${globalSocketRefCount}`);
+      
+      // Clean up any pending timeout first
+      if (cleanupTimeout) {
+        clearTimeout(cleanupTimeout);
+      }
+      
+      // Only disconnect if this is the last reference
+      if (globalSocketRefCount === 0) {
+        // In development with strict mode, we need to handle cleanup carefully
+        if (import.meta.env.DEV) {
+          const socket = socketRef.current || globalSocket;
+          
+          if (!socket) {
+            // No socket to clean up
+            return;
           }
-        }, 50);
-      } else {
-        disconnect();
+          
+          // Check the actual WebSocket readyState if available
+          const websocket = (socket.io as any).engine?.transport?.ws;
+          const isConnecting = websocket?.readyState === WebSocket.CONNECTING;
+          
+          if (isConnecting) {
+            // Socket is still connecting, don't disconnect yet
+            console.log('🔌 WebSocket still in CONNECTING state, skipping cleanup');
+            return;
+          }
+          
+          if (socket.connected) {
+            // Socket is connected, safe to disconnect
+            disconnect();
+          } else if (!socket.connected && socket.io._readyState === 'opening') {
+            // Socket.IO is opening but WebSocket might be done, wait a bit
+            console.log('🔌 Socket.IO still opening, delaying cleanup...');
+            cleanupTimeout = setTimeout(() => {
+              if (!mounted && globalSocketRefCount === 0) {
+                disconnect();
+              }
+            }, 1000); // Shorter delay since we checked WebSocket state
+          }
+          // If disconnected or in other states, no cleanup needed
+        } else {
+          // In production, disconnect immediately
+          disconnect();
+        }
       }
     };
   }, [connect, disconnect, autoConnect]);
