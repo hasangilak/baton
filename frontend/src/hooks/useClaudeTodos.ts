@@ -19,7 +19,7 @@ export const useClaudeTodos = (projectId: string) => {
   return useQuery({
     queryKey: claudeTodosKeys.byProject(projectId),
     queryFn: async (): Promise<ClaudeTodosResponse> => {
-      const response = await api.get(`/claude-todos?projectId=${projectId}`);
+      const response = await api.get(`/api/claude-todos?projectId=${projectId}`);
       return response.data;
     },
     enabled: !!projectId,
@@ -32,7 +32,7 @@ export const useCreateClaudeTodos = () => {
 
   return useMutation({
     mutationFn: async (data: CreateClaudeTodosRequest): Promise<ClaudeTodosResponse> => {
-      const response = await api.post('/claude-todos', data);
+      const response = await api.post('/api/claude-todos', data);
       return response.data;
     },
     onSuccess: (_, variables) => {
@@ -50,7 +50,7 @@ export const useDeleteClaudeTodo = () => {
 
   return useMutation({
     mutationFn: async (todoId: string): Promise<{ success: boolean; message: string }> => {
-      const response = await api.delete(`/claude-todos/${todoId}`);
+      const response = await api.delete(`/api/claude-todos/${todoId}`);
       return response.data;
     },
     onSuccess: () => {
@@ -68,7 +68,7 @@ export const useSyncTodosToTasks = () => {
 
   return useMutation({
     mutationFn: async (data: SyncTodosToTasksRequest): Promise<SyncResponse> => {
-      const response = await api.post('/claude-todos/sync-to-tasks', data);
+      const response = await api.post('/api/claude-todos/sync-to-tasks', data);
       return response.data;
     },
     onSuccess: (_, variables) => {
@@ -89,7 +89,7 @@ export const useSyncTasksToTodos = () => {
 
   return useMutation({
     mutationFn: async (data: SyncTasksToTodosRequest): Promise<SyncResponse> => {
-      const response = await api.post('/claude-todos/sync-from-tasks', data);
+      const response = await api.post('/api/claude-todos/sync-from-tasks', data);
       return response.data;
     },
     onSuccess: (_, variables) => {

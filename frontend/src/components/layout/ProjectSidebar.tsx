@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   FolderOpen, 
   Plus, 
@@ -6,12 +6,19 @@ import {
   Settings,
   Archive,
   Star,
-  Users
+  Users,
+  Search,
+  Edit,
+  Trash2
 } from 'lucide-react';
 import clsx from 'clsx';
-import { useProjects } from '../../hooks/useProjects';
+import { useProjects, useUpdateProject } from '../../hooks/useProjects';
 import { CreateProjectModal } from '../projects/CreateProjectModal';
+import { EditProjectModal } from '../projects/EditProjectModal';
+import { useToast } from '../../hooks/useToast';
 import type { Project } from '../../types';
+
+type FilterType = 'all' | 'starred' | 'shared' | 'archived';
 
 interface ProjectSidebarProps {
   currentProjectId: string | undefined;
@@ -23,11 +30,84 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   onProjectChange 
 }) => {
   const { data: projects, isLoading } = useProjects();
+  const updateProjectMutation = useUpdateProject();
+  const toast = useToast();
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [currentFilter, setCurrentFilter] = useState<FilterType>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [contextMenuProject, setContextMenuProject] = useState<string | null>(null);
+  const [editingProject, setEditingProject] = useState<Project | null>(null);
+
+  // Close context menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => {
+      if (contextMenuProject) {
+        setContextMenuProject(null);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [contextMenuProject]);
 
   const handleProjectClick = (project: Project) => {
     onProjectChange(project.id);
   };
+
+  const handleToggleStar = async (project: Project) => {
+    try {
+      await updateProjectMutation.mutateAsync({
+        id: project.id,
+        data: { isStarred: !project.isStarred }
+      });
+      toast.success(
+        project.isStarred ? 'Removed from starred' : 'Added to starred',
+        `Project "${project.name}" has been ${project.isStarred ? 'removed from' : 'added to'} your starred projects.`
+      );
+    } catch (error) {
+      toast.error('Failed to update project', 'Please try again.');
+      console.error('Failed to toggle star:', error);
+    }
+  };
+
+  const handleArchiveProject = async (project: Project) => {
+    try {
+      const isArchiving = project.status !== 'archived';
+      await updateProjectMutation.mutateAsync({
+        id: project.id,
+        data: { status: isArchiving ? 'archived' : 'active' }
+      });
+      toast.success(
+        isArchiving ? 'Project archived' : 'Project restored',
+        `Project "${project.name}" has been ${isArchiving ? 'archived' : 'restored'}.`
+      );
+    } catch (error) {
+      toast.error('Failed to update project', 'Please try again.');
+      console.error('Failed to archive project:', error);
+    }
+  };
+
+  // Filter and search projects
+  const filteredProjects = projects?.filter((project) => {
+    // Search filter
+    if (searchQuery && !project.name.toLowerCase().includes(searchQuery.toLowerCase())) {
+      return false;
+    }
+    
+    // Status filter
+    switch (currentFilter) {
+      case 'starred':
+        return project.isStarred;
+      case 'shared':
+        // TODO: Add team/sharing functionality
+        return false; // No shared projects yet
+      case 'archived':
+        return project.status === 'archived';
+      case 'all':
+      default:
+        return project.status !== 'archived'; // Show active and completed projects by default
+    }
+  }) || [];
 
   const renderProject = (project: Project) => {
     const isActive = currentProjectId === project.id;
@@ -50,7 +130,15 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
             style={{ backgroundColor: project.color }}
           />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">{project.name}</p>
+            <div className="flex items-center space-x-2">
+              <p className="text-sm font-medium truncate">{project.name}</p>
+              {project.isStarred && (
+                <Star className="w-3 h-3 fill-yellow-400 text-yellow-400 flex-shrink-0" />
+              )}
+              {project.status === 'archived' && (
+                <Archive className="w-3 h-3 text-gray-500 flex-shrink-0" />
+              )}
+            </div>
             {project.description && (
               <p className="text-xs opacity-60 truncate">{project.description}</p>
             )}
@@ -61,9 +149,70 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
           <span className="text-xs font-medium bg-gray-700 px-2 py-1 rounded">
             {taskCount}
           </span>
-          <button className="p-1 hover:bg-gray-700 rounded">
-            <MoreHorizontal className="w-4 h-4" />
-          </button>
+          <div className="relative">
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                setContextMenuProject(contextMenuProject === project.id ? null : project.id);
+              }}
+              className="p-1 hover:bg-gray-700 rounded"
+            >
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
+            
+            {/* Context Menu */}
+            {contextMenuProject === project.id && (
+              <div className="absolute right-0 top-8 w-48 bg-gray-800 border border-gray-700 rounded-md shadow-lg z-50">
+                <div className="py-1">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingProject(project);
+                      setContextMenuProject(null);
+                    }}
+                    className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+                  >
+                    <Edit className="w-4 h-4" />
+                    <span>Edit Project</span>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggleStar(project);
+                      setContextMenuProject(null);
+                    }}
+                    className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+                  >
+                    <Star className={clsx("w-4 h-4", project.isStarred && "fill-yellow-400 text-yellow-400")} />
+                    <span>{project.isStarred ? 'Remove from Starred' : 'Add to Starred'}</span>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleArchiveProject(project);
+                      setContextMenuProject(null);
+                    }}
+                    className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+                  >
+                    <Archive className="w-4 h-4" />
+                    <span>{project.status === 'archived' ? 'Unarchive' : 'Archive'}</span>
+                  </button>
+                  <div className="border-t border-gray-700 my-1" />
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // TODO: Delete project with confirmation
+                      setContextMenuProject(null);
+                    }}
+                    className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-red-400 hover:bg-gray-700 hover:text-red-300"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>Delete Project</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -88,18 +237,68 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
         </div>
       </div>
 
+      {/* Search */}
+      <div className="p-4 border-b border-gray-800">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Search projects..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+          />
+        </div>
+      </div>
+
       {/* Filters */}
       <div className="p-4 border-b border-gray-800">
         <div className="flex space-x-2">
-          <button className="flex items-center space-x-2 px-3 py-1.5 text-xs bg-gray-800 text-white rounded-md">
+          <button 
+            onClick={() => setCurrentFilter('all')}
+            className={clsx(
+              "flex items-center space-x-2 px-3 py-1.5 text-xs rounded-md transition-colors",
+              currentFilter === 'all'
+                ? "bg-gray-800 text-white"
+                : "text-gray-400 hover:text-white hover:bg-gray-800"
+            )}
+          >
+            <FolderOpen className="w-3 h-3" />
+            <span>All</span>
+          </button>
+          <button 
+            onClick={() => setCurrentFilter('starred')}
+            className={clsx(
+              "flex items-center space-x-2 px-3 py-1.5 text-xs rounded-md transition-colors",
+              currentFilter === 'starred'
+                ? "bg-gray-800 text-white"
+                : "text-gray-400 hover:text-white hover:bg-gray-800"
+            )}
+          >
             <Star className="w-3 h-3" />
             <span>Starred</span>
           </button>
-          <button className="flex items-center space-x-2 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors">
+          <button 
+            onClick={() => setCurrentFilter('shared')}
+            className={clsx(
+              "flex items-center space-x-2 px-3 py-1.5 text-xs rounded-md transition-colors",
+              currentFilter === 'shared'
+                ? "bg-gray-800 text-white"
+                : "text-gray-400 hover:text-white hover:bg-gray-800"
+            )}
+          >
             <Users className="w-3 h-3" />
             <span>Shared</span>
           </button>
-          <button className="flex items-center space-x-2 px-3 py-1.5 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-md transition-colors">
+          <button 
+            onClick={() => setCurrentFilter('archived')}
+            className={clsx(
+              "flex items-center space-x-2 px-3 py-1.5 text-xs rounded-md transition-colors",
+              currentFilter === 'archived'
+                ? "bg-gray-800 text-white"
+                : "text-gray-400 hover:text-white hover:bg-gray-800"
+            )}
+          >
             <Archive className="w-3 h-3" />
             <span>Archived</span>
           </button>
@@ -123,9 +322,28 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                 </div>
               ))}
             </div>
-          ) : projects && projects.length > 0 ? (
+          ) : filteredProjects.length > 0 ? (
             <div className="space-y-2">
-              {projects.map(renderProject)}
+              {filteredProjects.map(renderProject)}
+            </div>
+          ) : searchQuery || currentFilter !== 'all' ? (
+            <div className="text-center py-8">
+              <FolderOpen className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+              <p className="text-gray-400 text-sm mb-2">
+                {searchQuery 
+                  ? `No projects found for "${searchQuery}"`
+                  : `No ${currentFilter} projects`
+                }
+              </p>
+              <button 
+                onClick={() => {
+                  setSearchQuery('');
+                  setCurrentFilter('all');
+                }}
+                className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+              >
+                Clear filters
+              </button>
             </div>
           ) : (
             <div className="text-center py-8">
@@ -144,7 +362,16 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
 
       {/* Footer */}
       <div className="p-4 border-t border-gray-800">
-        <button className="flex items-center space-x-3 w-full p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors">
+        <button 
+          onClick={() => {
+            const currentProject = projects?.find(p => p.id === currentProjectId);
+            if (currentProject) {
+              setEditingProject(currentProject);
+            }
+          }}
+          disabled={!currentProjectId}
+          className="flex items-center space-x-3 w-full p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
           <Settings className="w-4 h-4" />
           <span className="text-sm">Project Settings</span>
         </button>
@@ -157,6 +384,23 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
         onSuccess={(projectId) => {
           onProjectChange(projectId);
           setShowCreateModal(false);
+        }}
+      />
+
+      {/* Edit Project Modal */}
+      <EditProjectModal
+        project={editingProject}
+        isOpen={!!editingProject}
+        onClose={() => setEditingProject(null)}
+        onDelete={() => {
+          // If the deleted project was the current one, clear selection
+          if (editingProject?.id === currentProjectId) {
+            // Switch to first available project or none
+            const remainingProjects = projects?.filter(p => p.id !== editingProject?.id);
+            if (remainingProjects && remainingProjects.length > 0) {
+              onProjectChange(remainingProjects[0]!.id);
+            }
+          }
         }}
       />
     </aside>

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { X, Folder, Palette } from 'lucide-react';
 import clsx from 'clsx';
 import { useCreateProject } from '../../hooks/useProjects';
+import { useToast } from '../../hooks/useToast';
 import type { CreateProjectRequest } from '../../types';
 
 interface CreateProjectModalProps {
@@ -29,6 +30,32 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
   const createProjectMutation = useCreateProject();
+  const toast = useToast();
+
+  const handleClose = useCallback(() => {
+    setFormData({ name: '', description: '', color: '#3b82f6' });
+    setErrors({});
+    onClose();
+  }, [onClose]);
+
+  // Handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isOpen) return;
+      
+      if (e.key === 'Escape') {
+        handleClose();
+      } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        document.getElementById('create-project-form')?.dispatchEvent(
+          new Event('submit', { cancelable: true, bubbles: true })
+        );
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, handleClose]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,20 +74,15 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
     try {
       const result = await createProjectMutation.mutateAsync(formData);
       if (result) {
+        toast.success('Project created', `"${result.name}" has been created successfully.`);
         onSuccess?.(result.id);
         handleClose();
       }
     } catch (error) {
-      setErrors({ 
-        general: error instanceof Error ? error.message : 'Failed to create project' 
-      });
+      const errorMessage = error instanceof Error ? error.message : 'Failed to create project';
+      toast.error('Failed to create project', errorMessage);
+      setErrors({ general: errorMessage });
     }
-  };
-
-  const handleClose = () => {
-    setFormData({ name: '', description: '', color: '#3b82f6' });
-    setErrors({});
-    onClose();
   };
 
   if (!isOpen) return null;
@@ -95,7 +117,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
           </div>
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form id="create-project-form" onSubmit={handleSubmit} className="space-y-6">
             {/* Project Name */}
             <div>
               <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-2">

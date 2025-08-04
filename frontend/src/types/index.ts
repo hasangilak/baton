@@ -7,11 +7,15 @@ export interface User {
   updatedAt: string;
 }
 
+export type ProjectStatus = 'active' | 'archived' | 'completed';
+
 export interface Project {
   id: string;
   name: string;
   description?: string;
   color: string;
+  status: ProjectStatus;
+  isStarred: boolean;
   ownerId: string;
   createdAt: string;
   updatedAt: string;
@@ -122,12 +126,16 @@ export interface CreateProjectRequest {
   name: string;
   description?: string;
   color: string;
+  status?: ProjectStatus;
+  isStarred?: boolean;
 }
 
 export interface UpdateProjectRequest {
   name?: string;
   description?: string;
   color?: string;
+  status?: ProjectStatus;
+  isStarred?: boolean;
 }
 
 export interface CreateTaskRequest {

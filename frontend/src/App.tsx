@@ -7,6 +7,7 @@ import { ClaudeTodoList } from './components/claude/ClaudeTodoList';
 import { SyncPanel } from './components/claude/SyncPanel';
 import { queryClient } from './lib/queryClient';
 import { useProjects } from './hooks/useProjects';
+import { ToastProvider } from './hooks/useToast';
 
 function AppContent() {
   const { data: projects } = useProjects();
@@ -53,9 +54,11 @@ function AppContent() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <AppContent />
-      {/* React Query DevTools - only shows in development */}
-      <ReactQueryDevtools initialIsOpen={false} />
+      <ToastProvider>
+        <AppContent />
+        {/* React Query DevTools - only shows in development */}
+        <ReactQueryDevtools initialIsOpen={false} />
+      </ToastProvider>
     </QueryClientProvider>
   );
 }
