@@ -74,7 +74,7 @@ app.get('/mcp/sse', async (req, res) => {
   }
 });
 
-app.post('/mcp/messages', (req, res, next) => {
+app.post('/mcp/messages', (req, _res, next) => {
   // Set default Origin header for Claude Code compatibility if missing
   if (!req.headers.origin) {
     req.headers.origin = 'http://localhost:3001';

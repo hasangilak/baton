@@ -64,14 +64,14 @@ router.post('/capture', async (req, res) => {
     // Emit WebSocket event for real-time updates
     io.to(`project-${projectId}`).emit('plan:created', plan);
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
       plan
     });
 
   } catch (error) {
     console.error('Error capturing plan:', error);
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Internal server error while capturing plan'
     });
   }
@@ -117,7 +117,7 @@ router.get('/', async (req, res) => {
       where: whereClause
     });
 
-    res.json({
+    return res.json({
       success: true,
       plans,
       pagination: {
@@ -130,7 +130,7 @@ router.get('/', async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching plans:', error);
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Internal server error while fetching plans'
     });
   }
@@ -163,14 +163,14 @@ router.get('/:id', async (req, res) => {
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
       plan
     });
 
   } catch (error) {
     console.error('Error fetching plan:', error);
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Internal server error while fetching plan'
     });
   }
@@ -220,14 +220,14 @@ router.put('/:id', async (req, res) => {
     // Emit WebSocket event for real-time updates
     io.to(`project-${updatedPlan.projectId}`).emit('plan:updated', updatedPlan);
 
-    res.json({
+    return res.json({
       success: true,
       plan: updatedPlan
     });
 
   } catch (error) {
     console.error('Error updating plan:', error);
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Internal server error while updating plan'
     });
   }
@@ -259,14 +259,14 @@ router.delete('/:id', async (req, res) => {
     // Emit WebSocket event for real-time updates
     io.to(`project-${existingPlan.projectId}`).emit('plan:deleted', { id });
 
-    res.json({
+    return res.json({
       success: true,
       message: 'Plan deleted successfully'
     });
 
   } catch (error) {
     console.error('Error deleting plan:', error);
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Internal server error while deleting plan'
     });
   }
