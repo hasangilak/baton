@@ -375,16 +375,16 @@ export class BatonToolProvider {
     ];
   }
 
-  async callTool(name: string, args: any): Promise<any> {
+  async callTool(name: string, args: any, projectId?: string | null): Promise<any> {
     switch (name) {
       case "create_project":
         return this.createProject(args);
       case "update_project":
         return this.updateProject(args);
       case "create_task":
-        return this.createTask(args);
+        return this.createTask(args, projectId);
       case "update_task":
-        return this.updateTask(args);
+        return this.updateTask(args, projectId);
       case "move_task":
         return this.moveTask(args);
       case "create_mcp_plan":
@@ -473,21 +473,28 @@ export class BatonToolProvider {
     };
   }
 
-  private async createTask(args: any): Promise<any> {
-    const { projectId, title, description, status = 'todo', priority = 'medium', assigneeId, dueDate, labels = [] } = args;
+  private async createTask(args: any, contextProjectId?: string | null): Promise<any> {
+    const { projectId: argsProjectId, title, description, status = 'todo', priority = 'medium', assigneeId, dueDate, labels = [] } = args;
+
+    // Use projectId from args if provided, otherwise use context projectId
+    const targetProjectId = argsProjectId || contextProjectId;
+    
+    if (!targetProjectId) {
+      throw new Error('No project specified. Please provide a projectId or ensure you are in a project workspace.');
+    }
 
     // Verify project exists
     const project = await this.prisma.project.findUnique({
-      where: { id: projectId }
+      where: { id: targetProjectId }
     });
 
     if (!project) {
-      throw new Error(`Project with ID ${projectId} not found`);
+      throw new Error(`Project with ID ${targetProjectId} not found`);
     }
 
     // Get next order for the status column
     const lastTask = await this.prisma.task.findFirst({
-      where: { projectId, status },
+      where: { projectId: targetProjectId, status },
       orderBy: { order: 'desc' }
     });
 
@@ -499,7 +506,7 @@ export class BatonToolProvider {
         description,
         status,
         priority,
-        projectId,
+        projectId: targetProjectId,
         createdById: 'user_default',
         assigneeId,
         dueDate: dueDate ? new Date(dueDate) : null,
@@ -529,7 +536,7 @@ export class BatonToolProvider {
     };
   }
 
-  private async updateTask(args: any): Promise<any> {
+  private async updateTask(args: any, _contextProjectId?: string | null): Promise<any> {
     const { taskId, dueDate, labels, ...updateData } = args;
 
     const data: any = updateData;

@@ -10,6 +10,7 @@ import projectRoutes from './routes/projects';
 import taskRoutes from './routes/tasks';
 import mcpRoutes from './routes/mcp';
 import claudeTodosRoutes from './routes/claude-todos';
+import { BatonMCPServer } from './mcp/server/index';
 
 dotenv.config();
 
@@ -24,10 +25,15 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 3001;
 
+// Initialize MCP server for SSE transport
+const mcpServer = new BatonMCPServer();
+
 // Middleware
 app.use(cors({
   origin: process.env.CLIENT_URL || "http://localhost:5173",
-  credentials: true
+  credentials: true,
+  // Expose MCP session header for SSE clients
+  exposedHeaders: ['Mcp-Session-Id']
 }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -38,6 +44,66 @@ app.use('/api/projects', projectRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/mcp', mcpRoutes);
 app.use('/api/claude-todos', claudeTodosRoutes);
+
+// MCP SSE Transport Routes
+app.get('/mcp/sse', async (req, res) => {
+  console.log('📡 SSE connection request received');
+  try {
+    const transport = await mcpServer.createSSETransport(req, res, '/mcp/messages');
+    console.log(`✅ SSE connection established with session: ${transport.sessionId}`);
+    
+    // Set up cleanup on connection close
+    req.on('close', async () => {
+      console.log(`🔌 SSE connection closed for session: ${transport.sessionId}`);
+      await transport.close();
+    });
+  } catch (error) {
+    console.error('❌ Error establishing SSE connection:', error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32603,
+          message: 'Failed to establish SSE connection'
+        },
+        id: null
+      });
+    }
+  }
+});
+
+app.post('/mcp/messages', async (req, res) => {
+  const sessionId = req.query.sessionId as string;
+  console.log(`📨 MCP message received for session: ${sessionId}`);
+  
+  if (!sessionId) {
+    res.status(400).json({
+      jsonrpc: '2.0',
+      error: {
+        code: -32000,
+        message: 'Missing sessionId query parameter'
+      },
+      id: null
+    });
+    return;
+  }
+
+  try {
+    await mcpServer.handleSSEMessage(req, res, sessionId, req.body);
+  } catch (error) {
+    console.error(`❌ Error handling MCP message for session ${sessionId}:`, error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32603,
+          message: 'Internal server error'
+        },
+        id: null
+      });
+    }
+  }
+});
 
 // Health check
 app.get('/health', (_req, res) => {

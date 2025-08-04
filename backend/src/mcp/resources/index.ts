@@ -2,11 +2,11 @@ import { PrismaClient } from '@prisma/client';
 import { Resource } from "@modelcontextprotocol/sdk/types.js";
 
 export class BatonResourceProvider {
-  constructor(private prisma: PrismaClient, private getCurrentProject?: () => string | null) {}
+  constructor(private prisma: PrismaClient) {}
 
-  async listResources(): Promise<Resource[]> {
+  async listResources(projectId?: string | null): Promise<Resource[]> {
     const resources: Resource[] = [];
-    const currentProjectId = this.getCurrentProject?.();
+    const currentProjectId = projectId;
 
     // Add workspace-specific resources if we have a current project
     if (currentProjectId) {
@@ -120,7 +120,7 @@ export class BatonResourceProvider {
     return resources;
   }
 
-  async readResource(uri: string): Promise<any> {
+  async readResource(uri: string, projectId?: string | null): Promise<any> {
     const url = new URL(uri);
     // For baton:// URIs, the resource type is in hostname and path is in pathname
     const resourceType = url.hostname;
@@ -132,7 +132,7 @@ export class BatonResourceProvider {
 
     switch (pathParts[0]) {
       case 'workspace':
-        return this.handleWorkspaceResource(pathParts);
+        return this.handleWorkspaceResource(pathParts, projectId);
       case 'projects':
         return this.handleProjectResource(pathParts);
       case 'tasks':
@@ -362,8 +362,8 @@ export class BatonResourceProvider {
     });
   }
 
-  private async handleWorkspaceResource(pathParts: string[]): Promise<any> {
-    const currentProjectId = this.getCurrentProject?.();
+  private async handleWorkspaceResource(pathParts: string[], projectId?: string | null): Promise<any> {
+    const currentProjectId = projectId;
     
     if (!currentProjectId) {
       throw new Error('No workspace project detected. Please associate your workspace with a Baton project.');

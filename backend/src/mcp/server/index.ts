@@ -1,5 +1,6 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { WebSocketServer } from 'ws';
 import {
   CallToolRequestSchema,
@@ -16,6 +17,7 @@ import { BatonResourceProvider } from '../resources/index';
 import { BatonToolProvider } from '../tools/index';
 import { BatonPromptProvider } from '../prompts/index';
 import { BatonWorkspaceManager } from '../workspace/index';
+import { IncomingMessage, ServerResponse } from 'node:http';
 
 export class BatonMCPServer {
   private server: Server;
@@ -24,7 +26,8 @@ export class BatonMCPServer {
   private toolProvider: BatonToolProvider;
   private promptProvider: BatonPromptProvider;
   private workspaceManager: BatonWorkspaceManager;
-  private currentProjectId: string | null = null;
+  private sseTransports: Map<string, SSEServerTransport> = new Map();
+  private connectionProjects: Map<string, string | null> = new Map(); // sessionId -> projectId
 
   constructor() {
     this.server = new Server(
@@ -50,7 +53,7 @@ export class BatonMCPServer {
 
     this.prisma = new PrismaClient();
     this.workspaceManager = new BatonWorkspaceManager(this.prisma);
-    this.resourceProvider = new BatonResourceProvider(this.prisma, () => this.currentProjectId);
+    this.resourceProvider = new BatonResourceProvider(this.prisma);
     this.toolProvider = new BatonToolProvider(this.prisma, this.workspaceManager);
     this.promptProvider = new BatonPromptProvider(this.prisma);
 
@@ -64,10 +67,14 @@ export class BatonMCPServer {
     };
     
     // List Resources Handler
-    this.server.setRequestHandler(ListResourcesRequestSchema, async () => {
+    this.server.setRequestHandler(ListResourcesRequestSchema, async (_, { sessionId }) => {
       console.log('📜 Processing resources/list request...');
       try {
-        const resources = await this.resourceProvider.listResources();
+        // Detect project context for this request
+        const projectId = await this.detectProjectContext(sessionId);
+        console.log(`🎯 Project context: ${projectId || 'none'}`);
+        
+        const resources = await this.resourceProvider.listResources(projectId);
         console.log(`✅ Found ${resources.length} resources`);
         return { resources };
       } catch (error) {
@@ -77,10 +84,13 @@ export class BatonMCPServer {
     });
 
     // Read Resource Handler
-    this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    this.server.setRequestHandler(ReadResourceRequestSchema, async (request, { sessionId }) => {
       const { uri } = request.params;
       try {
-        const content = await this.resourceProvider.readResource(uri);
+        // Detect project context for this request
+        const projectId = await this.detectProjectContext(sessionId);
+        
+        const content = await this.resourceProvider.readResource(uri, projectId);
         return {
           contents: [
             {
@@ -112,10 +122,14 @@ export class BatonMCPServer {
     });
 
     // Call Tool Handler
-    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    this.server.setRequestHandler(CallToolRequestSchema, async (request, { sessionId }) => {
       const { name, arguments: args } = request.params;
       try {
-        const result = await this.toolProvider.callTool(name, args);
+        // Detect project context for this request
+        const projectId = await this.detectProjectContext(sessionId);
+        console.log(`🔧 Tool '${name}' called with project context: ${projectId || 'none'}`);
+        
+        const result = await this.toolProvider.callTool(name, args, projectId);
         return {
           content: [
             {
@@ -155,16 +169,153 @@ export class BatonMCPServer {
     });
   }
 
+  /**
+   * Detect project context for a given session/request
+   */
+  private async detectProjectContext(sessionId?: string): Promise<string | null> {
+    // For SSE connections, check if we have stored project context
+    if (sessionId && this.connectionProjects.has(sessionId)) {
+      const storedProjectId = this.connectionProjects.get(sessionId);
+      if (storedProjectId) {
+        return storedProjectId;
+      }
+    }
+
+    // Fall back to workspace detection
+    try {
+      const detectedProjectId = await this.workspaceManager.detectCurrentProject();
+      
+      // Store the detected project for this session if we have one
+      if (sessionId && detectedProjectId) {
+        this.connectionProjects.set(sessionId, detectedProjectId);
+      }
+      
+      return detectedProjectId;
+    } catch (error) {
+      console.warn('Failed to detect project context:', error);
+      return null;
+    }
+  }
+
   async startStdio(): Promise<void> {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
     console.log("🎯 Baton MCP Server started with STDIO transport");
   }
 
-  async startWebSocket(port: number = 3002): Promise<void> {
-    // Detect workspace project after Prisma client is ready
-    await this.detectWorkspaceProject();
+  /**
+   * Create SSE transport for HTTP-based MCP communication
+   */
+  async createSSETransport(req: IncomingMessage, res: ServerResponse, endpoint: string = '/mcp/messages'): Promise<SSEServerTransport> {
+    // Extract project context from query parameters
+    const url = new URL(req.url || '', `http://${req.headers.host}`);
+    const projectId = url.searchParams.get('project');
+    const projectName = url.searchParams.get('projectName');
     
+    console.log(`🔌 Creating SSE transport${projectId ? ` (project: ${projectId})` : ''}${projectName ? ` (projectName: ${projectName})` : ''}`);
+    
+    // Create SSE transport first to get session ID
+    const transport = new SSEServerTransport(endpoint, res, {
+      allowedOrigins: ['http://localhost:3001', 'http://localhost:5173'],
+      allowedHosts: ['localhost', '127.0.0.1'],
+      enableDnsRebindingProtection: true
+    });
+
+    // Store project context for this session if provided
+    try {
+      let resolvedProjectId: string | null = null;
+      
+      if (projectId) {
+        resolvedProjectId = projectId;
+        console.log(`🎯 Direct project context set: ${projectId}`);
+      } else if (projectName) {
+        // Look up project by name
+        console.log(`🔍 Looking up project: ${projectName}`);
+        const project = await this.prisma.project.findFirst({
+          where: { name: { contains: projectName, mode: 'insensitive' } }
+        });
+        if (project) {
+          resolvedProjectId = project.id;
+          console.log(`📁 Found project: ${project.name} (${project.id})`);
+        } else {
+          console.log(`⚠️ Project not found: ${projectName}`);
+        }
+      }
+      
+      // Store project context for this session
+      if (resolvedProjectId) {
+        this.connectionProjects.set(transport.sessionId, resolvedProjectId);
+      }
+    } catch (error) {
+      console.error('❌ Error setting project context:', error);
+      // Continue without project context
+    }
+
+
+    // Store transport by session ID
+    this.sseTransports.set(transport.sessionId, transport);
+    console.log(`✅ SSE transport created with session ID: ${transport.sessionId}`);
+
+    // Set up cleanup on transport close
+    const originalClose = transport.close.bind(transport);
+    transport.close = async () => {
+      console.log(`🔌 Cleaning up SSE transport: ${transport.sessionId}`);
+      this.sseTransports.delete(transport.sessionId);
+      this.connectionProjects.delete(transport.sessionId);
+      await originalClose();
+    };
+
+    // Connect to MCP server (this automatically calls transport.start())
+    await this.server.connect(transport);
+    console.log(`✅ SSE transport connected to MCP server`);
+
+    return transport;
+  }
+
+  /**
+   * Handle SSE POST messages by routing to appropriate transport
+   */
+  async handleSSEMessage(req: IncomingMessage, res: ServerResponse, sessionId: string, body?: unknown): Promise<void> {
+    const transport = this.sseTransports.get(sessionId);
+    if (!transport) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        jsonrpc: '2.0',
+        error: {
+          code: -32000,
+          message: `No SSE transport found for session: ${sessionId}`
+        },
+        id: null
+      }));
+      return;
+    }
+
+    try {
+      await transport.handlePostMessage(req, res, body);
+    } catch (error) {
+      console.error(`❌ Error handling SSE message for session ${sessionId}:`, error);
+      if (!res.headersSent) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          jsonrpc: '2.0',
+          error: {
+            code: -32603,
+            message: 'Internal server error'
+          },
+          id: null
+        }));
+      }
+    }
+  }
+
+  /**
+   * Get all active SSE session IDs
+   */
+  getActiveSSESessions(): string[] {
+    return Array.from(this.sseTransports.keys());
+  }
+
+  async startWebSocket(port: number = 3002): Promise<void> {
     const wss = new WebSocketServer({ port });
     
     wss.on('connection', async (ws, req) => {
@@ -174,11 +325,13 @@ export class BatonMCPServer {
       
       console.log(`🔌 New MCP client connected via WebSocket${projectId ? ` (project: ${projectId})` : ''}${projectName ? ` (projectName: ${projectName})` : ''}`);
       
-      // Set project context if provided (MUST complete before transport setup)
+      // Store project context for this WebSocket connection if provided
+      let sessionId: string | undefined;
       try {
+        let resolvedProjectId: string | null = null;
+        
         if (projectId) {
-          this.currentProjectId = projectId;
-          this.workspaceManager?.setCurrentProject(projectId);
+          resolvedProjectId = projectId;
           console.log(`🎯 Direct project context set: ${projectId}`);
         } else if (projectName) {
           // Look up project by name
@@ -187,12 +340,18 @@ export class BatonMCPServer {
             where: { name: { contains: projectName, mode: 'insensitive' } }
           });
           if (project) {
-            this.currentProjectId = project.id;
-            this.workspaceManager?.setCurrentProject(project.id);
+            resolvedProjectId = project.id;
             console.log(`📁 Found project: ${project.name} (${project.id})`);
           } else {
             console.log(`⚠️ Project not found: ${projectName}`);
           }
+        }
+        
+        // We'll store project context after we have a session ID from the transport
+        if (resolvedProjectId) {
+          // Generate a temporary session ID for WebSocket (will be replaced if transport provides one)
+          sessionId = `ws_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+          this.connectionProjects.set(sessionId, resolvedProjectId);
         }
         console.log('✅ Project context setup completed');
       } catch (error) {
@@ -260,33 +419,6 @@ export class BatonMCPServer {
     });
   }
 
-  /**
-   * Detect current workspace project and update context
-   */
-  private async detectWorkspaceProject(): Promise<void> {
-    try {
-      const projectId = await this.workspaceManager.detectCurrentProject();
-      if (projectId) {
-        this.currentProjectId = projectId;
-        const project = await this.prisma.project.findUnique({
-          where: { id: projectId },
-          select: { name: true }
-        });
-        console.log(`🎯 Detected workspace project: ${project?.name} (${projectId})`);
-      } else {
-        console.log("📁 No workspace project detected - using global context");
-      }
-    } catch (error) {
-      console.warn("Failed to detect workspace project:", error);
-    }
-  }
-
-  /**
-   * Get current project context
-   */
-  getCurrentProject(): string | null {
-    return this.currentProjectId;
-  }
 
   /**
    * Associate current workspace with a project
@@ -294,11 +426,7 @@ export class BatonMCPServer {
   async associateWorkspaceProject(projectId: string): Promise<boolean> {
     try {
       const success = await this.workspaceManager.associateWorkspaceWithProject(projectId);
-      if (success) {
-        this.currentProjectId = projectId;
-        // Notify clients that resources have changed
-        // TODO: Implement resource change notification
-      }
+      // Note: No longer setting global project state - each request detects its own context
       return success;
     } catch (error) {
       console.error("Failed to associate workspace project:", error);
