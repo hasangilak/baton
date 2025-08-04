@@ -59,36 +59,36 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChang
   };
 
   return (
-    <aside className="w-64 bg-white border-r border-gray-200 flex flex-col h-full">
+    <aside className="w-64 md:w-56 lg:w-64 bg-white border-r border-gray-200 flex flex-col h-full">
       {/* Header */}
-      <div className="p-4 border-b border-gray-200">
+      <div className="p-3 md:p-4 border-b border-gray-200">
         <div className="flex items-center space-x-3">
           <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
             <span className="text-white font-bold text-sm">B</span>
           </div>
           <div>
-            <h1 className="font-semibold text-gray-900">Baton</h1>
-            <p className="text-xs text-gray-500">Task Manager</p>
+            <h1 className="font-semibold text-gray-900 text-sm md:text-base">Baton</h1>
+            <p className="text-xs text-gray-500 hidden md:block">Task Manager</p>
           </div>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
         {/* User Profile */}
-        <div className="p-4 border-b border-gray-200">
+        <div className="p-3 md:p-4 border-b border-gray-200">
           <div className="flex items-center space-x-3">
             <div className="w-8 h-8 bg-gradient-to-br from-blue-400 to-purple-500 rounded-full flex items-center justify-center">
               <span className="text-white font-medium text-sm">DD</span>
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-gray-900 truncate">Davis Donin</p>
-              <p className="text-xs text-gray-500 truncate">davisdoni@gmail.com</p>
+              <p className="text-xs text-gray-500 truncate hidden md:block">davisdoni@gmail.com</p>
             </div>
           </div>
         </div>
 
         {/* Main Navigation */}
-        <div className="p-3">
+        <div className="p-2 md:p-3">
           <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
             Menu
           </h3>
@@ -100,7 +100,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChang
         </div>
 
         {/* Team Spaces */}
-        <div className="p-3">
+        <div className="p-2 md:p-3">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
               Team spaces
@@ -120,7 +120,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChang
         </div>
 
         {/* Other */}
-        <div className="p-3">
+        <div className="p-2 md:p-3">
           <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
             Other
           </h3>

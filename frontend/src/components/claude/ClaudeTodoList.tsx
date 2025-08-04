@@ -159,7 +159,8 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
       <div
         key={todo.id}
         className={clsx(
-          'group flex items-start space-x-3 p-4 rounded-lg border transition-all duration-200',
+          'group flex items-start space-x-3 p-3 md:p-4 rounded-lg border transition-all duration-200',
+          'min-h-[80px] md:min-h-auto', // Touch-friendly minimum height
           isSelected 
             ? 'bg-blue-50 border-blue-200' 
             : 'bg-white border-gray-200 hover:border-gray-300'
@@ -168,12 +169,12 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
       >
         <button
           onClick={() => handleTodoSelect(todo.id)}
-          className="mt-1 flex-shrink-0"
+          className="mt-1 flex-shrink-0 p-2 md:p-1 -m-2 md:-m-1 min-h-[44px] min-w-[44px] md:min-h-auto md:min-w-auto flex items-center justify-center"
           data-testid={`claude-todo-select-${todo.id}`}
         >
           <StatusIcon 
             className={clsx(
-              'w-5 h-5 transition-colors duration-200',
+              'w-5 h-5 md:w-5 md:h-5 transition-colors duration-200',
               statusColors[todo.status]
             )}
           />
@@ -183,39 +184,41 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
           <div className="flex items-start justify-between">
             <div className="flex-1 min-w-0">
               <p className={clsx(
-                'text-sm font-medium',
+                'text-sm md:text-base font-medium leading-tight',
                 todo.status === 'completed' ? 'line-through text-gray-500' : 'text-gray-900'
               )}>
                 {todo.content}
               </p>
               
-              <div className="flex items-center space-x-4 mt-2">
+              <div className="flex items-center flex-wrap gap-2 md:gap-4 mt-2">
                 <span className={clsx(
                   'inline-flex items-center px-2 py-1 rounded-md text-xs font-medium border',
                   priorityColors[todo.priority]
                 )}>
                   <AlertCircle className="w-3 h-3 mr-1" />
-                  {todo.priority}
+                  <span className="hidden sm:inline">{todo.priority}</span>
+                  <span className="sm:hidden">{todo.priority.charAt(0).toUpperCase()}</span>
                 </span>
 
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-gray-500 hidden md:inline">
                   by {todo.createdBy}
                 </span>
 
                 {todo.syncedTask && (
                   <div className="flex items-center space-x-1 text-xs text-blue-600">
                     <ArrowUpDown className="w-3 h-3" />
-                    <span>Synced to task</span>
+                    <span className="hidden sm:inline">Synced to task</span>
+                    <span className="sm:hidden">Synced</span>
                     <ExternalLink className="w-3 h-3" />
                   </div>
                 )}
               </div>
             </div>
 
-            <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="flex items-center space-x-2 opacity-70 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
               <button
                 onClick={() => handleDelete(todo.id)}
-                className="p-1 text-gray-400 hover:text-red-500 rounded"
+                className="p-2 md:p-1 text-gray-400 hover:text-red-500 rounded min-h-[44px] min-w-[44px] md:min-h-auto md:min-w-auto flex items-center justify-center"
                 title="Delete todo"
                 data-testid={`claude-todo-delete-${todo.id}`}
               >
@@ -249,7 +252,7 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center space-x-3">
           <Bot className="w-5 h-5 text-blue-600" />
           <h3 className="text-lg font-semibold text-gray-900">Claude Code Todos</h3>
@@ -261,21 +264,22 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
         <div className="flex items-center space-x-2">
           <button
             onClick={() => refetch()}
-            className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+            className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors min-h-[44px]"
             data-testid="claude-todo-refresh-button"
           >
             <RefreshCw className="w-4 h-4" />
-            <span>Refresh</span>
+            <span className="hidden sm:inline">Refresh</span>
           </button>
 
           {selectedTodos.length > 0 && onSync && (
             <button
               onClick={onSync}
-              className="flex items-center space-x-2 px-3 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+              className="flex items-center space-x-2 px-3 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors min-h-[44px]"
               data-testid="claude-todo-sync-button"
             >
               <ArrowUpDown className="w-4 h-4" />
-              <span>Sync to Tasks ({selectedTodos.length})</span>
+              <span className="hidden sm:inline">Sync to Tasks ({selectedTodos.length})</span>
+              <span className="sm:hidden">Sync ({selectedTodos.length})</span>
             </button>
           )}
         </div>

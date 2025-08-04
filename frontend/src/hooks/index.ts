@@ -52,3 +52,15 @@ export {
   useDeletePlan,
   planQueryKeys,
 } from './usePlans';
+
+// Responsive design hooks
+export {
+  useMediaQuery,
+} from './useMediaQuery';
+
+export {
+  useBreakpoints,
+  useBreakpoint,
+  breakpoints,
+  appBreakpoints,
+} from './useBreakpoints';

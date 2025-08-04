@@ -32,6 +32,108 @@
     margin: 0;
     padding: 0;
   }
+
+  /* Enable container queries */
+  .container-query {
+    container-type: inline-size;
+  }
+
+  /* Smooth scrolling for better UX */
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* Improve focus indicators for accessibility */
+  *:focus-visible {
+    @apply outline-2 outline-offset-2 outline-blue-500;
+  }
+
+  /* Better mobile tap highlighting */
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Safe area support for mobile devices */
+  .safe-area-pb {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .safe-area-pt {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-area-pl {
+    padding-left: env(safe-area-inset-left);
+  }
+
+  .safe-area-pr {
+    padding-right: env(safe-area-inset-right);
+  }
+
+  .h-safe-area-inset-bottom {
+    height: env(safe-area-inset-bottom);
+  }
+
+  .h-safe-area-inset-top {
+    height: env(safe-area-inset-top);
+  }
+
+  /* Bottom navigation spacing for content */
+  .pb-bottom-nav {
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom));
+  }
+
+  .mb-bottom-nav {
+    margin-bottom: calc(4rem + env(safe-area-inset-bottom));
+  }
+
+  /* Responsive images and media */
+  .img-responsive {
+    width: 100%;
+    height: auto;
+    object-fit: cover;
+  }
+
+  .img-responsive-contain {
+    width: 100%;
+    height: auto;
+    object-fit: contain;
+  }
+
+  /* High DPI display optimizations */
+  @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    .img-hd {
+      image-rendering: -webkit-optimize-contrast;
+      image-rendering: crisp-edges;
+    }
+  }
+
+  /* Reduced motion preferences */
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* High contrast mode support */
+  @media (prefers-contrast: high) {
+    .card-flex {
+      border-width: 2px;
+    }
+
+    .btn-primary {
+      border: 2px solid currentColor;
+    }
+  }
+
+  /* Dark mode improvements */
+  @media (prefers-color-scheme: dark) {
+    .img-responsive {
+      opacity: 0.9;
+    }
+  }
 }
 
 @layer components {
@@ -61,6 +163,236 @@
 
   .btn-secondary {
     @apply bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-4 py-2 rounded-lg font-medium hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors duration-200;
+  }
+
+  /* Advanced CSS Grid Layout Areas */
+  .app-grid {
+    display: grid;
+    grid-template-areas: 
+      "mobile-header mobile-header mobile-header"
+      "main-content main-content main-content";
+    grid-template-rows: auto 1fr;
+    height: 100vh;
+  }
+  
+  @media (min-width: 768px) {
+    .app-grid {
+      grid-template-areas: 
+        "project-sidebar main-sidebar header"
+        "project-sidebar main-sidebar main-content";
+      grid-template-columns: auto auto 1fr;
+      grid-template-rows: auto 1fr;
+    }
+  }
+
+  .app-grid-mobile-header {
+    grid-area: mobile-header;
+  }
+
+  .app-grid-project-sidebar {
+    grid-area: project-sidebar;
+  }
+
+  .app-grid-main-sidebar {
+    grid-area: main-sidebar;
+  }
+
+  .app-grid-header {
+    grid-area: header;
+  }
+
+  .app-grid-main-content {
+    grid-area: main-content;
+  }
+
+  /* Responsive Grid Containers */
+  .responsive-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  }
+
+  .responsive-grid-dense {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    grid-auto-flow: dense;
+  }
+
+  /* Container Queries Support */
+  @container (min-width: 400px) {
+    .container-responsive {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+
+    .card-container-responsive {
+      flex-direction: row;
+      align-items: center;
+    }
+
+    .text-container-responsive {
+      font-size: 1rem;
+      line-height: 1.5;
+    }
+  }
+
+  @container (min-width: 600px) {
+    .container-responsive {
+      grid-template-columns: 1fr 1fr 1fr;
+    }
+
+    .card-container-responsive {
+      padding: 1.5rem;
+    }
+
+    .text-container-responsive {
+      font-size: 1.125rem;
+    }
+  }
+
+  @container (min-width: 800px) {
+    .container-responsive {
+      grid-template-columns: repeat(4, 1fr);
+    }
+
+    .sidebar-container-responsive {
+      width: 280px;
+    }
+  }
+
+  /* Component-specific container queries */
+  .kanban-container {
+    container-type: inline-size;
+  }
+
+  @container (min-width: 500px) {
+    .kanban-column-responsive {
+      min-width: 250px;
+    }
+  }
+
+  @container (min-width: 800px) {
+    .kanban-column-responsive {
+      min-width: 300px;
+    }
+  }
+
+  /* Touch-friendly interactive elements */
+  .touch-target {
+    @apply min-h-[44px] min-w-[44px] flex items-center justify-center;
+  }
+
+  /* Responsive typography scale */
+  .text-responsive-xs {
+    @apply text-xs sm:text-sm;
+  }
+  
+  .text-responsive-sm {
+    @apply text-sm sm:text-base;
+  }
+  
+  .text-responsive-base {
+    @apply text-base sm:text-lg;
+  }
+  
+  .text-responsive-lg {
+    @apply text-lg sm:text-xl;
+  }
+
+  /* Responsive spacing utilities */
+  .space-responsive-x {
+    @apply space-x-2 sm:space-x-3 lg:space-x-4;
+  }
+  
+  .space-responsive-y {
+    @apply space-y-2 sm:space-y-3 lg:space-y-4;
+  }
+
+  .gap-responsive {
+    @apply gap-2 sm:gap-3 lg:gap-4;
+  }
+
+  .p-responsive {
+    @apply p-3 sm:p-4 lg:p-6;
+  }
+
+  /* Advanced Flexbox Utilities */
+  .flex-responsive {
+    @apply flex flex-col sm:flex-row;
+  }
+
+  .flex-responsive-reverse {
+    @apply flex flex-col-reverse sm:flex-row-reverse;
+  }
+
+  .flex-wrap-responsive {
+    @apply flex flex-wrap gap-2 sm:gap-3 lg:gap-4;
+  }
+
+  .flex-center-responsive {
+    @apply flex flex-col items-center justify-center sm:flex-row sm:justify-between;
+  }
+
+  .flex-stack-responsive {
+    @apply flex flex-col space-y-2 sm:flex-row sm:space-y-0 sm:space-x-4;
+  }
+
+  /* Flexbox alignment variations */
+  .flex-align-start-responsive {
+    @apply flex flex-col items-start sm:flex-row sm:items-center;
+  }
+
+  .flex-align-end-responsive {
+    @apply flex flex-col items-end sm:flex-row sm:items-center;
+  }
+
+  /* Responsive flex grow/shrink patterns */
+  .flex-grow-responsive {
+    @apply flex-shrink sm:flex-grow;
+  }
+
+  .flex-shrink-responsive {
+    @apply flex-grow sm:flex-shrink;
+  }
+
+  /* Responsive flexbox containers for content */
+  .content-flex {
+    @apply flex flex-col min-h-0;
+  }
+
+  .content-flex-row {
+    @apply flex flex-row min-w-0;
+  }
+
+  .sidebar-flex {
+    @apply flex flex-col h-full overflow-hidden;
+  }
+
+  .main-flex {
+    @apply flex flex-col flex-1 min-h-0 overflow-hidden;
+  }
+
+  /* Responsive card layouts with flexbox */
+  .card-flex {
+    @apply flex flex-col p-4 bg-white rounded-lg shadow-sm border;
+  }
+
+  .card-flex-row {
+    @apply flex flex-col sm:flex-row items-start sm:items-center gap-4;
+  }
+
+  .card-flex-header {
+    @apply flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2;
+  }
+
+  .card-flex-content {
+    @apply flex flex-col flex-1 min-h-0;
+  }
+
+  .card-flex-footer {
+    @apply flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mt-auto;
   }
 }
 

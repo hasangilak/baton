@@ -225,9 +225,9 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   };
 
   return (
-    <aside className="w-72 bg-gray-900 border-r border-gray-800 flex flex-col h-full">
+    <aside className="w-72 md:w-64 lg:w-72 bg-gray-900 border-r border-gray-800 flex flex-col h-full">
       {/* Header */}
-      <div className="p-4 border-b border-gray-800">
+      <div className="p-3 md:p-4 border-b border-gray-800">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <FolderOpen className="w-5 h-5 text-gray-400" />
@@ -245,7 +245,7 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
       </div>
 
       {/* Search */}
-      <div className="p-4 border-b border-gray-800">
+      <div className="p-3 md:p-4 border-b border-gray-800">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
@@ -260,8 +260,8 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
       </div>
 
       {/* Filters */}
-      <div className="p-4 border-b border-gray-800">
-        <div className="flex space-x-2">
+      <div className="p-3 md:p-4 border-b border-gray-800">
+        <div className="flex flex-wrap gap-2">
           <button 
             onClick={() => setCurrentFilter('all')}
             className={clsx(
@@ -319,7 +319,7 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
 
       {/* Projects List */}
       <div className="flex-1 overflow-y-auto">
-        <div className="p-4">
+        <div className="p-3 md:p-4">
           {isLoading ? (
             <div className="space-y-3">
               {Array.from({ length: 5 }).map((_, i) => (
@@ -375,7 +375,7 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
       </div>
 
       {/* Footer */}
-      <div className="p-4 border-t border-gray-800">
+      <div className="p-3 md:p-4 border-t border-gray-800">
         <button 
           onClick={() => {
             const currentProject = projects?.find(p => p.id === currentProjectId);
