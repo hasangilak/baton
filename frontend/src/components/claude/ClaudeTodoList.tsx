@@ -74,10 +74,12 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
             ? 'bg-blue-50 border-blue-200' 
             : 'bg-white border-gray-200 hover:border-gray-300'
         )}
+        data-testid={`claude-todo-item-${todo.id}`}
       >
         <button
           onClick={() => handleTodoSelect(todo.id)}
           className="mt-1 flex-shrink-0"
+          data-testid={`claude-todo-select-${todo.id}`}
         >
           <StatusIcon 
             className={clsx(
@@ -125,6 +127,7 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
                 onClick={() => handleDelete(todo.id)}
                 className="p-1 text-gray-400 hover:text-red-500 rounded"
                 title="Delete todo"
+                data-testid={`claude-todo-delete-${todo.id}`}
               >
                 <MoreHorizontal className="w-4 h-4" />
               </button>
@@ -169,6 +172,7 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
           <button
             onClick={() => refetch()}
             className="flex items-center space-x-2 px-3 py-2 text-sm text-gray-600 hover:text-gray-900 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+            data-testid="claude-todo-refresh-button"
           >
             <RefreshCw className="w-4 h-4" />
             <span>Refresh</span>
@@ -178,6 +182,7 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
             <button
               onClick={onSync}
               className="flex items-center space-x-2 px-3 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+              data-testid="claude-todo-sync-button"
             >
               <ArrowUpDown className="w-4 h-4" />
               <span>Sync to Tasks ({selectedTodos.length})</span>

@@ -36,6 +36,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
             )}
             title={`Switch to ${label.toLowerCase()} theme`}
             aria-pressed={theme === value}
+            data-testid={`theme-toggle-${value}`}
           >
             {icon}
             <span className="hidden sm:inline">{value === 'auto' ? 'Auto' : label}</span>
@@ -58,6 +59,7 @@ export const ThemeToggle: React.FC<ThemeToggleProps> = ({
           'hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-200'
         )}
         aria-label="Select theme"
+        data-testid="theme-dropdown-select"
       >
         {themes.map(({ value, label }) => (
           <option key={value} value={value}>
@@ -111,6 +113,7 @@ export const ThemeSelector: React.FC<{ className?: string }> = ({ className }) =
       )}
       title={`Current: ${getThemeDisplayName(theme)} ${theme === 'auto' ? `(${resolvedTheme})` : ''} - Click to cycle`}
       aria-label={`Switch theme. Current: ${getThemeDisplayName(theme)}`}
+      data-testid="theme-selector-cycle-button"
     >
       {getCurrentIcon()}
     </button>

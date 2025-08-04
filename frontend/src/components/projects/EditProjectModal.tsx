@@ -172,6 +172,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
               )}
               placeholder="Enter project name"
               autoFocus
+              data-testid="edit-project-name-input"
             />
             {errors.name && (
               <p className="text-sm text-red-600 mt-1">{errors.name}</p>
@@ -190,6 +191,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
               rows={3}
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               placeholder="Describe your project (optional)"
+              data-testid="edit-project-description-input"
             />
           </div>
 
@@ -213,6 +215,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
                   )}
                   style={{ backgroundColor: color }}
                   title={color}
+                  data-testid={`edit-project-color-${color.replace('#', '')}`}
                 />
               ))}
             </div>
@@ -233,6 +236,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
                 type="button"
                 variant="destructive"
                 disabled={updateProjectMutation.isPending}
+                data-testid="edit-project-delete-button"
               >
                 <Trash2 className="w-4 h-4 mr-2" />
                 Delete Project
@@ -247,11 +251,12 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel data-testid="edit-project-delete-cancel">Cancel</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={handleDelete}
                   disabled={deleteProjectMutation.isPending}
                   className="bg-red-600 hover:bg-red-700 focus:ring-red-500"
+                  data-testid="edit-project-delete-confirm"
                 >
                   {deleteProjectMutation.isPending ? 'Deleting...' : 'Delete Project'}
                 </AlertDialogAction>
@@ -265,6 +270,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
               variant="outline"
               onClick={handleClose}
               disabled={updateProjectMutation.isPending}
+              data-testid="edit-project-cancel-button"
             >
               Cancel
             </Button>
@@ -272,6 +278,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
               type="submit"
               form="edit-project-form"
               disabled={updateProjectMutation.isPending}
+              data-testid="edit-project-save-button"
             >
               {updateProjectMutation.isPending ? 'Saving...' : 'Save Changes'}
             </Button>

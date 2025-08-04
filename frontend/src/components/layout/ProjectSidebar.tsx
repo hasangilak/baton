@@ -123,6 +123,7 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
             ? 'bg-gray-800 text-white' 
             : 'text-gray-300 hover:bg-gray-800 hover:text-white'
         )}
+        data-testid={`project-sidebar-project-${project.id}`}
       >
         <div className="flex items-center space-x-3 flex-1 min-w-0">
           <div 
@@ -156,6 +157,7 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                 setContextMenuProject(contextMenuProject === project.id ? null : project.id);
               }}
               className="p-1 hover:bg-gray-700 rounded"
+              data-testid={`project-sidebar-project-menu-${project.id}`}
             >
               <MoreHorizontal className="w-4 h-4" />
             </button>
@@ -171,6 +173,7 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                       setContextMenuProject(null);
                     }}
                     className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+                    data-testid={`project-sidebar-edit-${project.id}`}
                   >
                     <Edit className="w-4 h-4" />
                     <span>Edit Project</span>
@@ -182,6 +185,7 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                       setContextMenuProject(null);
                     }}
                     className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+                    data-testid={`project-sidebar-star-${project.id}`}
                   >
                     <Star className={clsx("w-4 h-4", project.isStarred && "fill-yellow-400 text-yellow-400")} />
                     <span>{project.isStarred ? 'Remove from Starred' : 'Add to Starred'}</span>
@@ -193,6 +197,7 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                       setContextMenuProject(null);
                     }}
                     className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white"
+                    data-testid={`project-sidebar-archive-${project.id}`}
                   >
                     <Archive className="w-4 h-4" />
                     <span>{project.status === 'archived' ? 'Unarchive' : 'Archive'}</span>
@@ -205,6 +210,7 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                       setContextMenuProject(null);
                     }}
                     className="flex items-center space-x-2 w-full px-3 py-2 text-sm text-red-400 hover:bg-gray-700 hover:text-red-300"
+                    data-testid={`project-sidebar-delete-${project.id}`}
                   >
                     <Trash2 className="w-4 h-4" />
                     <span>Delete Project</span>
@@ -231,6 +237,7 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
             onClick={() => setShowCreateModal(true)}
             className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
             title="Create new project"
+            data-testid="project-sidebar-create-button"
           >
             <Plus className="w-4 h-4" />
           </button>
@@ -247,6 +254,7 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+            data-testid="project-sidebar-search-input"
           />
         </div>
       </div>
@@ -262,6 +270,7 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                 ? "bg-gray-800 text-white"
                 : "text-gray-400 hover:text-white hover:bg-gray-800"
             )}
+            data-testid="project-sidebar-filter-all"
           >
             <FolderOpen className="w-3 h-3" />
             <span>All</span>
@@ -274,6 +283,7 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                 ? "bg-gray-800 text-white"
                 : "text-gray-400 hover:text-white hover:bg-gray-800"
             )}
+            data-testid="project-sidebar-filter-starred"
           >
             <Star className="w-3 h-3" />
             <span>Starred</span>
@@ -286,6 +296,7 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                 ? "bg-gray-800 text-white"
                 : "text-gray-400 hover:text-white hover:bg-gray-800"
             )}
+            data-testid="project-sidebar-filter-shared"
           >
             <Users className="w-3 h-3" />
             <span>Shared</span>
@@ -298,6 +309,7 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                 ? "bg-gray-800 text-white"
                 : "text-gray-400 hover:text-white hover:bg-gray-800"
             )}
+            data-testid="project-sidebar-filter-archived"
           >
             <Archive className="w-3 h-3" />
             <span>Archived</span>
@@ -341,6 +353,7 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
                   setCurrentFilter('all');
                 }}
                 className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                data-testid="project-sidebar-clear-filters"
               >
                 Clear filters
               </button>
@@ -352,6 +365,7 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
               <button 
                 onClick={() => setShowCreateModal(true)}
                 className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                data-testid="project-sidebar-create-first-project"
               >
                 Create your first project
               </button>
@@ -371,6 +385,7 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
           }}
           disabled={!currentProjectId}
           className="flex items-center space-x-3 w-full p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          data-testid="project-sidebar-settings-button"
         >
           <Settings className="w-4 h-4" />
           <span className="text-sm">Project Settings</span>

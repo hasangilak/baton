@@ -90,6 +90,7 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, isDragging }) => {
         'task-card cursor-grab active:cursor-grabbing',
         (isDragging || isSortableDragging) && 'opacity-50 rotate-2 scale-105 shadow-lg z-10'
       )}
+      data-testid={`task-card-${task.id}`}
     >
       {/* Task Status & Priority */}
       <div className="flex items-start justify-between mb-3">
@@ -98,15 +99,21 @@ export const TaskCard: React.FC<TaskCardProps> = ({ task, isDragging }) => {
             <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
           )}
           
-          <span className={clsx(
-            'px-2 py-1 text-xs font-medium rounded-full border',
-            getPriorityColor(task.priority)
-          )}>
+          <span 
+            className={clsx(
+              'px-2 py-1 text-xs font-medium rounded-full border',
+              getPriorityColor(task.priority)
+            )}
+            data-testid={`task-card-priority-${task.id}`}
+          >
             {getPriorityLabel(task.priority)}
           </span>
         </div>
         
-        <button className="text-gray-400 hover:text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button 
+          className="text-gray-400 hover:text-gray-600 opacity-0 group-hover:opacity-100 transition-opacity"
+          data-testid={`task-card-more-options-${task.id}`}
+        >
           <MoreHorizontal className="w-4 h-4" />
         </button>
       </div>

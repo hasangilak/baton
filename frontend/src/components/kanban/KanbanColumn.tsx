@@ -65,6 +65,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
         <button 
           className="p-1 text-gray-400 hover:text-gray-600 hover:bg-white hover:bg-opacity-50 rounded"
           title="Add new task"
+          data-testid={`kanban-column-add-task-${status}`}
         >
           <Plus className="w-4 h-4" />
         </button>

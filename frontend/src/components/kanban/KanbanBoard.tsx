@@ -139,6 +139,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ projectId }) => {
           <button 
             onClick={() => refetch()}
             className="btn-primary"
+            data-testid="kanban-board-retry-button"
           >
             Try Again
           </button>

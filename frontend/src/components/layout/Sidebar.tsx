@@ -50,6 +50,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChang
           'sidebar-item w-full text-left',
           isActive ? 'sidebar-item-active' : 'sidebar-item-inactive'
         )}
+        data-testid={`sidebar-nav-${item.id}`}
       >
         <Icon className="w-5 h-5 mr-3" />
         {item.label}
@@ -104,7 +105,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChang
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
               Team spaces
             </h3>
-            <button className="text-gray-400 hover:text-gray-600">
+            <button 
+              className="text-gray-400 hover:text-gray-600"
+              data-testid="sidebar-add-team-space-button"
+            >
               <span className="text-lg">+</span>
             </button>
           </div>

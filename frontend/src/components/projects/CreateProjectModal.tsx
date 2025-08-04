@@ -128,6 +128,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
               )}
               placeholder="Enter project name"
               autoFocus
+              data-testid="create-project-name-input"
             />
             {errors.name && (
               <p className="text-sm text-red-600 mt-1">{errors.name}</p>
@@ -146,6 +147,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
               rows={3}
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
               placeholder="Describe your project (optional)"
+              data-testid="create-project-description-input"
             />
           </div>
 
@@ -169,6 +171,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
                   )}
                   style={{ backgroundColor: color }}
                   title={color}
+                  data-testid={`create-project-color-${color.replace('#', '')}`}
                 />
               ))}
             </div>
@@ -188,6 +191,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
             variant="outline"
             onClick={handleClose}
             disabled={createProjectMutation.isPending}
+            data-testid="create-project-cancel-button"
           >
             Cancel
           </Button>
@@ -195,6 +199,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({
             type="submit"
             form="create-project-form"
             disabled={createProjectMutation.isPending}
+            data-testid="create-project-submit-button"
           >
             {createProjectMutation.isPending ? 'Creating...' : 'Create Project'}
           </Button>

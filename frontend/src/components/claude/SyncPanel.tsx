@@ -99,6 +99,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({ projectId }) => {
                 ? 'border-blue-500 bg-blue-50'
                 : 'border-gray-200 hover:border-gray-300'
             )}
+            data-testid="sync-panel-todos-to-tasks-button"
           >
             <div className="flex items-center space-x-2">
               <Bot className="w-5 h-5 text-blue-600" />
@@ -119,6 +120,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({ projectId }) => {
                 ? 'border-blue-500 bg-blue-50'
                 : 'border-gray-200 hover:border-gray-300'
             )}
+            data-testid="sync-panel-tasks-to-todos-button"
           >
             <div className="flex items-center space-x-2">
               <List className="w-5 h-5 text-green-600" />
@@ -175,6 +177,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({ projectId }) => {
             ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
             : 'bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800'
         )}
+        data-testid="sync-panel-main-sync-button"
       >
         {isLoading ? (
           <RefreshCw className="w-5 h-5 animate-spin" />
