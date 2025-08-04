@@ -159,6 +159,49 @@ export class BatonPromptProvider {
             required: false
           }
         ]
+      },
+      {
+        name: "analyze_claude_plans",
+        description: "Analyze captured Claude Code plans for insights and patterns",
+        arguments: [
+          {
+            name: "project_id",
+            description: "ID of the project to analyze plans for",
+            required: true
+          },
+          {
+            name: "time_period",
+            description: "Time period to analyze (e.g., 'last week', 'last month')",
+            required: false
+          }
+        ]
+      },
+      {
+        name: "plan_implementation_guide",
+        description: "Convert an accepted Claude Code plan into actionable task breakdown",
+        arguments: [
+          {
+            name: "plan_id",
+            description: "ID of the Claude Code plan to break down into tasks",
+            required: true
+          }
+        ]
+      },
+      {
+        name: "plan_retrospective",
+        description: "Review effectiveness of captured Claude Code plans and their outcomes",
+        arguments: [
+          {
+            name: "project_id",
+            description: "ID of the project to analyze plan effectiveness for",
+            required: true
+          },
+          {
+            name: "plan_ids",
+            description: "Specific plan IDs to focus on (optional, analyzes all if not provided)",
+            required: false
+          }
+        ]
       }
     ];
   }
@@ -183,6 +226,12 @@ export class BatonPromptProvider {
         return this.codeReviewChecklistPrompt(args);
       case "detect_baton_project":
         return this.detectBatonProjectPrompt(args);
+      case "analyze_claude_plans":
+        return this.analyzeClaudePlansPrompt(args);
+      case "plan_implementation_guide":
+        return this.planImplementationGuidePrompt(args);
+      case "plan_retrospective":
+        return this.planRetrospectivePrompt(args);
       default:
         throw new Error(`Unknown prompt: ${name}`);
     }
@@ -767,6 +816,305 @@ Please help me by running these commands:
 Please execute these commands and return just the **projectId value** from the JSON file.
 
 If no .baton-project file is found, please let me know so I can help you create one or associate this workspace with a Baton project.`
+        }
+      ]
+    };
+  }
+
+  private async analyzeClaudePlansPrompt(args: any): Promise<{ messages: any[] }> {
+    const { project_id, time_period = "last month" } = args;
+
+    // Calculate date range
+    const endDate = new Date();
+    const startDate = new Date();
+    
+    if (time_period.includes('week')) {
+      const weeks = parseInt(time_period.match(/\d+/)?.[0] || '4');
+      startDate.setDate(endDate.getDate() - (weeks * 7));
+    } else if (time_period.includes('month')) {
+      const months = parseInt(time_period.match(/\d+/)?.[0] || '1');
+      startDate.setMonth(endDate.getMonth() - months);
+    }
+
+    // Fetch project and plans separately
+    const project = await this.prisma.project.findUnique({
+      where: { id: project_id }
+    });
+
+    if (!project) {
+      throw new Error(`Project with ID ${project_id} not found`);
+    }
+
+    const plans = await this.prisma.claudeCodePlan.findMany({
+      where: {
+        projectId: project_id,
+        capturedAt: { gte: startDate, lte: endDate }
+      },
+      orderBy: { capturedAt: 'desc' }
+    });
+
+    const acceptedPlans = plans.filter((p: any) => p.status === 'accepted');
+    const implementedPlans = plans.filter((p: any) => p.status === 'implemented');
+    const archivedPlans = plans.filter((p: any) => p.status === 'archived');
+
+    return {
+      messages: [
+        {
+          role: "system",
+          content: `You are an AI planning expert who analyzes Claude Code plan patterns to provide actionable insights. Focus on:
+
+1. Plan quality and clarity assessment
+2. Implementation success patterns
+3. Common planning themes and approaches
+4. Planning frequency and consistency
+5. Areas for planning improvement
+6. Strategic planning recommendations
+
+Provide specific, actionable insights that help improve future planning processes.`
+        },
+        {
+          role: "user",
+          content: `Analyze the Claude Code plans for this project:
+
+**Project:** ${project.name}
+**Time Period:** ${time_period}
+**Analysis Period:** ${startDate.toDateString()} to ${endDate.toDateString()}
+
+**Plan Summary:**
+- Total Plans: ${plans.length}
+- Accepted: ${acceptedPlans.length}
+- Implemented: ${implementedPlans.length}
+- Archived: ${archivedPlans.length}
+
+**Plan Details:**
+${plans.map((plan: any) => `
+**Plan ID:** ${plan.id}
+**Title:** ${plan.title}
+**Status:** ${plan.status}
+**Captured:** ${plan.capturedAt.toDateString()}
+**Session:** ${plan.sessionId || 'Unknown'}
+
+**Content Preview:**
+${plan.content.substring(0, 300)}${plan.content.length > 300 ? '...' : ''}
+
+**Metadata:**
+${plan.metadata ? JSON.stringify(plan.metadata, null, 2) : 'No metadata'}
+---
+`).join('')}
+
+Please provide:
+1. Overall planning patterns and trends analysis
+2. Plan quality assessment (clarity, specificity, actionability)
+3. Implementation success rate analysis
+4. Common themes and focus areas in plans
+5. Planning frequency and consistency evaluation
+6. Recommendations for improving plan quality
+7. Strategic insights for better planning processes
+8. Identification of most/least successful plan types
+
+Focus on actionable insights that can improve future Claude Code planning sessions.`
+        }
+      ]
+    };
+  }
+
+  private async planImplementationGuidePrompt(args: any): Promise<{ messages: any[] }> {
+    const { plan_id } = args;
+
+    // Fetch the specific Claude Code plan
+    const plan = await this.prisma.claudeCodePlan.findUnique({
+      where: { id: plan_id },
+      include: {
+        project: {
+          select: { id: true, name: true }
+        }
+      }
+    });
+
+    if (!plan) {
+      throw new Error(`Claude Code plan with ID ${plan_id} not found`);
+    }
+
+    return {
+      messages: [
+        {
+          role: "system",
+          content: `You are a technical project manager expert at converting high-level plans into specific, actionable task breakdowns. Your goal is to transform Claude Code plans into:
+
+1. Concrete, implementable tasks
+2. Clear acceptance criteria for each task
+3. Appropriate task prioritization
+4. Realistic time estimates
+5. Task dependencies and sequencing
+6. Risk assessment for complex tasks
+
+Focus on creating task breakdowns that development teams can immediately execute.`
+        },
+        {
+          role: "user",
+          content: `Convert this Claude Code plan into a detailed task breakdown:
+
+**Project:** ${plan.project.name}
+**Plan Title:** ${plan.title}
+**Plan Status:** ${plan.status}
+**Captured:** ${plan.capturedAt.toDateString()}
+**Session ID:** ${plan.sessionId || 'Unknown'}
+
+**Plan Content:**
+${plan.content}
+
+**Plan Metadata:**
+${plan.metadata ? JSON.stringify(plan.metadata, null, 2) : 'No additional metadata'}
+
+Please provide:
+1. **Task Breakdown Structure**
+   - 8-15 specific, actionable tasks
+   - Each task should be completable in 1-3 days
+   - Clear, descriptive task titles
+
+2. **Task Details** (for each task):
+   - Detailed description and scope
+   - Acceptance criteria (3-5 specific requirements)
+   - Priority level (high/medium/low)
+   - Estimated complexity/effort
+   - Required skills or expertise
+   - Dependencies on other tasks
+
+3. **Implementation Strategy**
+   - Recommended execution order
+   - Critical path identification
+   - Parallel work opportunities
+   - Key milestones and checkpoints
+
+4. **Risk Assessment**
+   - Potential blockers or challenges
+   - Mitigation strategies
+   - Areas requiring additional research
+
+5. **Success Metrics**
+   - How to measure completion
+   - Quality criteria
+   - Definition of done
+
+Format the output so each task can be directly created in a project management system like Baton.`
+        }
+      ]
+    };
+  }
+
+  private async planRetrospectivePrompt(args: any): Promise<{ messages: any[] }> {
+    const { project_id, plan_ids } = args;
+
+    // Build where clause based on plan_ids filter
+    const whereClause: any = { projectId: project_id };
+    if (plan_ids && plan_ids.length > 0) {
+      whereClause.id = { in: plan_ids };
+    }
+
+    // Fetch project, plans, and related tasks separately
+    const project = await this.prisma.project.findUnique({
+      where: { id: project_id }
+    });
+
+    if (!project) {
+      throw new Error(`Project with ID ${project_id} not found`);
+    }
+
+    const plans = await this.prisma.claudeCodePlan.findMany({
+      where: whereClause,
+      orderBy: { capturedAt: 'desc' }
+    });
+
+    const planTasks = await this.prisma.task.findMany({
+      where: {
+        projectId: project_id,
+        labels: { contains: 'claude-plan' }
+      },
+      include: {
+        assignee: { select: { name: true } }
+      }
+    });
+
+    return {
+      messages: [
+        {
+          role: "system",
+          content: `You are a retrospective facilitation expert specializing in AI-assisted planning analysis. Evaluate the effectiveness of Claude Code plans by analyzing:
+
+1. Plan-to-execution translation success
+2. Plan quality vs. actual outcomes
+3. Planning process effectiveness
+4. Areas where AI planning excelled or fell short
+5. Lessons for improving AI-assisted planning
+6. Strategic insights for better plan utilization
+
+Provide constructive, forward-looking analysis that improves future planning collaboration between humans and AI.`
+        },
+        {
+          role: "user",
+          content: `Conduct a retrospective analysis of Claude Code plans and their outcomes:
+
+**Project:** ${project.name}
+**Plans Analyzed:** ${plans.length}
+**Related Tasks:** ${planTasks.length}
+
+**Plans Under Review:**
+${plans.map((plan: any) => `
+**Plan:** ${plan.title}
+**Status:** ${plan.status}
+**Captured:** ${plan.capturedAt.toDateString()}
+**Content Length:** ${plan.content.length} characters
+**Session:** ${plan.sessionId || 'Unknown'}
+
+**Plan Summary:**
+${plan.content.substring(0, 400)}${plan.content.length > 400 ? '...' : ''}
+---
+`).join('')}
+
+**Associated Tasks:**
+${planTasks.map((task: any) => `
+- ${task.title}
+  Status: ${task.status}
+  Priority: ${task.priority}
+  Assignee: ${task.assignee?.name || 'Unassigned'}
+  Created: ${task.createdAt.toDateString()}
+  ${task.completedAt ? `Completed: ${task.completedAt.toDateString()}` : 'Not completed'}
+`).join('')}
+
+Please provide a comprehensive retrospective analysis:
+
+1. **Plan Effectiveness Assessment**
+   - How well did plans translate to actual work?
+   - Which plans were most/least successful?
+   - Quality vs. execution correlation
+
+2. **Planning Process Evaluation**
+   - Strengths of the AI-assisted planning approach
+   - Areas where human oversight was crucial
+   - Gaps between planning and execution
+
+3. **Outcome Analysis**
+   - Successful plan implementations
+   - Plans that didn't translate well to tasks
+   - Unexpected outcomes or discoveries
+
+4. **Lessons Learned**
+   - What worked well in the planning process
+   - What could be improved
+   - Patterns in successful vs. unsuccessful plans
+
+5. **Recommendations for Future Planning**
+   - Process improvements
+   - Plan quality enhancements
+   - Better plan-to-task translation strategies
+   - Collaboration improvements between AI and human planning
+
+6. **Strategic Insights**
+   - How AI planning fits into overall project management
+   - Optimal use cases for Claude Code plan mode
+   - Integration with traditional project management practices
+
+Focus on actionable insights that will improve future AI-assisted planning sessions and project outcomes.`
         }
       ]
     };

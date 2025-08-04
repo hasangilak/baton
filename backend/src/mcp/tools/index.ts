@@ -175,10 +175,75 @@ export class BatonToolProvider {
         }
       },
 
-      // MCP Plan Management Tools
+      // Claude Code Plans Integration Tools
       {
-        name: "create_mcp_plan",
-        description: "Create a new MCP plan with tasks from an AI agent",
+        name: "PlanRead",
+        description: "Read all Claude Code plans for the current project. 60s timeoute, if claude code chokes on this command retry",
+        inputSchema: {
+          type: "object",
+          properties: {
+            projectId: {
+              type: "string",
+              description: "Baton Project ID is required, call detect workspace project and get the projectId"
+            }
+          },
+          required: ["projectId"]
+        }
+      },
+      {
+        name: "PlanWrite",
+        description: "Write/update Claude Code plans for the current project. 60s timeoute, if claude code chokes on this command retry",
+        inputSchema: {
+          type: "object",
+          properties: {
+            plans: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: {
+                    type: "string",
+                    description: "Unique identifier for the plan"
+                  },
+                  title: {
+                    type: "string",
+                    description: "Plan title"
+                  },
+                  content: {
+                    type: "string",
+                    description: "Plan content/description"
+                  },
+                  status: {
+                    type: "string",
+                    enum: ["accepted", "implemented", "archived"],
+                    description: "Plan status"
+                  },
+                  sessionId: {
+                    type: "string",
+                    description: "Claude Code session ID (optional)"
+                  },
+                  metadata: {
+                    type: "object",
+                    description: "Additional plan metadata (optional)"
+                  }
+                },
+                required: ["id", "title", "content", "status"]
+              },
+              description: "Array of plans to write/update"
+            },
+            projectId: {
+              type: "string",
+              description: "Baton Project ID is required, call detect workspace project and get the projectId"
+            }
+          },
+          required: ["plans", "projectId"]
+        }
+      },
+
+      // Legacy MCP Plan Management Tools (Deprecated)
+      {
+        name: "create_legacy_mcp_plan",
+        description: "DEPRECATED: Create a new legacy MCP plan with tasks from an AI agent. Use PlanWrite for Claude Code plans instead.",
         inputSchema: {
           type: "object",
           properties: {
@@ -220,8 +285,8 @@ export class BatonToolProvider {
         }
       },
       {
-        name: "convert_mcp_plan",
-        description: "Convert MCP plan tasks to regular project tasks",
+        name: "convert_legacy_mcp_plan",
+        description: "DEPRECATED: Convert legacy MCP plan tasks to regular project tasks. Use PlanWrite and sync tools for Claude Code plans instead.",
         inputSchema: {
           type: "object",
           properties: {
@@ -276,13 +341,13 @@ export class BatonToolProvider {
       // Claude Code Integration Tools
       {
         name: "TodoRead",
-        description: "Read all todos for the current project from Claude Code integration",
+        description: "Read all todos for the current project from Claude Code integration. 30s timeoute, if claude code chokes on this command retry",
         inputSchema: {
           type: "object",
           properties: {
             projectId: {
               type: "string",
-              description: "Baton Project ID is required, if its not in the context call detect workspace project and get the projectId"
+              description: "Baton Project ID is required, call detect workspace project and get the projectId"
             }
           },
           required: ["projectId"]
@@ -290,7 +355,7 @@ export class BatonToolProvider {
       },
       {
         name: "TodoWrite",
-        description: "Write/update todos for Claude Code integration",
+        description: "Write/update todos for Claude Code integration. 30s timeoute, if claude code chokes on this command retry",
         inputSchema: {
           type: "object",
           properties: {
@@ -324,7 +389,7 @@ export class BatonToolProvider {
             },
             projectId: {
               type: "string",
-              description: "Baton Project ID is required, if its not in the context call detect workspace project and get the projectId"
+              description: "Baton Project ID is required, call detect workspace project and get the projectId"
             }
           },
           required: ["todos", "projectId"]
@@ -410,9 +475,13 @@ export class BatonToolProvider {
         return this.updateTask(args, projectId);
       case "move_task":
         return this.moveTask(args);
-      case "create_mcp_plan":
+      case "PlanRead":
+        return this.planRead(args);
+      case "PlanWrite":
+        return this.planWrite(args);
+      case "create_legacy_mcp_plan":
         return this.createMCPPlan(args);
-      case "convert_mcp_plan":
+      case "convert_legacy_mcp_plan":
         return this.convertMCPPlan(args);
       case "get_project_analytics":
         return this.getProjectAnalytics(args);
@@ -1260,6 +1329,171 @@ export class BatonToolProvider {
         success: false,
         count: 0,
         error: `Failed to write todos: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+    }
+  }
+
+  private async planRead(args: any): Promise<any> {
+    try {
+      const { projectId } = args;
+      
+      // ProjectId is now required - no fallback detection
+      if (!projectId) {
+        return {
+          success: false,
+          plans: [],
+          error: "projectId is required. Backend runs in Docker and cannot detect workspace automatically."
+        };
+      }
+      
+      // Validate project exists
+      const project = await this.prisma.project.findUnique({
+        where: { id: projectId },
+        select: { id: true, name: true }
+      });
+      
+      if (!project) {
+        return {
+          success: false,
+          plans: [],
+          error: `Project with ID '${projectId}' not found. Please verify the project ID is correct.`
+        };
+      }
+      
+      console.log(`✅ Reading plans for project: ${project.name} (${project.id})`);
+
+      // Fetch all Claude Code plans for the project
+      const claudeCodePlans = await this.prisma.claudeCodePlan.findMany({
+        where: { projectId },
+        orderBy: { capturedAt: 'desc' }
+      });
+
+      // Transform to Claude Code format
+      const plans = claudeCodePlans.map((plan: any) => ({
+        id: plan.id,
+        title: plan.title,
+        content: plan.content,
+        status: plan.status,
+        sessionId: plan.sessionId,
+        capturedAt: plan.capturedAt.toISOString(),
+        metadata: plan.metadata
+      }));
+
+      return { plans };
+    } catch (error) {
+      return {
+        plans: [],
+        error: `Failed to read plans: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+    }
+  }
+
+  private async planWrite(args: any): Promise<any> {
+    try {
+      const { plans, projectId } = args;
+      
+      // ProjectId is now required - no fallback detection
+      if (!projectId) {
+        return {
+          success: false,
+          count: 0,
+          error: "projectId is required. Backend runs in Docker and cannot detect workspace automatically."
+        };
+      }
+      
+      // Validate project exists
+      const project = await this.prisma.project.findUnique({
+        where: { id: projectId },
+        select: { id: true, name: true }
+      });
+      
+      if (!project) {
+        return {
+          success: false,
+          count: 0,
+          error: `Project with ID '${projectId}' not found. Please verify the project ID is correct.`
+        };
+      }
+      
+      console.log(`✅ Using project: ${project.name} (${project.id})`);
+
+      // Use transaction to ensure data consistency
+      const result = await this.prisma.$transaction(async (tx) => {
+        // First, get existing plans to track what needs to be deleted
+        const existingPlans = await (tx as any).claudeCodePlan.findMany({
+          where: { projectId },
+          select: { id: true }
+        });
+        
+        const existingIds = existingPlans.map((p: any) => p.id);
+        const newIds = plans.map((p: any) => p.id);
+        
+        // Delete plans that are no longer in the new list
+        const idsToDelete = existingIds.filter((id: any) => !newIds.includes(id));
+        if (idsToDelete.length > 0) {
+          await (tx as any).claudeCodePlan.deleteMany({
+            where: {
+              id: { in: idsToDelete },
+              projectId
+            }
+          });
+        }
+
+        // Upsert each plan
+        let processedCount = 0;
+        for (const plan of plans) {
+          await (tx as any).claudeCodePlan.upsert({
+            where: { id: plan.id },
+            update: {
+              title: plan.title,
+              content: plan.content,
+              status: plan.status,
+              sessionId: plan.sessionId,
+              metadata: plan.metadata || {},
+              updatedAt: new Date()
+            },
+            create: {
+              id: plan.id,
+              title: plan.title,
+              content: plan.content,
+              status: plan.status,
+              projectId,
+              sessionId: plan.sessionId,
+              capturedAt: new Date(),
+              metadata: plan.metadata || {}
+            }
+          });
+          processedCount++;
+        }
+        
+        return processedCount;
+      });
+
+      // Emit WebSocket event after successful database transaction
+      if (this.io) {
+        try {
+          this.io.to(`project-${projectId}`).emit('claude-mcp-operation-completed', {
+            projectId,
+            operation: 'PlanWrite',
+            count: result,
+            action: 'plans-updated'
+          });
+        } catch (wsError) {
+          console.error('Failed to emit WebSocket event for claude-mcp-operation-completed:', wsError);
+          // Don't throw - WebSocket failure shouldn't break the main operation
+        }
+      }
+
+      return {
+        success: true,
+        count: result,
+        message: `Successfully processed ${result} plans`
+      };
+    } catch (error) {
+      return {
+        success: false,
+        count: 0,
+        error: `Failed to write plans: ${error instanceof Error ? error.message : 'Unknown error'}`
       };
     }
   }
