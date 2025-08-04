@@ -136,7 +136,15 @@ baton/
 - `POST /api/mcp/agents` - Register a new AI agent
 - `GET /api/mcp/plans` - Get AI-generated plans
 - `POST /api/mcp/plans` - Create a plan from AI agent
-- `POST /api/mcp/plans/:id/convert` - Convert plan to tasks
+- `POST /api/mcp/plans/:id/convert` - Convert plan to tasks  
+- `GET /api/mcp/connection` - Get MCP WebSocket connection URLs with project context
+
+### Claude Code Integration
+- `GET /api/claude-todos?projectId=:id` - Get Claude Code todos for a project
+- `POST /api/claude-todos` - Create or update Claude Code todos
+- `DELETE /api/claude-todos/:id` - Delete a specific Claude Code todo
+- `POST /api/claude-todos/sync-to-tasks` - Sync Claude Code todos to Baton tasks
+- `POST /api/claude-todos/sync-from-tasks` - Sync Baton tasks to Claude Code todos
 
 ## 🤖 AI Editor Integration
 
@@ -146,8 +154,10 @@ Baton includes a **fully compliant Model Context Protocol (MCP) server** with wo
 
 - ✅ **Workspace Context Detection** - Automatically detects which project you're working on
 - ✅ **True MCP Compliance** - JSON-RPC 2.0 with WebSocket & STDIO transport
+- ✅ **Claude Code Integration** - TodoRead/TodoWrite tools with bidirectional sync
+- ✅ **Plan Mode Support** - Seamless integration with Claude Code plan mode and todo lists
 - ✅ **9 Resources** - Projects, tasks, kanban boards, analytics, and workspace context
-- ✅ **11 Tools** - Create tasks, manage projects, get analytics, workspace management
+- ✅ **15 Tools** - Create tasks, manage projects, Claude Code todos, bidirectional sync
 - ✅ **8 Prompts** - Project planning, task breakdown, retrospectives, risk assessment
 
 ### 🔧 Editor Integration
@@ -196,6 +206,8 @@ Baton includes a **fully compliant Model Context Protocol (MCP) server** with wo
 - **Create Tasks**: "Add a task to implement user authentication"
 - **Project Analytics**: "What's the status of my current project?"
 - **Planning**: "Create a project plan for a new feature"
+- **Todo Lists**: Claude Code plan mode automatically syncs with Baton
+- **Bidirectional Sync**: "Sync my current todos to Baton tasks"
 
 </details>
 
@@ -341,6 +353,10 @@ echo '{"jsonrpc":"2.0","id":1,"method":"resources/list"}' | node dist/mcp-server
 - `get_project_analytics` - Project insights
 - `get_workspace_info` - Current workspace context
 - `associate_workspace_project` - Link workspace to project
+- `TodoRead` - Read Claude Code todos for current project
+- `TodoWrite` - Write/update Claude Code todos
+- `sync_todos_to_tasks` - Convert Claude todos to Baton tasks
+- `sync_tasks_to_todos` - Convert Baton tasks to Claude todos
 
 </details>
 
@@ -586,6 +602,8 @@ For support and questions:
 - [x] **TanStack Query Integration** - Modern state management with caching
 - [x] **Docker Production Deployment** - One-command deployment with health checks
 - [x] **MCP Server Compliance** - Full Model Context Protocol implementation
+- [x] **Claude Code Integration** - TodoRead/TodoWrite tools with plan mode support
+- [x] **Bidirectional Sync** - Claude todos ↔ Baton tasks synchronization
 - [ ] User authentication and authorization
 - [ ] Advanced MCP integrations with more AI editors
 - [ ] Mobile application with React Native

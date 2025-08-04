@@ -151,3 +151,65 @@ export interface UpdateTaskRequest {
   labels?: string[];
   order?: number;
 }
+
+// Claude Code Integration Types
+export type ClaudeTodoStatus = 'pending' | 'in_progress' | 'completed';
+export type ClaudeTodoPriority = 'high' | 'medium' | 'low';
+
+export interface ClaudeTodo {
+  id: string;
+  content: string;
+  status: ClaudeTodoStatus;
+  priority: ClaudeTodoPriority;
+  projectId: string;
+  createdAt: string;
+  updatedAt: string;
+  metadata?: any;
+  syncedTaskId?: string;
+  orderIndex: number;
+  createdBy: 'claude' | 'human' | 'system' | 'api';
+  project?: {
+    name: string;
+    color: string;
+  };
+  syncedTask?: {
+    id: string;
+    title: string;
+    status: TaskStatus;
+    priority: TaskPriority;
+  };
+}
+
+export interface CreateClaudeTodosRequest {
+  projectId: string;
+  todos: {
+    id: string;
+    content: string;
+    status: ClaudeTodoStatus;
+    priority: ClaudeTodoPriority;
+    metadata?: any;
+  }[];
+}
+
+export interface SyncTodosToTasksRequest {
+  projectId: string;
+  todoIds?: string[];
+}
+
+export interface SyncTasksToTodosRequest {
+  projectId: string;
+  taskIds?: string[];
+}
+
+export interface ClaudeTodosResponse {
+  todos: ClaudeTodo[];
+  count: number;
+}
+
+export interface SyncResponse {
+  success: boolean;
+  syncedCount: number;
+  message: string;
+  syncedTasks?: Task[];
+  syncedTodos?: ClaudeTodo[];
+}

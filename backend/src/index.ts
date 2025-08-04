@@ -9,6 +9,7 @@ import { logger } from './middleware/logger';
 import projectRoutes from './routes/projects';
 import taskRoutes from './routes/tasks';
 import mcpRoutes from './routes/mcp';
+import claudeTodosRoutes from './routes/claude-todos';
 
 dotenv.config();
 
@@ -36,6 +37,7 @@ app.use(logger);
 app.use('/api/projects', projectRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/mcp', mcpRoutes);
+app.use('/api/claude-todos', claudeTodosRoutes);
 
 // Health check
 app.get('/health', (_req, res) => {

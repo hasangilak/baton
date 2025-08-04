@@ -32,3 +32,13 @@ export {
   useConvertMCPPlan,
   useDeleteMCPPlan,
 } from './useMCPPlans';
+
+// Claude Code Integration hooks
+export {
+  useClaudeTodos,
+  useCreateClaudeTodos,
+  useDeleteClaudeTodo,
+  useSyncTodosToTasks,
+  useSyncTasksToTodos,
+  claudeTodosKeys,
+} from './useClaudeTodos';

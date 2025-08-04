@@ -7,7 +7,12 @@ import type {
   CreateProjectRequest, 
   UpdateProjectRequest,
   CreateTaskRequest,
-  UpdateTaskRequest 
+  UpdateTaskRequest,
+  ClaudeTodosResponse,
+  CreateClaudeTodosRequest,
+  SyncTodosToTasksRequest,
+  SyncTasksToTodosRequest,
+  SyncResponse
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -185,6 +190,93 @@ class ApiService {
       method: 'DELETE',
     });
   }
+
+  // Claude Code Integration
+  async getClaudeTodos(projectId: string): Promise<ClaudeTodosResponse> {
+    const response = await fetch(`${API_BASE_URL}/api/claude-todos?projectId=${projectId}`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch Claude todos');
+    }
+    return response.json();
+  }
+
+  async createClaudeTodos(data: CreateClaudeTodosRequest): Promise<ClaudeTodosResponse> {
+    const response = await fetch(`${API_BASE_URL}/api/claude-todos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to create Claude todos');
+    }
+    return response.json();
+  }
+
+  async deleteClaudeTodo(todoId: string): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(`${API_BASE_URL}/api/claude-todos/${todoId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to delete Claude todo');
+    }
+    return response.json();
+  }
+
+  async syncTodosToTasks(data: SyncTodosToTasksRequest): Promise<SyncResponse> {
+    const response = await fetch(`${API_BASE_URL}/api/claude-todos/sync-to-tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to sync todos to tasks');
+    }
+    return response.json();
+  }
+
+  async syncTasksToTodos(data: SyncTasksToTodosRequest): Promise<SyncResponse> {
+    const response = await fetch(`${API_BASE_URL}/api/claude-todos/sync-from-tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to sync tasks to todos');
+    }
+    return response.json();
+  }
+
+  // Generic HTTP methods for hooks compatibility
+  async get(endpoint: string) {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`);
+    if (!response.ok) {
+      throw new Error(`GET ${endpoint} failed`);
+    }
+    return { data: await response.json() };
+  }
+
+  async post(endpoint: string, data: any) {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      throw new Error(`POST ${endpoint} failed`);
+    }
+    return { data: await response.json() };
+  }
+
+  async delete(endpoint: string) {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error(`DELETE ${endpoint} failed`);
+    }
+    return { data: await response.json() };
+  }
 }
 
 export const apiService = new ApiService();
+export const api = apiService; // For compatibility with hooks

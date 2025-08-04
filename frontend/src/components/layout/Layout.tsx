@@ -1,16 +1,30 @@
 import React, { useState } from 'react';
 import { Sidebar } from './Sidebar';
+import { ProjectSidebar } from './ProjectSidebar';
 import { Header } from './Header';
 
 interface LayoutProps {
   children: React.ReactNode;
+  currentProjectId?: string;
+  onProjectChange?: (projectId: string) => void;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children }) => {
+export const Layout: React.FC<LayoutProps> = ({ 
+  children, 
+  currentProjectId, 
+  onProjectChange 
+}) => {
   const [currentSection, setCurrentSection] = useState('tasks');
 
   return (
     <div className="flex h-screen bg-gray-50">
+      {/* Projects Sidebar (Black) */}
+      <ProjectSidebar 
+        currentProjectId={currentProjectId}
+        onProjectChange={onProjectChange || (() => {})}
+      />
+      
+      {/* Main Sidebar (White) */}
       <Sidebar 
         currentSection={currentSection} 
         onSectionChange={setCurrentSection} 

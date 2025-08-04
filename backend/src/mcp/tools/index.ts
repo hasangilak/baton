@@ -272,6 +272,82 @@ export class BatonToolProvider {
           }
         }
       },
+
+      // Claude Code Integration Tools
+      {
+        name: "TodoRead",
+        description: "Read all todos for the current project from Claude Code integration",
+        inputSchema: {
+          type: "object",
+          properties: {}
+        }
+      },
+      {
+        name: "TodoWrite",
+        description: "Write/update todos for Claude Code integration",
+        inputSchema: {
+          type: "object",
+          properties: {
+            todos: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: {
+                    type: "string",
+                    description: "Unique identifier for the todo"
+                  },
+                  content: {
+                    type: "string",
+                    description: "Todo content/description"
+                  },
+                  status: {
+                    type: "string",
+                    enum: ["pending", "in_progress", "completed"],
+                    description: "Todo status"
+                  },
+                  priority: {
+                    type: "string",
+                    enum: ["high", "medium", "low"],
+                    description: "Todo priority"
+                  }
+                },
+                required: ["id", "content", "status", "priority"]
+              },
+              description: "Array of todos to write/update"
+            }
+          },
+          required: ["todos"]
+        }
+      },
+      {
+        name: "sync_todos_to_tasks",
+        description: "Sync Claude Code todos to Baton tasks for the current project",
+        inputSchema: {
+          type: "object",
+          properties: {
+            todoIds: {
+              type: "array", 
+              items: { type: "string" },
+              description: "Specific todo IDs to sync (optional, syncs all if not provided)"
+            }
+          }
+        }
+      },
+      {
+        name: "sync_tasks_to_todos",
+        description: "Sync Baton tasks to Claude Code todos for the current project",
+        inputSchema: {
+          type: "object",
+          properties: {
+            taskIds: {
+              type: "array",
+              items: { type: "string" },
+              description: "Specific task IDs to sync (optional, syncs all if not provided)"
+            }
+          }
+        }
+      },
       
       // Workspace Management Tools
       {
@@ -323,6 +399,14 @@ export class BatonToolProvider {
         return this.associateWorkspaceProject(args);
       case "get_workspace_info":
         return this.getWorkspaceInfo(args);
+      case "TodoRead":
+        return this.todoRead(args);
+      case "TodoWrite":
+        return this.todoWrite(args);
+      case "sync_todos_to_tasks":
+        return this.syncTodosToTasks(args);
+      case "sync_tasks_to_todos":
+        return this.syncTasksToTodos(args);
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -983,6 +1067,356 @@ export class BatonToolProvider {
       return {
         success: false,
         message: `Error getting workspace info: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+    }
+  }
+
+  private async todoRead(_args: any): Promise<any> {
+    try {
+      // Get current project ID from workspace manager
+      let currentProjectId: string | null = null;
+      
+      if (this.workspaceManager) {
+        currentProjectId = await this.workspaceManager.detectCurrentProject();
+      }
+      
+      if (!currentProjectId) {
+        return {
+          todos: [],
+          message: "No project associated with current workspace. Use 'associate_workspace_project' to link workspace to a project."
+        };
+      }
+
+      // Fetch all claude todos for the current project
+      const claudeTodos = await this.prisma.claudeTodo.findMany({
+        where: { projectId: currentProjectId },
+        orderBy: { orderIndex: 'asc' }
+      });
+
+      // Transform to Claude Code format
+      const todos = claudeTodos.map(todo => ({
+        id: todo.id,
+        content: todo.content,
+        status: todo.status,
+        priority: todo.priority
+      }));
+
+      return { todos };
+    } catch (error) {
+      return {
+        todos: [],
+        error: `Failed to read todos: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+    }
+  }
+
+  private async todoWrite(args: any): Promise<any> {
+    try {
+      const { todos } = args;
+      
+      // Get current project ID from workspace manager
+      let currentProjectId: string | null = null;
+      
+      if (this.workspaceManager) {
+        currentProjectId = await this.workspaceManager.detectCurrentProject();
+      }
+      
+      if (!currentProjectId) {
+        return {
+          success: false,
+          count: 0,
+          message: "No project associated with current workspace. Use 'associate_workspace_project' to link workspace to a project."
+        };
+      }
+
+      // Use transaction to ensure data consistency
+      const result = await this.prisma.$transaction(async (tx) => {
+        // First, get existing todos to track what needs to be deleted
+        const existingTodos = await tx.claudeTodo.findMany({
+          where: { projectId: currentProjectId! },
+          select: { id: true }
+        });
+        
+        const existingIds = existingTodos.map(t => t.id);
+        const newIds = todos.map((t: any) => t.id);
+        
+        // Delete todos that are no longer in the new list
+        const idsToDelete = existingIds.filter(id => !newIds.includes(id));
+        if (idsToDelete.length > 0) {
+          await tx.claudeTodo.deleteMany({
+            where: {
+              id: { in: idsToDelete },
+              projectId: currentProjectId!
+            }
+          });
+        }
+
+        // Upsert each todo
+        let processedCount = 0;
+        for (let i = 0; i < todos.length; i++) {
+          const todo = todos[i];
+          await tx.claudeTodo.upsert({
+            where: { id: todo.id },
+            update: {
+              content: todo.content,
+              status: todo.status,
+              priority: todo.priority,
+              orderIndex: i,
+              updatedAt: new Date()
+            },
+            create: {
+              id: todo.id,
+              content: todo.content,
+              status: todo.status,
+              priority: todo.priority,
+              projectId: currentProjectId!,
+              orderIndex: i,
+              createdBy: 'claude'
+            }
+          });
+          processedCount++;
+        }
+        
+        return processedCount;
+      });
+
+      return {
+        success: true,
+        count: result,
+        message: `Successfully processed ${result} todos`
+      };
+    } catch (error) {
+      return {
+        success: false,
+        count: 0,
+        error: `Failed to write todos: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+    }
+  }
+
+  private async syncTodosToTasks(args: any): Promise<any> {
+    try {
+      const { todoIds } = args;
+      
+      // Get current project ID from workspace manager
+      let currentProjectId: string | null = null;
+      
+      if (this.workspaceManager) {
+        currentProjectId = await this.workspaceManager.detectCurrentProject();
+      }
+      
+      if (!currentProjectId) {
+        return {
+          success: false,
+          message: "No project associated with current workspace. Use 'associate_workspace_project' to link workspace to a project."
+        };
+      }
+
+      // Build where clause based on todoIds filter
+      const whereClause: any = { projectId: currentProjectId };
+      if (todoIds && todoIds.length > 0) {
+        whereClause.id = { in: todoIds };
+      }
+
+      // Fetch todos to sync
+      const claudeTodos = await this.prisma.claudeTodo.findMany({
+        where: whereClause,
+        orderBy: { orderIndex: 'asc' }
+      });
+
+      if (claudeTodos.length === 0) {
+        return {
+          success: true,
+          syncedCount: 0,
+          message: "No todos found to sync"
+        };
+      }
+
+      // Convert todos to tasks in a transaction
+      const syncedTasks = await this.prisma.$transaction(async (tx) => {
+        const tasks = [];
+        
+        for (const todo of claudeTodos) {
+          // Skip if already synced to a task
+          if (todo.syncedTaskId) {
+            continue;
+          }
+
+          // Map Claude Code status to Baton task status
+          let batonStatus = 'todo';
+          if (todo.status === 'in_progress') batonStatus = 'in_progress';
+          if (todo.status === 'completed') batonStatus = 'done';
+
+          // Get next order for the status column
+          const lastTask = await tx.task.findFirst({
+            where: { projectId: currentProjectId!, status: batonStatus },
+            orderBy: { order: 'desc' }
+          });
+
+          const nextOrder = lastTask ? lastTask.order + 1 : 0;
+
+          // Create the task
+          const task = await tx.task.create({
+            data: {
+              title: `[Claude] ${todo.content}`,
+              description: `Synced from Claude Code todo (ID: ${todo.id})`,
+              status: batonStatus,
+              priority: todo.priority,
+              projectId: currentProjectId!,
+              createdById: 'user_default',
+              order: nextOrder,
+              labels: JSON.stringify(['claude-sync', `todo:${todo.id}`])
+            },
+            include: {
+              assignee: {
+                select: { id: true, name: true, email: true, avatar: true }
+              },
+              createdBy: {
+                select: { id: true, name: true, email: true, avatar: true }
+              },
+              project: {
+                select: { id: true, name: true, color: true }
+              }
+            }
+          });
+
+          // Update the todo to link it to the task
+          await tx.claudeTodo.update({
+            where: { id: todo.id },
+            data: { syncedTaskId: task.id }
+          });
+
+          tasks.push({
+            ...task,
+            labels: task.labels ? JSON.parse(task.labels) : []
+          });
+        }
+        
+        return tasks;
+      });
+
+      return {
+        success: true,
+        syncedCount: syncedTasks.length,
+        syncedTasks,
+        message: `Successfully synced ${syncedTasks.length} todos to tasks`
+      };
+    } catch (error) {  
+      return {
+        success: false,
+        syncedCount: 0,
+        error: `Failed to sync todos to tasks: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+    }
+  }
+
+  private async syncTasksToTodos(args: any): Promise<any> {
+    try {
+      const { taskIds } = args;
+      
+      // Get current project ID from workspace manager
+      let currentProjectId: string | null = null;
+      
+      if (this.workspaceManager) {
+        currentProjectId = await this.workspaceManager.detectCurrentProject();
+      }
+      
+      if (!currentProjectId) {
+        return {
+          success: false,
+          message: "No project associated with current workspace. Use 'associate_workspace_project' to link workspace to a project."
+        };
+      }
+
+      // Build where clause based on taskIds filter
+      const whereClause: any = { projectId: currentProjectId };
+      if (taskIds && taskIds.length > 0) {
+        whereClause.id = { in: taskIds };
+      }
+
+      // Fetch tasks to sync
+      const batonTasks = await this.prisma.task.findMany({
+        where: whereClause,
+        orderBy: { order: 'asc' }
+      });
+
+      if (batonTasks.length === 0) {
+        return {
+          success: true,
+          syncedCount: 0,
+          message: "No tasks found to sync"
+        };
+      }
+
+      // Convert tasks to todos in a transaction
+      const syncedTodos = await this.prisma.$transaction(async (tx) => {
+        const todos = [];
+        
+        for (let i = 0; i < batonTasks.length; i++) {
+          const task = batonTasks[i];
+          if (!task) continue;
+          
+          // Check if task is already synced from a Claude todo
+          const existingTodo = await tx.claudeTodo.findFirst({
+            where: { syncedTaskId: task.id }
+          });
+
+          if (existingTodo) {
+            // Update existing linked todo
+            const updatedTodo = await tx.claudeTodo.update({
+              where: { id: existingTodo.id },
+              data: {
+                content: task.title,
+                status: task.status === 'done' ? 'completed' : 
+                       task.status === 'in_progress' ? 'in_progress' : 'pending',
+                priority: task.priority,
+                orderIndex: i,
+                updatedAt: new Date()
+              }
+            });
+            todos.push(updatedTodo);
+          } else {
+            // Create new todo for this task
+            const todoId = `task-${task.id}-${Date.now()}`;
+            const newTodo = await tx.claudeTodo.create({
+              data: {
+                id: todoId,
+                content: task.title,
+                status: task.status === 'done' ? 'completed' : 
+                       task.status === 'in_progress' ? 'in_progress' : 'pending',
+                priority: task.priority,
+                projectId: currentProjectId!,
+                orderIndex: i,
+                createdBy: 'system',
+                syncedTaskId: task.id
+              }
+            });
+            todos.push(newTodo);
+          }
+        }
+        
+        return todos;
+      });
+
+      // Transform to Claude Code format for response
+      const claudeFormattedTodos = syncedTodos.map(todo => ({
+        id: todo.id,
+        content: todo.content,
+        status: todo.status,
+        priority: todo.priority
+      }));
+
+      return {
+        success: true,
+        syncedCount: syncedTodos.length,
+        syncedTodos: claudeFormattedTodos,
+        message: `Successfully synced ${syncedTodos.length} tasks to todos`
+      };
+    } catch (error) {
+      return {
+        success: false,
+        syncedCount: 0,
+        error: `Failed to sync tasks to todos: ${error instanceof Error ? error.message : 'Unknown error'}`
       };
     }
   }

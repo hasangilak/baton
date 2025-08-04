@@ -40,6 +40,7 @@ model Project {
   owner            User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   tasks            Task[]
   mcpPlans         MCPPlan[]
+  claudeTodos      ClaudeTodo[]
   workspaceMappings WorkspaceMapping[]
 
   @@map("projects")
@@ -63,10 +64,11 @@ model Task {
   commentCount Int       @default(0)
 
   // Relations
-  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  assignee  User?     @relation("TaskAssignee", fields: [assigneeId], references: [id])
-  createdBy User      @relation("TaskCreator", fields: [createdById], references: [id])
-  comments  Comment[]
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee    User?        @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  createdBy   User         @relation("TaskCreator", fields: [createdById], references: [id])
+  comments    Comment[]
+  claudeTodos ClaudeTodo[] @relation("ClaudeTodoSync")
 
   @@map("tasks")
 }
@@ -136,6 +138,30 @@ model MCPTask {
   plan MCPPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
 
   @@map("mcp_tasks")
+}
+
+model ClaudeTodo {
+  id           String    @id
+  content      String
+  status       String    // pending, in_progress, completed
+  priority     String    // high, medium, low
+  projectId    String    @map("project_id")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  metadata     Json?
+  syncedTaskId String?   @map("synced_task_id")
+  orderIndex   Int       @default(0) @map("order_index")
+  createdBy    String    @default("claude") @map("created_by") // claude, human, system
+
+  // Relations
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  syncedTask Task?   @relation("ClaudeTodoSync", fields: [syncedTaskId], references: [id], onDelete: SetNull)
+
+  @@map("claude_todos")
+  @@index([projectId])
+  @@index([status])
+  @@index([priority])
+  @@index([orderIndex])
 }
 
 model WorkspaceMapping {

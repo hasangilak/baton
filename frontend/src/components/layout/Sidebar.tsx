@@ -7,7 +7,9 @@ import {
   Users, 
   Settings, 
   HelpCircle,
-  Bot
+  Bot,
+  ArrowUpDown,
+  ListTodo
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -24,6 +26,8 @@ const mainNavItems = [
 
 const teamNavItems = [
   { id: 'tasks', label: 'Tasks', icon: FolderOpen },
+  { id: 'claude-todos', label: 'Claude Todos', icon: ListTodo },
+  { id: 'sync', label: 'Sync Panel', icon: ArrowUpDown },
   { id: 'docs', label: 'Docs', icon: FolderOpen },
   { id: 'meeting', label: 'Meeting', icon: Users },
 ];
