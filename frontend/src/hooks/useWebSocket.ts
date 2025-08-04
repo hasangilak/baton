@@ -31,7 +31,7 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
 
   const connect = useCallback(() => {
     // Prevent multiple connections
-    if (socketRef.current?.connected || socketRef.current?.connecting) return;
+    if (socketRef.current?.connected) return;
 
     setState(prev => ({ ...prev, connecting: true, error: null }));
 
@@ -227,7 +227,7 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
     return () => {
       isEffectActive = false;
       // In development with strict mode, delay disconnection to avoid premature cleanup
-      if (process.env.NODE_ENV === 'development') {
+      if (import.meta.env.DEV) {
         setTimeout(() => {
           if (!isEffectActive) {
             disconnect();

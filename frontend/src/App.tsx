@@ -9,6 +9,7 @@ import { queryClient } from './lib/queryClient';
 import { useProjects } from './hooks/useProjects';
 import { useWebSocket } from './hooks/useWebSocket';
 import { ToastProvider } from './hooks/useToast';
+import { ThemeProvider } from './hooks/useTheme';
 
 function AppContent() {
   const { data: projects } = useProjects();
@@ -28,6 +29,8 @@ function AppContent() {
         leaveProject(activeProjectId);
       };
     }
+    // Explicit return for when condition is not met
+    return undefined;
   }, [connected, activeProjectId, joinProject, leaveProject]);
 
   return (
@@ -69,11 +72,13 @@ function AppContent() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <ToastProvider>
-        <AppContent />
-        {/* React Query DevTools - only shows in development */}
-        <ReactQueryDevtools initialIsOpen={false} />
-      </ToastProvider>
+      <ThemeProvider>
+        <ToastProvider>
+          <AppContent />
+          {/* React Query DevTools - only shows in development */}
+          <ReactQueryDevtools initialIsOpen={false} />
+        </ToastProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

@@ -4,7 +4,29 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React + TS</title>
+    <title>Baton - AI-Powered Task Management</title>
+    <script>
+      (function() {
+        function getStoredTheme() {
+          try {
+            return localStorage.getItem('baton-theme');
+          } catch (e) {
+            return null;
+          }
+        }
+        
+        function getSystemTheme() {
+          return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        
+        const storedTheme = getStoredTheme();
+        const theme = storedTheme || 'auto';
+        const resolvedTheme = theme === 'auto' ? getSystemTheme() : theme;
+        
+        document.documentElement.classList.remove('light', 'dark');
+        document.documentElement.classList.add(resolvedTheme);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
