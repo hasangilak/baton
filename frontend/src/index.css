@@ -205,6 +205,26 @@
     grid-area: main-content;
   }
 
+  /* Collapsible Sidebar Styles */
+  .sidebar-collapsed {
+    min-width: 4rem;
+    max-width: 4rem;
+  }
+
+  .sidebar-expanded {
+    min-width: 16rem;
+  }
+
+  /* Smooth transitions for sidebar collapse/expand */
+  .sidebar-transition {
+    transition: width 300ms ease-in-out, min-width 300ms ease-in-out, max-width 300ms ease-in-out;
+  }
+
+  /* Ensure tooltips appear above collapsed sidebars */
+  .sidebar-tooltip {
+    z-index: 50;
+  }
+
   /* Responsive Grid Containers */
   .responsive-grid {
     display: grid;

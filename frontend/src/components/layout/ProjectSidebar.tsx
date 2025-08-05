@@ -9,7 +9,9 @@ import {
   Users,
   Search,
   Edit,
-  Trash2
+  Trash2,
+  SidebarOpen,
+  SidebarClose
 } from 'lucide-react';
 import clsx from 'clsx';
 import { useProjects, useUpdateProject } from '../../hooks/useProjects';
@@ -23,11 +25,15 @@ type FilterType = 'all' | 'starred' | 'shared' | 'archived';
 interface ProjectSidebarProps {
   currentProjectId: string | undefined;
   onProjectChange: (projectId: string) => void;
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
 }
 
 export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({ 
   currentProjectId, 
-  onProjectChange 
+  onProjectChange,
+  isCollapsed = false,
+  onToggleCollapse
 }) => {
   const { data: projects, isLoading } = useProjects();
   const updateProjectMutation = useUpdateProject();
@@ -112,6 +118,28 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   const renderProject = (project: Project) => {
     const isActive = currentProjectId === project.id;
     const taskCount = project._count?.tasks ?? 0;
+
+    if (isCollapsed) {
+      return (
+        <div
+          key={project.id}
+          onClick={() => handleProjectClick(project)}
+          className={clsx(
+            'flex items-center justify-center p-2 rounded-lg cursor-pointer transition-all duration-200',
+            isActive 
+              ? 'bg-gray-800 text-white' 
+              : 'text-gray-300 hover:bg-gray-800 hover:text-white'
+          )}
+          title={`${project.name}${taskCount ? ` (${taskCount} tasks)` : ''}`}
+          data-testid={`project-sidebar-project-${project.id}`}
+        >
+          <div 
+            className="w-4 h-4 rounded-full"
+            style={{ backgroundColor: project.color }}
+          />
+        </div>
+      );
+    }
 
     return (
       <div
@@ -225,101 +253,133 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
   };
 
   return (
-    <aside className="w-72 md:w-64 lg:w-72 bg-gray-900 border-r border-gray-800 flex flex-col h-full">
+    <aside className={clsx(
+      "bg-gray-900 border-r border-gray-800 flex flex-col h-full transition-all duration-300 ease-in-out",
+      isCollapsed ? "w-16" : "w-72 md:w-64 lg:w-72"
+    )}>
       {/* Header */}
-      <div className="p-3 md:p-4 border-b border-gray-800">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
+      <div className={clsx("border-b border-gray-800", isCollapsed ? "p-2" : "p-3 md:p-4")}>
+        <div className={clsx("flex items-center", isCollapsed ? "justify-center" : "justify-between")}>
+          {!isCollapsed && (
+            <div className="flex items-center space-x-3">
+              <FolderOpen className="w-5 h-5 text-gray-400" />
+              <h2 className="text-sm font-semibold text-white">Projects</h2>
+            </div>
+          )}
+          {isCollapsed && (
             <FolderOpen className="w-5 h-5 text-gray-400" />
-            <h2 className="text-sm font-semibold text-white">Projects</h2>
-          </div>
-          <button 
-            onClick={() => setShowCreateModal(true)}
-            className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-            title="Create new project"
-            data-testid="project-sidebar-create-button"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
+          )}
+          {!isCollapsed && (
+            <button 
+              onClick={() => setShowCreateModal(true)}
+              className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+              title="Create new project"
+              data-testid="project-sidebar-create-button"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          )}
         </div>
+        {/* Toggle Button */}
+        {onToggleCollapse && (
+          <button
+            onClick={onToggleCollapse}
+            className={clsx(
+              "mt-3 p-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors",
+              isCollapsed ? "w-full flex justify-center" : "ml-auto flex"
+            )}
+            title={isCollapsed ? "Expand projects sidebar" : "Collapse projects sidebar"}
+            data-testid="project-sidebar-toggle-button"
+          >
+            {isCollapsed ? (
+              <SidebarOpen className="w-4 h-4" />
+            ) : (
+              <SidebarClose className="w-4 h-4" />
+            )}
+          </button>
+        )}
       </div>
 
       {/* Search */}
-      <div className="p-3 md:p-4 border-b border-gray-800">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search projects..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
-            data-testid="project-sidebar-search-input"
-          />
+      {!isCollapsed && (
+        <div className="p-3 md:p-4 border-b border-gray-800">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search projects..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 text-sm"
+              data-testid="project-sidebar-search-input"
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Filters */}
-      <div className="p-3 md:p-4 border-b border-gray-800">
-        <div className="flex flex-wrap gap-2">
-          <button 
-            onClick={() => setCurrentFilter('all')}
-            className={clsx(
-              "flex items-center space-x-2 px-3 py-1.5 text-xs rounded-md transition-colors",
-              currentFilter === 'all'
-                ? "bg-gray-800 text-white"
-                : "text-gray-400 hover:text-white hover:bg-gray-800"
-            )}
-            data-testid="project-sidebar-filter-all"
-          >
-            <FolderOpen className="w-3 h-3" />
-            <span>All</span>
-          </button>
-          <button 
-            onClick={() => setCurrentFilter('starred')}
-            className={clsx(
-              "flex items-center space-x-2 px-3 py-1.5 text-xs rounded-md transition-colors",
-              currentFilter === 'starred'
-                ? "bg-gray-800 text-white"
-                : "text-gray-400 hover:text-white hover:bg-gray-800"
-            )}
-            data-testid="project-sidebar-filter-starred"
-          >
-            <Star className="w-3 h-3" />
-            <span>Starred</span>
-          </button>
-          <button 
-            onClick={() => setCurrentFilter('shared')}
-            className={clsx(
-              "flex items-center space-x-2 px-3 py-1.5 text-xs rounded-md transition-colors",
-              currentFilter === 'shared'
-                ? "bg-gray-800 text-white"
-                : "text-gray-400 hover:text-white hover:bg-gray-800"
-            )}
-            data-testid="project-sidebar-filter-shared"
-          >
-            <Users className="w-3 h-3" />
-            <span>Shared</span>
-          </button>
-          <button 
-            onClick={() => setCurrentFilter('archived')}
-            className={clsx(
-              "flex items-center space-x-2 px-3 py-1.5 text-xs rounded-md transition-colors",
-              currentFilter === 'archived'
-                ? "bg-gray-800 text-white"
-                : "text-gray-400 hover:text-white hover:bg-gray-800"
-            )}
-            data-testid="project-sidebar-filter-archived"
-          >
-            <Archive className="w-3 h-3" />
-            <span>Archived</span>
-          </button>
+      {!isCollapsed && (
+        <div className="p-3 md:p-4 border-b border-gray-800">
+          <div className="flex flex-wrap gap-2">
+            <button 
+              onClick={() => setCurrentFilter('all')}
+              className={clsx(
+                "flex items-center space-x-2 px-3 py-1.5 text-xs rounded-md transition-colors",
+                currentFilter === 'all'
+                  ? "bg-gray-800 text-white"
+                  : "text-gray-400 hover:text-white hover:bg-gray-800"
+              )}
+              data-testid="project-sidebar-filter-all"
+            >
+              <FolderOpen className="w-3 h-3" />
+              <span>All</span>
+            </button>
+            <button 
+              onClick={() => setCurrentFilter('starred')}
+              className={clsx(
+                "flex items-center space-x-2 px-3 py-1.5 text-xs rounded-md transition-colors",
+                currentFilter === 'starred'
+                  ? "bg-gray-800 text-white"
+                  : "text-gray-400 hover:text-white hover:bg-gray-800"
+              )}
+              data-testid="project-sidebar-filter-starred"
+            >
+              <Star className="w-3 h-3" />
+              <span>Starred</span>
+            </button>
+            <button 
+              onClick={() => setCurrentFilter('shared')}
+              className={clsx(
+                "flex items-center space-x-2 px-3 py-1.5 text-xs rounded-md transition-colors",
+                currentFilter === 'shared'
+                  ? "bg-gray-800 text-white"
+                  : "text-gray-400 hover:text-white hover:bg-gray-800"
+              )}
+              data-testid="project-sidebar-filter-shared"
+            >
+              <Users className="w-3 h-3" />
+              <span>Shared</span>
+            </button>
+            <button 
+              onClick={() => setCurrentFilter('archived')}
+              className={clsx(
+                "flex items-center space-x-2 px-3 py-1.5 text-xs rounded-md transition-colors",
+                currentFilter === 'archived'
+                  ? "bg-gray-800 text-white"
+                  : "text-gray-400 hover:text-white hover:bg-gray-800"
+              )}
+              data-testid="project-sidebar-filter-archived"
+            >
+              <Archive className="w-3 h-3" />
+              <span>Archived</span>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Projects List */}
       <div className="flex-1 overflow-y-auto">
-        <div className="p-3 md:p-4">
+        <div className={clsx(isCollapsed ? "p-1" : "p-3 md:p-4")}>
           {isLoading ? (
             <div className="space-y-3">
               {Array.from({ length: 5 }).map((_, i) => (
@@ -375,22 +435,24 @@ export const ProjectSidebar: React.FC<ProjectSidebarProps> = ({
       </div>
 
       {/* Footer */}
-      <div className="p-3 md:p-4 border-t border-gray-800">
-        <button 
-          onClick={() => {
-            const currentProject = projects?.find(p => p.id === currentProjectId);
-            if (currentProject) {
-              setEditingProject(currentProject);
-            }
-          }}
-          disabled={!currentProjectId}
-          className="flex items-center space-x-3 w-full p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          data-testid="project-sidebar-settings-button"
-        >
-          <Settings className="w-4 h-4" />
-          <span className="text-sm">Project Settings</span>
-        </button>
-      </div>
+      {!isCollapsed && (
+        <div className="p-3 md:p-4 border-t border-gray-800">
+          <button 
+            onClick={() => {
+              const currentProject = projects?.find(p => p.id === currentProjectId);
+              if (currentProject) {
+                setEditingProject(currentProject);
+              }
+            }}
+            disabled={!currentProjectId}
+            className="flex items-center space-x-3 w-full p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            data-testid="project-sidebar-settings-button"
+          >
+            <Settings className="w-4 h-4" />
+            <span className="text-sm">Project Settings</span>
+          </button>
+        </div>
+      )}
 
       {/* Create Project Modal */}
       <CreateProjectModal

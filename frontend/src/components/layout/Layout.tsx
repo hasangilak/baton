@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { ProjectSidebar } from './ProjectSidebar';
 import { Header } from './Header';
@@ -28,8 +28,40 @@ export const Layout: React.FC<LayoutProps> = ({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { isMobile } = useBreakpoints();
 
+  // Sidebar collapse states
+  const [isMainSidebarCollapsed, setIsMainSidebarCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('mainSidebarCollapsed') === 'true';
+    }
+    return false;
+  });
+  
+  const [isProjectSidebarCollapsed, setIsProjectSidebarCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('projectSidebarCollapsed') === 'true';
+    }
+    return false;
+  });
+
+  // Persist sidebar collapse states
+  useEffect(() => {
+    localStorage.setItem('mainSidebarCollapsed', isMainSidebarCollapsed.toString());
+  }, [isMainSidebarCollapsed]);
+
+  useEffect(() => {
+    localStorage.setItem('projectSidebarCollapsed', isProjectSidebarCollapsed.toString());
+  }, [isProjectSidebarCollapsed]);
+
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
+  };
+
+  const toggleMainSidebar = () => {
+    setIsMainSidebarCollapsed(!isMainSidebarCollapsed);
+  };
+
+  const toggleProjectSidebar = () => {
+    setIsProjectSidebarCollapsed(!isProjectSidebarCollapsed);
   };
 
   // Close mobile menu when section changes (for bottom nav integration)
@@ -66,6 +98,8 @@ export const Layout: React.FC<LayoutProps> = ({
         <ProjectSidebar 
           currentProjectId={currentProjectId}
           onProjectChange={onProjectChange || (() => {})}
+          isCollapsed={isProjectSidebarCollapsed}
+          onToggleCollapse={toggleProjectSidebar}
         />
       </div>
       
@@ -84,7 +118,9 @@ export const Layout: React.FC<LayoutProps> = ({
       `}>
         <Sidebar 
           currentSection={currentSection} 
-          onSectionChange={handleSectionChange} 
+          onSectionChange={handleSectionChange}
+          isCollapsed={isMainSidebarCollapsed}
+          onToggleCollapse={toggleMainSidebar}
         />
       </div>
 
