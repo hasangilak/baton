@@ -100,15 +100,31 @@ That's it! Baton is running with a seeded demo project and tasks.
 
 ## 📝 Claude Code Memory Configuration
 
-**IMPORTANT**: For optimal integration, copy this entire block to your Claude Code memory:
+**IMPORTANT**: Add these into your own .claude project folder. grab the scritps from this repo in scripts folder:
 
 ````
-## Claude Behavior Expectations
-- Claude Code Must call the detect_workspace_project from baton mcp to find the project id
-- Once user accept a plan that we made together, Claude Code Must call the PlanWrite from baton mcp and understand the plan id
-- Once Claude Code generate todos, Claude Code must call TodoWrite from baton mcp to save all the todos with the plan id if exists
-- Once Claude Code completed a todo, Claude Code myst call TodoWrite from baton mcp to mark the todo complete with the plan id if exists
-- Once All todos are finished by Claude Code, Claude Code must call PlanWrite from baton mcp to mark the plan complete
+"hooks": {
+   "PostToolUse": [
+      {
+         "matcher": "TodoWrite",
+         "hooks": [
+            {
+            "type": "command",
+            "command": "cd /home/hassan/work/baton && node scripts/capture-todos.js"
+            }
+         ]
+      },
+      {
+         "matcher": "ExitPlanMode",
+         "hooks": [
+            {
+            "type": "command",
+            "command": "cd /home/hassan/work/baton && node scripts/capture-plan.js"
+            }
+         ]
+      }
+   ]
+}
 ````
 
 **Simply copy the entire code block above and paste it into your Claude Code memory for seamless integration.**
