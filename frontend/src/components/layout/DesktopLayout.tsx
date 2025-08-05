@@ -9,13 +9,13 @@ interface DesktopLayoutProps {
   onSync?: () => void;
 }
 
-export const DesktopLayout: React.FC<DesktopLayoutProps> = React.memo(({ 
-  projectId, 
-  onSync 
+export const DesktopLayout: React.FC<DesktopLayoutProps> = React.memo(({
+  projectId,
+  onSync
 }) => {
   return (
     <div className="h-full">
-      <div 
+      <div
         className="h-full grid gap-6"
         style={{
           gridTemplateAreas: '"kanban kanban sidebar"',
@@ -29,7 +29,7 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = React.memo(({
         </div>
 
         {/* Claude Code Integration Panel */}
-        <div style={{ gridArea: 'sidebar' }} className="space-responsive-y overflow-y-auto min-w-0">
+        <div style={{ gridArea: 'sidebar' }} className="space-y-6 overflow-y-auto min-w-0">
           {/* Claude Code Plans */}
           <PlansList projectId={projectId} />
 
