@@ -41,7 +41,7 @@ export const MessageList: React.FC<MessageListProps> = ({
     return (
       <div
         key={message.id}
-        className={`flex gap-3 p-4 ${isUser ? 'bg-gray-900' : 'bg-gray-800'}`}
+        className={`flex gap-3 p-4 ${isUser ? 'bg-gray-100' : 'bg-gray-200'}`}
       >
         {/* Avatar */}
         <div className={`

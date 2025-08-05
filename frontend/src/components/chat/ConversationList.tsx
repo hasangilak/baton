@@ -47,7 +47,7 @@ export const ConversationList: React.FC<ConversationListProps> = ({
   };
 
   return (
-    <div className="h-full flex flex-col bg-gray-900 border-r border-gray-800">
+    <div className="h-full flex flex-col bg-gray-100 border-r border-gray-800">
       {/* Header */}
       <div className="p-4 border-b border-gray-800">
         <div className="flex items-center justify-between mb-4">

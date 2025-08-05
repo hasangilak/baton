@@ -86,14 +86,14 @@ export const ChatPage: React.FC = () => {
 
   if (isLoadingConversations) {
     return (
-      <div className="h-full flex items-center justify-center bg-gray-900">
+      <div className="h-full flex items-center justify-center bg-gray-100">
         <Loader2 className="animate-spin text-gray-400" size={32} />
       </div>
     );
   }
 
   return (
-    <div className="h-full flex bg-gray-900">
+    <div className="h-full flex bg-gray-100">
       {/* Conversation sidebar */}
       <div className="w-80 flex-shrink-0 border-r border-gray-800">
         <ConversationList

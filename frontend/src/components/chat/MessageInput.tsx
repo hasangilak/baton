@@ -79,7 +79,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   };
 
   return (
-    <div className="border-t border-gray-800 bg-gray-900 p-4">
+    <div className="border-t border-gray-800 bg-gray-100 p-4">
       {/* Attachments */}
       {attachments.length > 0 && (
         <div className="mb-3 flex flex-wrap gap-2">
@@ -114,7 +114,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
             rows={1}
             className="
               w-full px-4 py-3 pr-12
-              bg-gray-800 text-gray-200 
+              bg-gray-100 text-black 
               rounded-lg border border-gray-700 
               focus:border-gray-600 focus:outline-none
               resize-none overflow-hidden
