@@ -59,7 +59,7 @@ router.post('/conversations', async (req: Request, res: Response) => {
   try {
     const { projectId, title } = req.body;
     // For now, use a default user ID - in production, get from auth
-    const userId = 'user-1';
+    const userId = 'user_default';
 
     if (!projectId) {
       return res.status(400).json({
@@ -96,7 +96,7 @@ router.get('/conversations/:projectId', async (req: Request, res: Response) => {
   try {
     const { projectId } = req.params;
     // For now, use a default user ID - in production, get from auth
-    const userId = 'user-1';
+    const userId = 'user_default';
 
     const conversations = await chatService.getConversations(projectId, userId);
 
@@ -309,7 +309,7 @@ router.get('/search', async (req: Request, res: Response) => {
   try {
     const { projectId, query } = req.query;
     // For now, use a default user ID - in production, get from auth
-    const userId = 'user-1';
+    const userId = 'user_default';
 
     if (!projectId || !query) {
       return res.status(400).json({
