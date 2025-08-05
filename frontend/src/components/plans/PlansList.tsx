@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { 
-  FileText, 
-  CheckCircle2, 
-  Clock, 
+import {
+  FileText,
+  CheckCircle2,
+  Clock,
   Archive,
   RefreshCw,
   MoreHorizontal,
@@ -31,7 +31,7 @@ const statusIcons = {
 
 const statusColors = {
   accepted: 'text-green-500',
-  implemented: 'text-blue-500', 
+  implemented: 'text-blue-500',
   archived: 'text-gray-500',
 };
 
@@ -62,15 +62,15 @@ export const PlansList: React.FC<PlansListProps> = ({ projectId }) => {
   const plans = plansData?.plans || [];
 
   const handlePlanSelect = (planId: string) => {
-    setSelectedPlans(prev => 
-      prev.includes(planId) 
+    setSelectedPlans(prev =>
+      prev.includes(planId)
         ? prev.filter(id => id !== planId)
         : [...prev, planId]
     );
   };
 
   const handlePlanExpand = (planId: string) => {
-    setExpandedPlans(prev => 
+    setExpandedPlans(prev =>
       prev.includes(planId)
         ? prev.filter(id => id !== planId)
         : [...prev, planId]
@@ -78,8 +78,8 @@ export const PlansList: React.FC<PlansListProps> = ({ projectId }) => {
   };
 
   const handleStatusChange = (plan: ClaudeCodePlan, newStatus: string) => {
-    updatePlanMutation.mutate({ 
-      id: plan.id, 
+    updatePlanMutation.mutate({
+      id: plan.id,
       data: { status: newStatus as ClaudeCodePlanStatus }
     });
   };
@@ -110,32 +110,27 @@ export const PlansList: React.FC<PlansListProps> = ({ projectId }) => {
         className={clsx(
           'group flex items-start space-x-3 p-3 md:p-4 rounded-lg border transition-all duration-200',
           'min-h-[100px] md:min-h-auto', // Touch-friendly minimum height
-          isSelected 
-            ? 'bg-blue-50 border-blue-200' 
+          isSelected
+            ? 'bg-blue-50 border-blue-200'
             : 'bg-white border-gray-200 hover:border-gray-300'
         )}
         data-testid={`claude-plan-item-${plan.id}`}
       >
-        <button
-          onClick={() => handlePlanSelect(plan.id)}
-          className="mt-1 flex-shrink-0 p-2 md:p-1 -m-2 md:-m-1 min-h-[44px] min-w-[44px] md:min-h-auto md:min-w-auto flex items-center justify-center"
-          data-testid={`claude-plan-select-${plan.id}`}
-        >
-          <StatusIcon 
-            className={clsx(
-              'w-5 h-5 transition-colors duration-200',
-              statusColors[plan.status]
-            )}
-          />
-        </button>
-
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between">
             <div className="flex-1 min-w-0">
-              <p className="text-sm md:text-base font-medium text-gray-900 mb-1 leading-tight">
-                {plan.title}
-              </p>
-              
+              <div className="flex items-center space-x-3 mb-6">
+                <StatusIcon
+                  className={clsx(
+                    'w-5 h-5 transition-colors duration-200',
+                    statusColors[plan.status]
+                  )}
+                  onClick={() => handlePlanSelect(plan.id)}
+                />
+                <p className="text-sm md:text-base font-medium text-gray-900 mb-1 leading-tight">
+                  {plan.title}
+                </p>
+              </div>
               <p className="text-xs md:text-sm text-gray-600 mb-2 md:mb-3 leading-relaxed">
                 {isExpanded ? plan.content : getContentPreview(plan.content, 80)}
               </p>
@@ -158,7 +153,7 @@ export const PlansList: React.FC<PlansListProps> = ({ projectId }) => {
                   )}
                 </button>
               )}
-              
+
               <div className="flex items-center flex-wrap gap-2 md:gap-4">
                 <span className={clsx(
                   'inline-flex items-center px-2 py-1 rounded-md text-xs font-medium border',
@@ -212,7 +207,7 @@ export const PlansList: React.FC<PlansListProps> = ({ projectId }) => {
               >
                 <Eye className="w-4 h-4" />
               </button>
-              
+
               <select
                 value={plan.status}
                 onChange={(e) => handleStatusChange(plan, e.target.value)}
@@ -224,7 +219,7 @@ export const PlansList: React.FC<PlansListProps> = ({ projectId }) => {
                 <option value="implemented">Implemented</option>
                 <option value="archived">Archived</option>
               </select>
-              
+
               <button
                 onClick={() => handleDelete(plan.id)}
                 className="p-2 md:p-1 text-gray-400 hover:text-red-500 rounded opacity-70 md:opacity-0 md:group-hover:opacity-100 transition-opacity min-h-[44px] min-w-[44px] md:min-h-auto md:min-w-auto flex items-center justify-center"
@@ -317,7 +312,7 @@ export const PlansList: React.FC<PlansListProps> = ({ projectId }) => {
           </p>
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-md mx-auto">
             <p className="text-sm text-blue-800">
-              <strong>Tip:</strong> Use Claude Code's plan mode to create plans that persist in Baton. 
+              <strong>Tip:</strong> Use Claude Code's plan mode to create plans that persist in Baton.
               Configure the PostToolUse hook for ExitPlanMode to enable automatic plan capture.
             </p>
           </div>
@@ -330,8 +325,8 @@ export const PlansList: React.FC<PlansListProps> = ({ projectId }) => {
         isOpen={isPlanModalOpen}
         onClose={closePlanModal}
         onStatusChange={(planId, newStatus) => {
-          updatePlanMutation.mutate({ 
-            id: planId, 
+          updatePlanMutation.mutate({
+            id: planId,
             data: { status: newStatus }
           });
         }}

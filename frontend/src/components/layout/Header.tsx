@@ -114,16 +114,6 @@ export const Header: React.FC<HeaderProps> = ({ currentSection, websocketStatus 
           </div>
         </div>
 
-        {/* Center - Title and Description */}
-        <div className="flex-1 max-w-2xl mx-8">
-          <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mb-1">{title}</h1>
-          {currentSection === 'tasks' && (
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Manage your tasks and collaborate with AI agents
-            </p>
-          )}
-        </div>
-
         {/* Right side - Actions and User */}
         <div className="flex items-center space-x-4">
           {/* Connection Status */}
@@ -143,17 +133,6 @@ export const Header: React.FC<HeaderProps> = ({ currentSection, websocketStatus 
             />
           </div>
 
-          {/* Action Buttons */}
-          {currentSection === 'tasks' && (
-            <button 
-              className="btn-primary"
-              data-testid="header-new-task-button"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              New Task
-            </button>
-          )}
-
           {/* Notifications */}
           <button 
             className="relative p-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
@@ -171,30 +150,6 @@ export const Header: React.FC<HeaderProps> = ({ currentSection, websocketStatus 
             >
               <span className="text-white text-xs font-medium">DD</span>
             </div>
-            <div 
-              className="w-8 h-8 bg-gradient-to-br from-green-400 to-green-600 rounded-full border-2 border-white dark:border-gray-900 flex items-center justify-center"
-              data-testid="header-user-avatar-jd"
-            >
-              <span className="text-white text-xs font-medium">JD</span>
-            </div>
-            <div 
-              className="w-8 h-8 bg-gradient-to-br from-purple-400 to-purple-600 rounded-full border-2 border-white dark:border-gray-900 flex items-center justify-center"
-              data-testid="header-user-avatar-sk"
-            >
-              <span className="text-white text-xs font-medium">SK</span>
-            </div>
-            <div 
-              className="w-8 h-8 bg-gradient-to-br from-pink-400 to-pink-600 rounded-full border-2 border-white dark:border-gray-900 flex items-center justify-center"
-              data-testid="header-user-avatar-al"
-            >
-              <span className="text-white text-xs font-medium">AL</span>
-            </div>
-            <button 
-              className="w-8 h-8 bg-gray-100 dark:bg-gray-800 border-2 border-white dark:border-gray-900 rounded-full flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
-              data-testid="header-add-user-button"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
           </div>
 
           {/* More Options */}

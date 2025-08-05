@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  CheckCircle2, 
-  Circle, 
-  Clock, 
+import {
+  CheckCircle2,
+  Circle,
+  Clock,
   AlertCircle,
   Bot,
   RefreshCw,
@@ -42,14 +42,14 @@ const statusColors = {
   completed: 'text-green-500',
 };
 
-export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({ 
-  projectId, 
-  onSync 
+export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
+  projectId,
+  onSync
 }) => {
   const { data: todosResponse, isLoading, refetch } = useClaudeTodos(projectId);
   const deleteTodoMutation = useDeleteClaudeTodo();
   const [selectedTodos, setSelectedTodos] = useState<string[]>([]);
-  
+
   // Modal state management
   const {
     selectedTodo,
@@ -57,7 +57,7 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
     openTodoModal,
     closeTodoModal
   } = useClaudeModal();
-  
+
   // WebSocket integration for real-time updates
   const { on, off } = useWebSocket({ activeProjectId: projectId });
   const [localTodos, setLocalTodos] = useState<ClaudeTodo[]>([]);
@@ -150,8 +150,8 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
   }, [on, off, projectId, refetch]);
 
   const handleTodoSelect = (todoId: string) => {
-    setSelectedTodos(prev => 
-      prev.includes(todoId) 
+    setSelectedTodos(prev =>
+      prev.includes(todoId)
         ? prev.filter(id => id !== todoId)
         : [...prev, todoId]
     );
@@ -173,35 +173,30 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
         className={clsx(
           'group flex items-start space-x-3 p-3 md:p-4 rounded-lg border transition-all duration-200',
           'min-h-[80px] md:min-h-auto', // Touch-friendly minimum height
-          isSelected 
-            ? 'bg-blue-50 border-blue-200' 
+          isSelected
+            ? 'bg-blue-50 border-blue-200'
             : 'bg-white border-gray-200 hover:border-gray-300'
         )}
         data-testid={`claude-todo-item-${todo.id}`}
       >
-        <button
-          onClick={() => handleTodoSelect(todo.id)}
-          className="mt-1 flex-shrink-0 p-2 md:p-1 -m-2 md:-m-1 min-h-[44px] min-w-[44px] md:min-h-auto md:min-w-auto flex items-center justify-center"
-          data-testid={`claude-todo-select-${todo.id}`}
-        >
-          <StatusIcon 
-            className={clsx(
-              'w-5 h-5 md:w-5 md:h-5 transition-colors duration-200',
-              statusColors[todo.status]
-            )}
-          />
-        </button>
-
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between">
             <div className="flex-1 min-w-0">
-              <p className={clsx(
-                'text-sm md:text-base font-medium leading-tight',
-                todo.status === 'completed' ? 'line-through text-gray-500' : 'text-gray-900'
-              )}>
-                {todo.content}
-              </p>
-              
+              <div className="flex items-center space-x-3 mb-6">
+                <StatusIcon
+                  className={clsx(
+                    'w-5 h-5 md:w-5 md:h-5 transition-colors duration-200',
+                    statusColors[todo.status]
+                  )}
+                  onClick={() => handleTodoSelect(todo.id)}
+                />
+                <p className={clsx(
+                  'text-sm md:text-base font-medium leading-tight',
+                  todo.status === 'completed' ? 'line-through text-gray-500' : 'text-gray-900'
+                )}>
+                  {todo.content}
+                </p>
+              </div>
               <div className="flex items-center flex-wrap gap-2 md:gap-4 mt-2">
                 <span className={clsx(
                   'inline-flex items-center px-2 py-1 rounded-md text-xs font-medium border',
@@ -330,7 +325,7 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
           </p>
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-md mx-auto">
             <p className="text-sm text-blue-800">
-              <strong>Tip:</strong> Use Claude Code's plan mode to create todos that sync with Baton. 
+              <strong>Tip:</strong> Use Claude Code's plan mode to create todos that sync with Baton.
               Your todos will persist across Claude Code sessions.
             </p>
           </div>

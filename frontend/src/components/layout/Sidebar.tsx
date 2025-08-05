@@ -81,8 +81,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentSection, onSectionChang
               <span className="text-white font-medium text-sm">DD</span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-900 truncate">Davis Donin</p>
-              <p className="text-xs text-gray-500 truncate hidden md:block">davisdoni@gmail.com</p>
+              <p className="text-sm font-medium text-gray-900 truncate">Alex Delpiero</p>
+              <p className="text-xs text-gray-500 truncate hidden md:block">alex@gmail.com</p>
             </div>
           </div>
         </div>
