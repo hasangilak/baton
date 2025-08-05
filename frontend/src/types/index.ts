@@ -111,6 +111,10 @@ export interface MCPAgent {
 export interface ApiResponse<T = any> {
   success: boolean;
   data?: T;
+  // Support for specific property names used by chat API
+  conversation?: any;
+  conversations?: any[];
+  messages?: any[];
   error?: {
     message: string;
     code?: string;

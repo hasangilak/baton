@@ -56,7 +56,7 @@ export function useConversations(projectId: string) {
   });
 
   return {
-    conversations: data?.data || [],
+    conversations: data?.conversations || data?.data || [],
     isLoading,
     error,
     createConversation,
@@ -73,7 +73,7 @@ export function useMessages(conversationId: string | null) {
   });
 
   return {
-    messages: data?.data || [],
+    messages: data?.messages || data?.data || [],
     isLoading,
     error,
   };
@@ -183,7 +183,7 @@ export function useChatSearch(projectId: string) {
   return {
     searchQuery: query,
     setSearchQuery: setQuery,
-    searchResults: data?.data || [],
+    searchResults: data?.conversations || data?.data || [],
     isSearching: isLoading,
   };
 }

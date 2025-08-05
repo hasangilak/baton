@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   Plus, 
@@ -62,21 +62,41 @@ export const ClaudeStyleChat: React.FC = () => {
     }
   }, [selectedConversationId, navigate]);
 
+  const pendingMessageRef = useRef<string | null>(null);
+
+  // Effect to send pending message when conversation is created
+  useEffect(() => {
+    if (selectedConversationId && pendingMessageRef.current) {
+      sendMessage(pendingMessageRef.current);
+      pendingMessageRef.current = null;
+    }
+  }, [selectedConversationId, sendMessage]);
+
   const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
 
+    const messageToSend = inputValue;
+    setInputValue(''); // Clear input immediately for better UX
+
     if (!selectedConversationId) {
-      const result = await createConversation.mutateAsync(undefined);
-      if (result.data) {
-        setSelectedConversationId(result.data.id);
-        setTimeout(() => {
-          sendMessage(inputValue);
-          setInputValue('');
-        }, 100);
+      try {
+        // Store the message to send after conversation is created
+        pendingMessageRef.current = messageToSend;
+        
+        const result = await createConversation.mutateAsync(undefined);
+        // Backend returns { success: true, conversation: {...} }
+        const conversation = result.conversation || result.data;
+        if (conversation && conversation.id) {
+          setSelectedConversationId(conversation.id);
+          // The useEffect will handle sending the message
+        }
+      } catch (error) {
+        console.error('Failed to create conversation:', error);
+        setInputValue(messageToSend); // Restore input on error
+        pendingMessageRef.current = null;
       }
     } else {
-      sendMessage(inputValue);
-      setInputValue('');
+      sendMessage(messageToSend);
     }
   };
 
@@ -134,7 +154,7 @@ export const ClaudeStyleChat: React.FC = () => {
           </div>
           
           <div className="flex-1 overflow-y-auto">
-            {conversations.map((conversation) => (
+            {conversations.map((conversation: Conversation) => (
               <button
                 key={conversation.id}
                 onClick={() => {
@@ -183,13 +203,15 @@ export const ClaudeStyleChat: React.FC = () => {
               
               <div className="relative">
                 <textarea
+                  data-testid="chat-text-area"
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyDown={handleKeyPress}
                   placeholder="How can I help you today?"
                   className="w-full px-4 py-3 pr-12 bg-[#3E3E42] border border-[#565658] rounded-xl text-[#E5E5E5] placeholder-[#8B8B8D] resize-none focus:outline-none focus:border-[#6B6B6D] transition-colors"
-                  style={{ minHeight: '56px', maxHeight: '200px' }}
+                  style={{ minHeight: '85px', maxHeight: '200px' }}
                   rows={1}
+                  data-testid="chat-text-area"
                 />
                 
                 <div className="absolute left-3 bottom-3 flex items-center space-x-2">
@@ -235,7 +257,7 @@ export const ClaudeStyleChat: React.FC = () => {
             {/* Messages */}
             <div className="flex-1 overflow-y-auto">
               <div className="max-w-3xl mx-auto px-4 py-8">
-                {messages.map((message) => (
+                {messages.map((message: Message) => (
                   <MessageBubble key={message.id} message={message} />
                 ))}
                 {streamingMessage && (
@@ -249,6 +271,7 @@ export const ClaudeStyleChat: React.FC = () => {
               <div className="max-w-3xl mx-auto px-4 py-4">
                 <div className="relative">
                   <textarea
+                    data-testid="chat-text-area"
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     onKeyDown={handleKeyPress}

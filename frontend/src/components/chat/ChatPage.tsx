@@ -54,8 +54,9 @@ export const ChatPage: React.FC = () => {
 
   const handleCreateConversation = async () => {
     const result = await createConversation.mutateAsync(undefined);
-    if (result.data) {
-      setSelectedConversationId(result.data.id);
+    const conversation = result.conversation || result.data;
+    if (conversation) {
+      setSelectedConversationId(conversation.id);
     }
   };
 
@@ -68,8 +69,9 @@ export const ChatPage: React.FC = () => {
     if (!selectedConversationId) {
       // Create a new conversation if none selected
       const result = await createConversation.mutateAsync(undefined);
-      if (result.data) {
-        setSelectedConversationId(result.data.id);
+      const conversation = result.conversation || result.data;
+      if (conversation) {
+        setSelectedConversationId(conversation.id);
         // Send message after conversation is created
         setTimeout(() => {
           sendMessage(content, attachments);

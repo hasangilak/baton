@@ -8,7 +8,7 @@ echo "======================================"
 echo ""
 
 # Check if Claude Code is installed
-if ! command -v claude &> /dev/null; then
+if ! command -v /home/hassan/.claude/local/claude &> /dev/null; then
     echo "❌ Claude Code is not installed or not in PATH"
     echo ""
     echo "Please install Claude Code first:"
