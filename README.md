@@ -98,7 +98,7 @@ That's it! Baton is running with a seeded demo project and tasks.
 - **Todo Lists**: Claude Code plan mode automatically syncs with Baton
 - **Bidirectional Sync**: "Sync my current todos to Baton tasks"
 
-## 📝 Claude Code Memory Configuration
+## 📝 Claude Code Hooks Configuration
 
 **IMPORTANT**: Add these into your own .claude project folder. grab the scritps from this repo in scripts folder:
 
