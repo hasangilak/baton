@@ -16,12 +16,7 @@ import type {
   ClaudeCodePlan,
   ClaudeCodePlansResponse,
   CapturePlanRequest,
-  ClaudeCodePlanStatus,
-  Conversation,
-  Message,
-  CreateConversationRequest,
-  SendMessageRequest,
-  StreamingResponse
+  ClaudeCodePlanStatus
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -265,7 +260,7 @@ class ApiService {
     if (status) params.append('status', status);
     
     const response = await this.request<ClaudeCodePlansResponse>(`/api/plans?${params.toString()}`);
-    return response.data || response; // Handle both wrapped and direct responses
+    return response.data as ClaudeCodePlansResponse; // Handle API response
   }
 
   async getPlan(id: string): Promise<ApiResponse<ClaudeCodePlan>> {

@@ -1,6 +1,5 @@
 import React, { useEffect, useRef } from 'react';
 import { X, Menu } from 'lucide-react';
-import clsx from 'clsx';
 
 interface MobileMenuProps {
   isOpen: boolean;

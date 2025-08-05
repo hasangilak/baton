@@ -53,9 +53,9 @@ export const ChatPage: React.FC = () => {
   }, [selectedConversationId, navigate]);
 
   const handleCreateConversation = async () => {
-    const result = await createConversation.mutateAsync();
-    if (result.conversation) {
-      setSelectedConversationId(result.conversation.id);
+    const result = await createConversation.mutateAsync(undefined);
+    if (result.data) {
+      setSelectedConversationId(result.data.id);
     }
   };
 
@@ -67,9 +67,9 @@ export const ChatPage: React.FC = () => {
   const handleSendMessage = async (content: string, attachments?: any[]) => {
     if (!selectedConversationId) {
       // Create a new conversation if none selected
-      const result = await createConversation.mutateAsync();
-      if (result.conversation) {
-        setSelectedConversationId(result.conversation.id);
+      const result = await createConversation.mutateAsync(undefined);
+      if (result.data) {
+        setSelectedConversationId(result.data.id);
         // Send message after conversation is created
         setTimeout(() => {
           sendMessage(content, attachments);
@@ -123,7 +123,18 @@ export const ChatPage: React.FC = () => {
         {/* Input */}
         <MessageInput
           onSendMessage={handleSendMessage}
-          onUploadFile={uploadFile.mutateAsync}
+          onUploadFile={async (file: File) => {
+            const result = await uploadFile.mutateAsync(file);
+            return {
+              id: '',
+              messageId: '',
+              filename: result.filename,
+              mimeType: result.mimeType,
+              size: result.size,
+              url: result.url,
+              createdAt: new Date().toISOString()
+            };
+          }}
           isStreaming={isStreaming}
           disabled={isLoadingMessages}
         />

@@ -40,8 +40,10 @@ export const ConversationList: React.FC<ConversationListProps> = ({
   const getConversationPreview = (conversation: Conversation) => {
     if (conversation.messages && conversation.messages.length > 0) {
       const lastMessage = conversation.messages[0];
-      return lastMessage.content.substring(0, 80) + 
-             (lastMessage.content.length > 80 ? '...' : '');
+      if (lastMessage) {
+        return lastMessage.content.substring(0, 80) + 
+               (lastMessage.content.length > 80 ? '...' : '');
+      }
     }
     return 'No messages yet';
   };

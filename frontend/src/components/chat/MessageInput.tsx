@@ -1,4 +1,4 @@
-import React, { useState, useRef, KeyboardEvent } from 'react';
+import React, { useState, useRef, type KeyboardEvent } from 'react';
 import { Send, Paperclip, X, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import type { MessageAttachment } from '../../types';

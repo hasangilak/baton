@@ -16,7 +16,7 @@ export function usePlans(projectId: string, status?: string) {
     }),
     queryFn: async () => {
       const response = await apiService.getPlans(projectId, status);
-      return response.data || response; // Handle both wrapped and direct responses
+      return response; // Handle API response
     },
     enabled: !!projectId, // Only run if projectId is provided
     staleTime: 2 * 60 * 1000, // 2 minutes (plans change less frequently than tasks)
@@ -185,7 +185,7 @@ export function useDeletePlan() {
       console.error('Failed to delete plan:', error);
       // TODO: Show error toast
     },
-    onSettled: (_data, _error, variables) => {
+    onSettled: () => {
       // Always refetch to ensure consistency
       queryClient.invalidateQueries({ queryKey: queryKeys.plans.lists() });
     },

@@ -12,11 +12,7 @@ import {
   ExternalLink,
   ChevronDown,
   ChevronRight,
-  Bot,
-  ArrowUpDown,
-  AlertCircle,
-  MoreHorizontal,
-  X
+  AlertCircle
 } from 'lucide-react';
 import clsx from 'clsx';
 import type { ClaudeCodePlan, ClaudeCodePlanStatus, ClaudeTodo } from '../../types';
@@ -27,7 +23,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
 
 interface ClaudePlanModalProps {
   plan: ClaudeCodePlan | null;
@@ -43,11 +38,6 @@ const statusIcons = {
   archived: Archive,
 };
 
-const statusColors = {
-  accepted: 'text-green-500',
-  implemented: 'text-blue-500',
-  archived: 'text-gray-500',
-};
 
 const statusBadgeColors = {
   accepted: 'text-green-700 bg-green-50 border-green-200',
@@ -314,7 +304,13 @@ export const ClaudePlanModal: React.FC<ClaudePlanModalProps> = ({
                         <div
                           key={todo.id}
                           className="flex items-center space-x-3 p-3 bg-white border border-gray-200 rounded-lg hover:border-gray-300 transition-colors cursor-pointer"
-                          onClick={() => onTodoClick?.(todo)}
+                          onClick={() => onTodoClick?.({
+                            ...todo,
+                            projectId: plan.projectId,
+                            createdBy: 'claude' as const,
+                            createdAt: todo.createdAt || new Date().toISOString(),
+                            updatedAt: todo.updatedAt || new Date().toISOString()
+                          })}
                         >
                           <TodoStatusIcon
                             className={clsx('w-4 h-4', todoStatusColors[todo.status])}

@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { chatService } from '../services/chat.service';
 import { useToast } from './useToast';
 import type { 
-  Conversation, 
   Message, 
   StreamingResponse,
   SendMessageRequest 
@@ -18,7 +17,7 @@ export const chatKeys = {
 
 export function useConversations(projectId: string) {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
+  const { success, error: showError } = useToast();
 
   const { data, isLoading, error } = useQuery({
     queryKey: chatKeys.conversations(projectId),
@@ -29,19 +28,12 @@ export function useConversations(projectId: string) {
   const createConversation = useMutation({
     mutationFn: (title?: string) => 
       chatService.createConversation({ projectId, title }),
-    onSuccess: (response) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: chatKeys.conversations(projectId) });
-      toast({
-        title: 'Success',
-        description: 'New conversation created',
-      });
+      success('Success', 'New conversation created');
     },
     onError: () => {
-      toast({
-        title: 'Error',
-        description: 'Failed to create conversation',
-        variant: 'destructive',
-      });
+      showError('Error', 'Failed to create conversation');
     },
   });
 
@@ -50,10 +42,7 @@ export function useConversations(projectId: string) {
       chatService.archiveConversation(conversationId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: chatKeys.conversations(projectId) });
-      toast({
-        title: 'Success',
-        description: 'Conversation archived',
-      });
+      success('Success', 'Conversation archived');
     },
   });
 
@@ -62,15 +51,12 @@ export function useConversations(projectId: string) {
       chatService.deleteConversation(conversationId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: chatKeys.conversations(projectId) });
-      toast({
-        title: 'Success',
-        description: 'Conversation deleted',
-      });
+      success('Success', 'Conversation deleted');
     },
   });
 
   return {
-    conversations: data?.conversations || [],
+    conversations: data?.data || [],
     isLoading,
     error,
     createConversation,
@@ -87,7 +73,7 @@ export function useMessages(conversationId: string | null) {
   });
 
   return {
-    messages: data?.messages || [],
+    messages: data?.data || [],
     isLoading,
     error,
   };
@@ -95,7 +81,7 @@ export function useMessages(conversationId: string | null) {
 
 export function useChat(conversationId: string | null) {
   const queryClient = useQueryClient();
-  const { toast } = useToast();
+  const { error: showError } = useToast();
   const [streamingMessage, setStreamingMessage] = useState<Message | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -105,11 +91,7 @@ export function useChat(conversationId: string | null) {
     attachments?: SendMessageRequest['attachments']
   ) => {
     if (!conversationId) {
-      toast({
-        title: 'Error',
-        description: 'No conversation selected',
-        variant: 'destructive',
-      });
+      showError('Error', 'No conversation selected');
       return;
     }
 
@@ -162,13 +144,9 @@ export function useChat(conversationId: string | null) {
     } catch (error) {
       setIsStreaming(false);
       setStreamingMessage(null);
-      toast({
-        title: 'Error',
-        description: 'Failed to send message',
-        variant: 'destructive',
-      });
+      showError('Error', 'Failed to send message');
     }
-  }, [conversationId, queryClient, toast]);
+  }, [conversationId, queryClient]);
 
   const stopStreaming = useCallback(() => {
     if (abortControllerRef.current) {
@@ -180,11 +158,7 @@ export function useChat(conversationId: string | null) {
   const uploadFile = useMutation({
     mutationFn: (file: File) => chatService.uploadFile(file),
     onError: () => {
-      toast({
-        title: 'Error',
-        description: 'Failed to upload file',
-        variant: 'destructive',
-      });
+      showError('Error', 'Failed to upload file');
     },
   });
 
@@ -209,7 +183,7 @@ export function useChatSearch(projectId: string) {
   return {
     searchQuery: query,
     setSearchQuery: setQuery,
-    searchResults: data?.conversations || [],
+    searchResults: data?.data || [],
     isSearching: isLoading,
   };
 }

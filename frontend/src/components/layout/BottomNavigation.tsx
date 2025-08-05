@@ -4,8 +4,7 @@ import {
   Inbox, 
   FolderOpen, 
   Bot,
-  Settings,
-  Home
+  Settings
 } from 'lucide-react';
 import clsx from 'clsx';
 
