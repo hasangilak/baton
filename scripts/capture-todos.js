@@ -1,27 +1,28 @@
 #!/usr/bin/env node
 
 /**
- * Claude Code Hook Script for Capturing ExitPlanMode
+ * Claude Code Hook Script for Capturing TodoWrite
  * 
- * This script is triggered by Claude Code's PostToolUse hook when ExitPlanMode is called.
- * It extracts the plan content and sends it to Baton's API for storage.
+ * This script is triggered by Claude Code's PostToolUse hook when TodoWrite is called.
+ * It extracts the todo data and syncs it with Baton's database via MCP tools.
  */
 
 const https = require('https');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { spawn } = require('child_process');
 
 // Configuration
 const BATON_API_URL = process.env.BATON_API_URL || 'http://localhost:3001';
-const DEBUG = process.env.DEBUG_PLAN_CAPTURE === 'true';
+const DEBUG = process.env.DEBUG_TODO_CAPTURE === 'true';
 
 /**
  * Log debug information if debug mode is enabled
  */
 function debugLog(message, data = null) {
   if (DEBUG) {
-    console.error(`[PLAN-CAPTURE] ${message}`);
+    console.error(`[TODO-CAPTURE] ${message}`);
     if (data) {
       console.error(JSON.stringify(data, null, 2));
     }
@@ -53,15 +54,29 @@ function findProjectContext(startDir = process.cwd()) {
 }
 
 /**
- * Send plan data to Baton API
+ * Call Baton MCP TodoWrite tool via Claude Code
  */
-function sendPlanToBaton(planData) {
+function callBatonMCPTodoWrite(todos, projectId) {
   return new Promise((resolve, reject) => {
-    const url = new URL('/api/claude/plans', BATON_API_URL);
+    const toolCallPayload = {
+      tool: 'mcp__baton__TodoWrite',
+      arguments: {
+        todos: todos,
+        projectId: projectId
+      }
+    };
+
+    debugLog('Calling Baton MCP TodoWrite tool:', toolCallPayload);
+
+    // Call the Claude todos API endpoint
+    const url = new URL('/api/claude/todos', BATON_API_URL);
     const isHttps = url.protocol === 'https:';
     const client = isHttps ? https : http;
     
-    const postData = JSON.stringify(planData);
+    const postData = JSON.stringify({
+      projectId: projectId,
+      todos: todos
+    });
     
     const options = {
       hostname: url.hostname,
@@ -84,7 +99,7 @@ function sendPlanToBaton(planData) {
       
       res.on('end', () => {
         if (res.statusCode >= 200 && res.statusCode < 300) {
-          debugLog('Plan successfully sent to Baton API');
+          debugLog('Todos successfully synced to Baton');
           resolve({ success: true, data: data });
         } else {
           debugLog(`API request failed with status ${res.statusCode}:`, data);
@@ -104,15 +119,15 @@ function sendPlanToBaton(planData) {
 }
 
 /**
- * Extract plan content from ExitPlanMode tool input
+ * Extract todos from TodoWrite tool input
  */
-function extractPlanContent(toolInput) {
+function extractTodos(toolInput) {
   if (!toolInput || typeof toolInput !== 'object') {
     return null;
   }
   
-  // The plan content should be in toolInput.plan
-  return toolInput.plan || null;
+  // The todos should be in toolInput.todos
+  return toolInput.todos || null;
 }
 
 /**
@@ -140,62 +155,40 @@ async function main() {
     const hookData = JSON.parse(inputData);
     debugLog('Received hook data:', hookData);
     
-    // Verify this is an ExitPlanMode tool use
-    if (hookData.tool_name !== 'ExitPlanMode') {
-      debugLog(`Ignoring non-ExitPlanMode tool: ${hookData.tool_name}`);
+    // Verify this is a TodoWrite tool use
+    if (hookData.tool_name !== 'TodoWrite') {
+      debugLog(`Ignoring non-TodoWrite tool: ${hookData.tool_name}`);
       process.exit(0);
     }
     
-    // Extract plan content
-    const planContent = extractPlanContent(hookData.tool_input);
-    if (!planContent) {
-      debugLog('No plan content found in tool input');
+    // Extract todos
+    const todos = extractTodos(hookData.tool_input);
+    if (!todos || !Array.isArray(todos) || todos.length === 0) {
+      debugLog('No todos found in tool input');
       process.exit(0);
     }
     
     // Find project context
-    const projectId = findProjectContext(hookData.cwd);
+    const projectId = findProjectContext(hookData.cwd || process.cwd());
     if (!projectId) {
-      debugLog('No project context found, cannot store plan');
-      console.error('Warning: No .baton-project file found. Plan not captured.');
+      debugLog('No project context found, cannot sync todos');
+      console.error('Warning: No .baton-project file found. Todos not captured.');
       process.exit(0);
     }
     
-    // Generate a unique plan ID
-    const planId = `plan-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    debugLog(`Found ${todos.length} todos to sync for project ${projectId}`);
     
-    // Extract first line of plan as title (or use default)
-    const planLines = planContent.split('\n').filter(line => line.trim());
-    const planTitle = planLines[0]?.replace(/^#\s*/, '').substring(0, 100) || 
-                     `Plan captured on ${new Date().toLocaleDateString()}`;
+    // Call Baton MCP TodoWrite tool to sync the todos
+    await callBatonMCPTodoWrite(todos, projectId);
     
-    // Prepare plan data for API
-    const planData = {
-      id: planId,
-      projectId: projectId,
-      title: planTitle,
-      content: planContent,
-      status: 'accepted',
-      sessionId: hookData.session_id || 'unknown',
-      capturedAt: new Date().toISOString(),
-      metadata: {
-        cwd: hookData.cwd || process.cwd(),
-        transcriptPath: hookData.transcript_path,
-        hookEventName: hookData.hook_event_name || 'PostToolUse'
-      }
-    };
-    
-    // Send to Baton API
-    await sendPlanToBaton(planData);
-    
-    debugLog('Plan capture completed successfully');
+    debugLog('Todo capture and sync completed successfully');
     
     // Log success message for user visibility
-    console.log(`✅ Plan "${planTitle}" captured and stored in Baton`);
+    console.log(`✅ Synced ${todos.length} todos to Baton project`);
     
   } catch (error) {
-    debugLog('Error in plan capture:', error);
-    console.error('Plan capture failed:', error.message);
+    debugLog('Error in todo capture:', error);
+    console.error('Todo capture failed:', error.message);
     process.exit(1);
   }
 }
@@ -206,7 +199,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-  extractPlanContent,
+  extractTodos,
   findProjectContext,
-  sendPlanToBaton
+  callBatonMCPTodoWrite
 };
