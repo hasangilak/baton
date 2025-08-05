@@ -10,11 +10,14 @@ import {
   ChevronRight,
   Calendar,
   Monitor,
-  Hash
+  Hash,
+  Eye
 } from 'lucide-react';
 import clsx from 'clsx';
 import { usePlans, useUpdatePlan, useDeletePlan } from '../../hooks';
 import type { ClaudeCodePlan, ClaudeCodePlanStatus } from '../../types';
+import { useClaudeModal } from '../../hooks/useClaudeModal';
+import { ClaudePlanModal } from '../claude/ClaudePlanModal';
 
 interface PlansListProps {
   projectId: string;
@@ -46,6 +49,15 @@ export const PlansList: React.FC<PlansListProps> = ({ projectId }) => {
   const { data: plansData, isLoading, error, refetch } = usePlans(projectId);
   const updatePlanMutation = useUpdatePlan();
   const deletePlanMutation = useDeletePlan();
+
+  // Modal state management
+  const {
+    selectedPlan,
+    isPlanModalOpen,
+    openPlanModal,
+    closePlanModal,
+    openTodoModal
+  } = useClaudeModal();
 
   const plans = plansData?.plans || [];
 
@@ -189,6 +201,18 @@ export const PlansList: React.FC<PlansListProps> = ({ projectId }) => {
             </div>
 
             <div className="flex items-center space-x-2 ml-2 md:ml-4 flex-shrink-0">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openPlanModal(plan);
+                }}
+                className="p-2 md:p-1 text-gray-400 hover:text-blue-500 rounded opacity-70 md:opacity-0 md:group-hover:opacity-100 transition-opacity min-h-[44px] min-w-[44px] md:min-h-auto md:min-w-auto flex items-center justify-center"
+                title="View plan details"
+                data-testid={`claude-plan-view-${plan.id}`}
+              >
+                <Eye className="w-4 h-4" />
+              </button>
+              
               <select
                 value={plan.status}
                 onChange={(e) => handleStatusChange(plan, e.target.value)}
@@ -299,6 +323,23 @@ export const PlansList: React.FC<PlansListProps> = ({ projectId }) => {
           </div>
         </div>
       )}
+
+      {/* Plan Modal */}
+      <ClaudePlanModal
+        plan={selectedPlan}
+        isOpen={isPlanModalOpen}
+        onClose={closePlanModal}
+        onStatusChange={(planId, newStatus) => {
+          updatePlanMutation.mutate({ 
+            id: planId, 
+            data: { status: newStatus }
+          });
+        }}
+        onTodoClick={(todo) => {
+          // Switch to todo modal when clicking on a todo from the plan modal
+          openTodoModal(todo);
+        }}
+      />
     </div>
   );
 };

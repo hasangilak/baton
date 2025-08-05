@@ -9,12 +9,15 @@ import {
   ArrowUpDown,
   ExternalLink,
   MoreHorizontal,
-  FileText
+  FileText,
+  Eye
 } from 'lucide-react';
 import clsx from 'clsx';
 import type { ClaudeTodo } from '../../types';
 import { useClaudeTodos, useDeleteClaudeTodo } from '../../hooks/useClaudeTodos';
 import { useWebSocket } from '../../hooks/useWebSocket';
+import { useClaudeModal } from '../../hooks/useClaudeModal';
+import { ClaudeTodoModal } from './ClaudeTodoModal';
 
 interface ClaudeTodoListProps {
   projectId: string;
@@ -46,6 +49,14 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
   const { data: todosResponse, isLoading, refetch } = useClaudeTodos(projectId);
   const deleteTodoMutation = useDeleteClaudeTodo();
   const [selectedTodos, setSelectedTodos] = useState<string[]>([]);
+  
+  // Modal state management
+  const {
+    selectedTodo,
+    isTodoModalOpen,
+    openTodoModal,
+    closeTodoModal
+  } = useClaudeModal();
   
   // WebSocket integration for real-time updates
   const { on, off } = useWebSocket({ activeProjectId: projectId });
@@ -226,6 +237,17 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
 
             <div className="flex items-center space-x-2 opacity-70 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
               <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openTodoModal(todo);
+                }}
+                className="p-2 md:p-1 text-gray-400 hover:text-blue-500 rounded min-h-[44px] min-w-[44px] md:min-h-auto md:min-w-auto flex items-center justify-center"
+                title="View todo details"
+                data-testid={`claude-todo-view-${todo.id}`}
+              >
+                <Eye className="w-4 h-4" />
+              </button>
+              <button
                 onClick={() => handleDelete(todo.id)}
                 className="p-2 md:p-1 text-gray-400 hover:text-red-500 rounded min-h-[44px] min-w-[44px] md:min-h-auto md:min-w-auto flex items-center justify-center"
                 title="Delete todo"
@@ -314,6 +336,29 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
           </div>
         </div>
       )}
+
+      {/* Todo Modal */}
+      <ClaudeTodoModal
+        todo={selectedTodo}
+        isOpen={isTodoModalOpen}
+        onClose={closeTodoModal}
+        onStatusChange={(todoId, newStatus) => {
+          // Handle status change - you may want to add mutation logic here
+          console.log('Todo status change:', todoId, newStatus);
+        }}
+        onPriorityChange={(todoId, newPriority) => {
+          // Handle priority change - you may want to add mutation logic here
+          console.log('Todo priority change:', todoId, newPriority);
+        }}
+        onSync={(todoId) => {
+          // Handle sync to tasks
+          console.log('Sync todo to task:', todoId);
+        }}
+        onPlanClick={(planId) => {
+          // Handle plan navigation
+          console.log('Navigate to plan:', planId);
+        }}
+      />
     </div>
   );
 };

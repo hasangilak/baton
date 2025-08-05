@@ -103,29 +103,12 @@ That's it! Baton is running with a seeded demo project and tasks.
 **IMPORTANT**: For optimal integration, copy this entire block to your Claude Code memory:
 
 ````
-**IMPORTANT**: For optimal integration, add this to your Claude Code memory to ensure seamless todo synchronization:
-
-#### **Mandatory Workflow Process**
-**ABSOLUTE REQUIREMENT**: ALL plans, todos, and task management MUST use Baton MCP integration. This is NON-NEGOTIABLE.
-**For ALL todo/planning work:**
-
-0. **Project Id**
-```
-    ALWAYS: recall detect workspace project from baton mcp to find the projectId so we can have it in context for TodoWrite and TodoRead usage
-```
-
-1. **Todo Creation**
-   ```
-   baton mcp tool: TodoWrite({ todos: [...] })
-   ```
-
-2. **Todo Reading/Verification**
-   ```
-   baton mcp tool: TodoRead()
-   ```
-
-3. **Verification Steps**
-   - After creating todos, ALWAYS verify with baton mcp tools: `detect_workspace_project` and `TodoRead()`
+## Claude Behavior Expectations
+- Claude Code Must call the detect_workspace_project from baton mcp to find the project id
+- Once user accept a plan that we made together, Claude Code Must call the PlanWrite from baton mcp and understand the plan id
+- Once Claude Code generate todos, Claude Code must call TodoWrite from baton mcp to save all the todos with the plan id if exists
+- Once Claude Code completed a todo, Claude Code myst call TodoWrite from baton mcp to mark the todo complete with the plan id if exists
+- Once All todos are finished by Claude Code, Claude Code must call PlanWrite from baton mcp to mark the plan complete
 ````
 
 **Simply copy the entire code block above and paste it into your Claude Code memory for seamless integration.**
