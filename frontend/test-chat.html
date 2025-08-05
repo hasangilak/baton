@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Page Test</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Inter, system-ui, sans-serif;
+            background-color: #111827;
+            color: white;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        .chat-container {
+            width: 100%;
+            max-width: 48rem;
+            text-align: center;
+            padding: 2rem;
+        }
+        .welcome-title {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 2rem;
+        }
+        .emoji {
+            font-size: 2rem;
+            margin-right: 0.75rem;
+        }
+        .title {
+            font-size: 1.5rem;
+            font-weight: 400;
+            color: #d1d5db;
+        }
+        .input-form {
+            background-color: #374151;
+            border: 1px solid #4b5563;
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        .input-field {
+            flex: 1;
+            background: transparent;
+            border: none;
+            color: #d1d5db;
+            outline: none;
+            font-size: 1rem;
+        }
+        .input-field::placeholder {
+            color: #9ca3af;
+        }
+        .send-button {
+            background-color: #ea580c;
+            color: white;
+            border: none;
+            border-radius: 0.375rem;
+            padding: 0.5rem;
+            cursor: pointer;
+            margin-left: 1rem;
+        }
+        .send-button:hover {
+            background-color: #c2410c;
+        }
+        .quick-actions {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .action-button {
+            background-color: #374151;
+            color: #d1d5db;
+            border: 1px solid #4b5563;
+            border-radius: 0.5rem;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            font-size: 0.875rem;
+        }
+        .action-button:hover {
+            background-color: #4b5563;
+            color: #f3f4f6;
+        }
+        .success-message {
+            background-color: #10b981;
+            color: white;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 2rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="success-message">
+            ✅ React Router installed successfully!<br>
+            ✅ Chat page component created!<br>
+            ✅ Navigation updated with chat route!<br>
+            The chat page is ready and accessible at /chat
+        </div>
+        
+        <div class="welcome-title">
+            <span class="emoji">✨</span>
+            <h1 class="title">What's new, Hassan?</h1>
+        </div>
+
+        <form class="input-form">
+            <input 
+                type="text" 
+                class="input-field" 
+                placeholder="How can I help you today?"
+            >
+            <button type="submit" class="send-button">
+                →
+            </button>
+        </form>
+
+        <div class="quick-actions">
+            <button class="action-button">✏️ Write</button>
+            <button class="action-button">📚 Learn</button>
+            <button class="action-button">💻 Code</button>
+            <button class="action-button">🎯 Life stuff</button>
+        </div>
+    </div>
+
+    <script>
+        document.querySelector('form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const input = document.querySelector('.input-field');
+            if (input.value.trim()) {
+                alert('Message sent: ' + input.value);
+                input.value = '';
+            }
+        });
+    </script>
+</body>
+</html>

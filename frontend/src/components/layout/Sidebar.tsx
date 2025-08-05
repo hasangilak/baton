@@ -1,4 +1,5 @@
 import React from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   Inbox, 
@@ -11,7 +12,8 @@ import {
   ArrowUpDown,
   ListTodo,
   SidebarOpen,
-  SidebarClose
+  SidebarClose,
+  MessageSquare
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -23,23 +25,24 @@ interface SidebarProps {
 }
 
 const mainNavItems = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'inbox', label: 'Inbox', icon: Inbox },
-  { id: 'calendar', label: 'Calendar', icon: Calendar },
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+  { id: 'inbox', label: 'Inbox', icon: Inbox, path: '/inbox' },
+  { id: 'calendar', label: 'Calendar', icon: Calendar, path: '/calendar' },
+  { id: 'chat', label: 'Chat', icon: MessageSquare, path: '/chat' },
 ];
 
 const teamNavItems = [
-  { id: 'tasks', label: 'Tasks', icon: FolderOpen },
-  { id: 'claude-todos', label: 'Claude Todos', icon: ListTodo },
-  { id: 'sync', label: 'Sync Panel', icon: ArrowUpDown },
-  { id: 'docs', label: 'Docs', icon: FolderOpen },
-  { id: 'meeting', label: 'Meeting', icon: Users },
+  { id: 'tasks', label: 'Tasks', icon: FolderOpen, path: '/tasks' },
+  { id: 'claude-todos', label: 'Claude Todos', icon: ListTodo, path: '/claude-todos' },
+  { id: 'sync', label: 'Sync Panel', icon: ArrowUpDown, path: '/sync' },
+  { id: 'docs', label: 'Docs', icon: FolderOpen, path: '/docs' },
+  { id: 'meeting', label: 'Meeting', icon: Users, path: '/meeting' },
 ];
 
 const otherNavItems = [
-  { id: 'mcp-agents', label: 'MCP Agents', icon: Bot },
-  { id: 'settings', label: 'Settings', icon: Settings },
-  { id: 'support', label: 'Support', icon: HelpCircle },
+  { id: 'mcp-agents', label: 'MCP Agents', icon: Bot, path: '/mcp-agents' },
+  { id: 'settings', label: 'Settings', icon: Settings, path: '/settings' },
+  { id: 'support', label: 'Support', icon: HelpCircle, path: '/support' },
 ];
 
 export const Sidebar: React.FC<SidebarProps> = ({ 
@@ -48,13 +51,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isCollapsed = false, 
   onToggleCollapse 
 }) => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const renderNavItem = (item: typeof mainNavItems[0], isActive: boolean) => {
     const Icon = item.icon;
     
     return (
       <button
         key={item.id}
-        onClick={() => onSectionChange(item.id)}
+        onClick={() => {
+          if (item.path) {
+            navigate(item.path);
+          }
+          onSectionChange(item.id);
+        }}
         className={clsx(
           'sidebar-item w-full text-left',
           isActive ? 'sidebar-item-active' : 'sidebar-item-inactive',
@@ -68,6 +78,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </button>
     );
   };
+
+  // Determine current section based on location
+  const getCurrentSection = () => {
+    const allItems = [...mainNavItems, ...teamNavItems, ...otherNavItems];
+    const currentItem = allItems.find(item => item.path === location.pathname);
+    return currentItem?.id || currentSection;
+  };
+
+  const activeSection = getCurrentSection();
 
   return (
     <aside className={clsx(
@@ -117,7 +136,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
           <nav className="space-y-1">
             {mainNavItems.map((item) => 
-              renderNavItem(item, currentSection === item.id)
+              renderNavItem(item, activeSection === item.id)
             )}
           </nav>
         </div>
@@ -139,7 +158,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
           <nav className="space-y-1">
             {teamNavItems.map((item) => 
-              renderNavItem(item, currentSection === item.id)
+              renderNavItem(item, activeSection === item.id)
             )}
           </nav>
         </div>
@@ -153,7 +172,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
           <nav className="space-y-1">
             {otherNavItems.map((item) => 
-              renderNavItem(item, currentSection === item.id)
+              renderNavItem(item, activeSection === item.id)
             )}
           </nav>
         </div>

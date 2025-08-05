@@ -1,20 +1,18 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { BrowserRouter } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { Layout } from './components/layout/Layout';
-import { MobileLayout } from './components/layout/MobileLayout';
-import { DesktopLayout } from './components/layout/DesktopLayout';
+import { AppRouter } from './components/router';
 import { queryClient } from './lib/queryClient';
 import { useProjects } from './hooks/useProjects';
 import { useWebSocket } from './hooks/useWebSocket';
-import { useBreakpoints } from './hooks/useBreakpoints';
 import { ToastProvider } from './hooks/useToast';
 import { ThemeProvider } from './hooks/useTheme';
 
 function AppContent() {
   const { data: projects } = useProjects();
   const [currentProjectId, setCurrentProjectId] = useState<string>('demo-project-1');
-  const { isMobile } = useBreakpoints();
 
   // Use first available project if demo project doesn't exist
   const activeProjectId = currentProjectId || projects?.[0]?.id || 'demo-project-1';
@@ -57,19 +55,12 @@ function AppContent() {
       websocketStatus={websocketStatus}
     >
       <div className="h-full flex flex-col">
-        {/* Conditional rendering based on viewport size */}
+        {/* Router content */}
         <div className="flex-1 p-responsive overflow-hidden">
-          {isMobile ? (
-            <MobileLayout 
-              projectId={activeProjectId}
-              onSync={handleSync}
-            />
-          ) : (
-            <DesktopLayout 
-              projectId={activeProjectId}
-              onSync={handleSync}
-            />
-          )}
+          <AppRouter 
+            projectId={activeProjectId}
+            onSync={handleSync}
+          />
         </div>
       </div>
     </Layout>
@@ -78,15 +69,17 @@ function AppContent() {
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider>
-        <ToastProvider>
-          <AppContent />
-          {/* React Query DevTools - only shows in development */}
-          <ReactQueryDevtools initialIsOpen={false} />
-        </ToastProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+    <BrowserRouter>
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <ToastProvider>
+            <AppContent />
+            {/* React Query DevTools - only shows in development */}
+            <ReactQueryDevtools initialIsOpen={false} />
+          </ToastProvider>
+        </ThemeProvider>
+      </QueryClientProvider>
+    </BrowserRouter>
   );
 }
 
