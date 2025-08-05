@@ -1,0 +1,119 @@
+{
+  "$schema": "https://docs.anthropic.com/claude-code/settings-schema.json",
+  "description": "Optimized Claude Code settings for seamless Baton integration",
+  
+  "mcpServers": {
+    "baton": {
+      "command": "node",
+      "args": ["dist/mcp-server.js"],
+      "cwd": "./backend",
+      "env": {
+        "NODE_ENV": "production",
+        "DATABASE_URL": "postgresql://baton_user:baton_password@localhost:5432/baton_dev",
+        "MCP_SERVER_PORT": "3002",
+        "BATON_API_URL": "http://localhost:3001"
+      }
+    }
+  },
+  
+  "enabledMcpjsonServers": ["baton"],
+  "enableAllProjectMcpServers": false,
+  "disabledMcpjsonServers": [],
+  
+  "hooks": {
+    "sessionStart": {
+      "command": "./hooks/sessionStart.sh",
+      "timeout": 10000,
+      "description": "Auto-detect workspace and initialize Baton project context"
+    },
+    "preToolUse": {
+      "command": "./hooks/preToolUse.sh",
+      "toolPattern": "mcp__baton__.*",
+      "timeout": 5000,
+      "description": "Automatically inject project ID into Baton tool calls"
+    },
+    "postToolUse": {
+      "command": "./hooks/postToolUse.sh",
+      "toolPattern": "mcp__baton__(PlanWrite|TodoWrite|sync_.*|create_task|update_task|move_task)",
+      "timeout": 10000,
+      "description": "Trigger synchronization and notifications after Baton operations"
+    },
+    "userPromptSubmit": {
+      "command": "./hooks/userPromptSubmit.sh",
+      "timeout": 3000,
+      "description": "Detect plan intent and prepare context for enhanced workflows"
+    }
+  },
+  
+  "environment": {
+    "MCP_TIMEOUT": 30000,
+    "MCP_TOOL_TIMEOUT": 60000,
+    "MAX_MCP_OUTPUT_TOKENS": 50000,
+    "BATON_API_URL": "http://localhost:3001",
+    "BATON_MCP_PORT": "3002"
+  },
+  
+  "tools": {
+    "defaultTimeout": 120000,
+    "allowConcurrentExecution": true,
+    "autoApprove": {
+      "patterns": [
+        "mcp__baton__TodoRead",
+        "mcp__baton__PlanRead",
+        "mcp__baton__get_workspace_info",
+        "mcp__baton__detect_workspace_project"
+      ]
+    }
+  },
+  
+  "ui": {
+    "showToolCalls": true,
+    "showMCPServers": true,
+    "compactMode": false
+  },
+  
+  "telemetry": {
+    "enabled": true,
+    "includeMCPMetrics": true
+  },
+  
+  "security": {
+    "requireConfirmationForWrite": false,
+    "allowShellExecution": true,
+    "trustedMCPServers": ["baton"]
+  },
+  
+  "experimental": {
+    "enhancedMCPIntegration": true,
+    "smartContextInjection": true,
+    "asyncHookExecution": true
+  },
+  
+  "claude": {
+    "behaviorOverrides": {
+      "alwaysUseTodoList": true,
+      "proactiveProjectDetection": true,
+      "autoSyncOnPlanCompletion": true
+    },
+    "integrationSettings": {
+      "baton": {
+        "autoDetectProjects": true,
+        "autoSyncTodos": true,
+        "realTimeNotifications": true,
+        "webhookIntegration": false,
+        "defaultProjectSettings": {
+          "autoSyncTodosToTasks": false,
+          "notificationLevel": "normal",
+          "syncStrategy": "manual"
+        }
+      }
+    }
+  },
+  
+  "comments": {
+    "setup": "Copy this file to .claude/settings.json in your project root",
+    "hooks": "Ensure hook scripts are executable: chmod +x .claude/hooks/*.sh",
+    "mcpServer": "Adjust backend path and database URL for your environment",
+    "customization": "Modify hook patterns and timeouts based on your workflow needs"
+  }
+}

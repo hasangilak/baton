@@ -1,6 +1,7 @@
 {
-  "projectId": "demo-project-1",
-  "workspacePath": "/home/hassan/work/baton",
-  "createdAt": "2025-08-04T01:45:00.000Z",
-  "version": "1.0.0"
+  "projectId": "cmdxumi04000k4yhw92fvsqqa",
+  "projectName": "baton",
+  "detectedAt": "2025-08-05T03:17:54+02:00",
+  "autoDetected": true,
+  "workspacePath": "/home/hassan/work/baton"
 }
