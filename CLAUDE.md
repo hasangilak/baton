@@ -213,6 +213,26 @@ When integrating with AI agents via MCP:
 
 The MCP server implements full JSON-RPC 2.0 compliance and supports the official MCP protocol specification.
 
+## Claude Code Hooks Integration
+
+Baton now supports automatic capture of plans and todos from Claude Code through PostToolUse hooks:
+
+### Quick Setup
+1. Create `.baton-project` file with your project ID
+2. Configure hooks in `~/.claude.json` (see [Quick Start Guide](./docs/CLAUDE_CODE_HOOKS_QUICKSTART.md))
+3. Plans are captured when you exit plan mode
+4. Todos sync automatically when Claude Code updates them
+
+### Documentation
+- [Quick Start Guide](./docs/CLAUDE_CODE_HOOKS_QUICKSTART.md) - Get running in 5 minutes
+- [Full Setup Guide](./docs/CLAUDE_CODE_HOOKS_SETUP.md) - Detailed configuration and troubleshooting
+
+### How It Works
+- **ExitPlanMode Hook**: Captures accepted plans → `/api/claude/plans`
+- **TodoWrite Hook**: Syncs todos → `/api/claude/todos`
+- **Automatic Project Detection**: Uses `.baton-project` file
+- **Real-time Updates**: WebSocket notifications to Baton UI
+
 ## Claude Code Integration Usage
 
 When using Claude Code with Baton, the following workflow is recommended:
