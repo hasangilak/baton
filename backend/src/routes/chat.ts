@@ -335,4 +335,64 @@ router.get('/search', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * GET /api/chat/pending
+ * Get pending chat requests for Claude Code bridge
+ */
+router.get('/pending', async (_req: Request, res: Response) => {
+  try {
+    const requests = chatService.getPendingRequests();
+    
+    return res.json({
+      success: true,
+      requests,
+    });
+  } catch (error) {
+    console.error('Error getting pending requests:', error);
+    return res.status(500).json({
+      error: 'Failed to get pending requests',
+    });
+  }
+});
+
+/**
+ * POST /api/chat/response
+ * Receive response from Claude Code bridge
+ */
+router.post('/response', async (req: Request, res: Response) => {
+  try {
+    const { messageId, content, isComplete, error } = req.body;
+
+    if (!messageId) {
+      return res.status(400).json({
+        error: 'Message ID is required',
+      });
+    }
+
+    await chatService.processBridgeResponse(
+      messageId,
+      content,
+      isComplete,
+      error
+    );
+
+    // Emit WebSocket event for real-time updates
+    io.emit('message:updated', { 
+      messageId, 
+      content, 
+      isComplete,
+      error 
+    });
+
+    return res.json({
+      success: true,
+    });
+  } catch (error) {
+    console.error('Error processing bridge response:', error);
+    return res.status(500).json({
+      error: 'Failed to process bridge response',
+    });
+  }
+});
+
 export default router;

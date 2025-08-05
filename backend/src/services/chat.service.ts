@@ -1,13 +1,11 @@
 import { PrismaClient, Conversation, Message } from '@prisma/client';
 import { EventEmitter } from 'events';
-import Anthropic from '@anthropic-ai/sdk';
 
 const prisma = new PrismaClient();
 
 interface ChatServiceConfig {
-  apiKey?: string;
-  model?: string;
-  maxTokens?: number;
+  useBridge?: boolean;  // Use external Claude Code bridge
+  bridgeTimeout?: number; // Timeout for bridge responses
 }
 
 interface StreamingResponse {
@@ -18,21 +16,16 @@ interface StreamingResponse {
 }
 
 export class ChatService extends EventEmitter {
-  private anthropic: Anthropic;
-  private defaultModel: string;
-  private maxTokens: number;
+  private useBridge: boolean;
+  private bridgeTimeout: number;
+  private pendingRequests: Map<string, any>;
 
   constructor(config: ChatServiceConfig = {}) {
     super();
     
-    const apiKey = config.apiKey || process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      throw new Error('ANTHROPIC_API_KEY is required');
-    }
-
-    this.anthropic = new Anthropic({ apiKey });
-    this.defaultModel = config.model || 'claude-3-sonnet-20240229';
-    this.maxTokens = config.maxTokens || 4096;
+    this.useBridge = config.useBridge !== false; // Default to true
+    this.bridgeTimeout = config.bridgeTimeout || 60000; // 60 seconds
+    this.pendingRequests = new Map();
   }
 
   /**
@@ -48,7 +41,7 @@ export class ChatService extends EventEmitter {
         projectId,
         userId,
         title: title || 'New Conversation',
-        model: this.defaultModel,
+        model: 'claude-code-headless',
       },
       include: {
         project: true,
@@ -108,7 +101,7 @@ export class ChatService extends EventEmitter {
     attachments?: Array<{ filename: string; mimeType: string; size: number; url: string }>
   ): Promise<Message> {
     // Create user message
-    const userMessage = await prisma.message.create({
+    await prisma.message.create({
       data: {
         conversationId,
         role: 'user',
@@ -122,15 +115,6 @@ export class ChatService extends EventEmitter {
       },
     });
 
-    // Get conversation history for context
-    const messages = await this.getMessages(conversationId);
-    
-    // Prepare messages for Claude API
-    const claudeMessages = messages.map(msg => ({
-      role: msg.role as 'user' | 'assistant',
-      content: msg.content,
-    }));
-
     // Create assistant message placeholder
     const assistantMessage = await prisma.message.create({
       data: {
@@ -138,87 +122,185 @@ export class ChatService extends EventEmitter {
         role: 'assistant',
         content: '',
         status: 'sending',
-        model: this.defaultModel,
+        model: 'claude-code-headless',
       },
     });
 
-    // Start streaming response
-    this.streamResponse(assistantMessage.id, claudeMessages);
+    // Start processing based on mode
+    if (this.useBridge) {
+      // Queue request for external Claude Code processing
+      await this.queueForBridge(assistantMessage.id, content, conversationId);
+    } else {
+      // Fallback to mock response
+      await this.generateMockResponse(assistantMessage.id, content);
+    }
 
     return assistantMessage;
   }
 
   /**
-   * Stream response from Claude
+   * Queue request for external Claude Code bridge processing
    */
-  private async streamResponse(
+  private async queueForBridge(
     messageId: string,
-    messages: Array<{ role: 'user' | 'assistant'; content: string }>
+    prompt: string,
+    conversationId: string
   ) {
     try {
-      const stream = await this.anthropic.messages.create({
-        model: this.defaultModel,
-        max_tokens: this.maxTokens,
-        messages,
-        stream: true,
+      // Get conversation context
+      const conversation = await prisma.conversation.findUnique({
+        where: { id: conversationId },
+        include: {
+          project: {
+            include: {
+              tasks: {
+                where: { status: { not: 'archived' } },
+                orderBy: { updatedAt: 'desc' },
+              },
+            },
+          },
+        },
       });
 
-      let fullContent = '';
+      // Store request for bridge to pick up
+      const request = {
+        messageId,
+        conversationId,
+        prompt,
+        projectContext: conversation?.project ? {
+          name: conversation.project.name,
+          tasks: conversation.project.tasks.map(t => ({
+            title: t.title,
+            status: t.status
+          }))
+        } : null,
+        timestamp: new Date(),
+        status: 'pending'
+      };
 
-      for await (const chunk of stream) {
-        if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-          fullContent += chunk.delta.text;
+      this.pendingRequests.set(messageId, request);
+      
+      // Emit event for bridge to pick up
+      this.emit('bridge_request', request);
+
+      // Set timeout for response
+      setTimeout(async () => {
+        if (this.pendingRequests.has(messageId)) {
+          this.pendingRequests.delete(messageId);
           
-          // Emit streaming update
-          this.emit('stream', {
-            id: messageId,
-            content: fullContent,
-            isComplete: false,
-          } as StreamingResponse);
+          // Timeout - generate fallback response
+          await this.generateMockResponse(messageId, prompt);
         }
-      }
+      }, this.bridgeTimeout);
 
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      await this.handleError(messageId, errorMessage);
+    }
+  }
+
+  /**
+   * Process response from Claude Code bridge
+   */
+  async processBridgeResponse(
+    messageId: string,
+    content: string,
+    isComplete: boolean,
+    error?: string
+  ) {
+    // Remove from pending if complete
+    if (isComplete) {
+      this.pendingRequests.delete(messageId);
+    }
+
+    if (error) {
+      await this.handleError(messageId, error);
+      return;
+    }
+
+    // Emit streaming update
+    this.emit('stream', {
+      id: messageId,
+      content,
+      isComplete,
+    } as StreamingResponse);
+
+    if (isComplete) {
       // Update message with complete content
       await prisma.message.update({
         where: { id: messageId },
         data: {
-          content: fullContent,
+          content: content || 'No response generated',
           status: 'completed',
-          tokenCount: this.estimateTokens(fullContent),
+          tokenCount: this.estimateTokens(content),
         },
       });
 
       // Extract and save code blocks
-      await this.extractAndSaveCodeBlocks(messageId, fullContent);
-
-      // Emit completion
-      this.emit('stream', {
-        id: messageId,
-        content: fullContent,
-        isComplete: true,
-      } as StreamingResponse);
-
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
-      // Update message with error
-      await prisma.message.update({
-        where: { id: messageId },
-        data: {
-          status: 'failed',
-          error: errorMessage,
-        },
-      });
-
-      // Emit error
-      this.emit('stream', {
-        id: messageId,
-        content: '',
-        isComplete: true,
-        error: errorMessage,
-      } as StreamingResponse);
+      await this.extractAndSaveCodeBlocks(messageId, content);
     }
   }
+
+  /**
+   * Generate mock response when bridge is not available
+   */
+  private async generateMockResponse(
+    messageId: string,
+    prompt: string
+  ) {
+    const mockResponse = `I'm currently running in bridge mode, waiting for Claude Code to be connected.
+
+To enable Claude Code chat:
+1. Make sure Claude Code is installed locally: npm install -g @anthropic-ai/claude-code
+2. Run the chat handler: node scripts/chat-handler.js
+3. The handler will process your messages using your local Claude Code
+
+Your prompt was: "${prompt.substring(0, 100)}${prompt.length > 100 ? '...' : ''}" `;
+
+    await prisma.message.update({
+      where: { id: messageId },
+      data: {
+        content: mockResponse,
+        status: 'completed',
+        tokenCount: this.estimateTokens(mockResponse),
+      },
+    });
+
+    this.emit('stream', {
+      id: messageId,
+      content: mockResponse,
+      isComplete: true,
+    } as StreamingResponse);
+  }
+
+  /**
+   * Handle errors
+   */
+  private async handleError(messageId: string, errorMessage: string) {
+    await prisma.message.update({
+      where: { id: messageId },
+      data: {
+        status: 'failed',
+        error: errorMessage,
+      },
+    });
+
+    this.emit('stream', {
+      id: messageId,
+      content: '',
+      isComplete: true,
+      error: errorMessage,
+    } as StreamingResponse);
+  }
+
+  /**
+   * Get pending chat requests for bridge
+   */
+  getPendingRequests() {
+    return Array.from(this.pendingRequests.values())
+      .filter(r => r.status === 'pending');
+  }
+
 
   /**
    * Extract code blocks from message content
@@ -230,7 +312,7 @@ export class ChatService extends EventEmitter {
 
     while ((match = codeBlockRegex.exec(content)) !== null) {
       const language = match[1] || 'plaintext';
-      const code = match[2].trim();
+      const code = String(match[2]).trim();
       
       codeBlocks.push({
         messageId,
@@ -271,13 +353,15 @@ export class ChatService extends EventEmitter {
 
     if (messages.length > 0) {
       const firstMessage = messages[0];
-      const title = firstMessage.content.substring(0, 100) + 
-                   (firstMessage.content.length > 100 ? '...' : '');
+      if (firstMessage) {
+        const title = firstMessage.content.substring(0, 100) + 
+                     (firstMessage.content.length > 100 ? '...' : '');
 
-      await prisma.conversation.update({
-        where: { id: conversationId },
-        data: { title },
-      });
+        await prisma.conversation.update({
+          where: { id: conversationId },
+          data: { title },
+        });
+      }
     }
   }
 

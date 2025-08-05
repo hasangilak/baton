@@ -1,11 +1,11 @@
-import { 
+import type { 
   ApiResponse,
   Conversation,
   Message,
   CreateConversationRequest,
   SendMessageRequest,
   StreamingResponse
-} from '../types';
+} from '../types/index';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 

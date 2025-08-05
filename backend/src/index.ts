@@ -14,6 +14,7 @@ import plansRoutes from './routes/plans';
 import claudeRoutes from './routes/claude';
 import chatRoutes from './routes/chat';
 import { BatonMCPServer } from './mcp/server/index';
+import { chatService } from './services/chat.service';
 
 dotenv.config();
 
@@ -143,9 +144,47 @@ io.on('connection', (socket) => {
     console.log(`Socket ${socket.id} left project ${projectId}`);
   });
   
+  // Chat bridge support
+  socket.on('chat-bridge:connect', () => {
+    socket.join('chat-bridge');
+    console.log(`Chat bridge connected: ${socket.id}`);
+    
+    // Send any pending requests
+    const pendingRequests = chatService.getPendingRequests();
+    if (pendingRequests.length > 0) {
+      socket.emit('chat:pending', pendingRequests);
+    }
+  });
+  
+  socket.on('chat-bridge:response', async (data: any) => {
+    const { messageId, content, isComplete, error } = data;
+    console.log(`Chat bridge response for message ${messageId}`);
+    
+    await chatService.processBridgeResponse(
+      messageId,
+      content,
+      isComplete,
+      error
+    );
+    
+    // Broadcast to all clients
+    io.emit('message:updated', { 
+      messageId, 
+      content, 
+      isComplete,
+      error 
+    });
+  });
+  
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
   });
+});
+
+// Listen for new chat requests to forward to bridge
+chatService.on('bridge_request', (request) => {
+  // Send to all connected chat bridges
+  io.to('chat-bridge').emit('chat:request', request);
 });
 
 // Error handling
