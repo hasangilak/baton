@@ -1,6 +1,15 @@
 import React from 'react';
-import { Search, Bell, ChevronLeft, Plus, MoreHorizontal, Wifi, WifiOff, Loader2 } from 'lucide-react';
+import { Search, Bell, ChevronLeft, Plus, MoreHorizontal, Wifi, WifiOff, Loader2, User, Settings, HelpCircle, Keyboard, Info, LogOut } from 'lucide-react';
 import { ThemeSelector } from '../ui/ThemeToggle';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from '../ui/dropdown-menu';
 
 // HMR is now working! ✅
 
@@ -153,12 +162,56 @@ export const Header: React.FC<HeaderProps> = ({ currentSection, websocketStatus 
           </div>
 
           {/* More Options */}
-          <button 
-            className="p-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
-            data-testid="header-more-options-button"
-          >
-            <MoreHorizontal className="w-5 h-5" />
-          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button 
+                className="p-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+                data-testid="header-more-options-button"
+                aria-label="More options"
+              >
+                <MoreHorizontal className="w-5 h-5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>Account</DropdownMenuLabel>
+              <DropdownMenuItem>
+                <User className="w-4 h-4" />
+                Profile
+                <DropdownMenuShortcut>⇧⌘P</DropdownMenuShortcut>
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <Settings className="w-4 h-4" />
+                Account Settings
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Workspace</DropdownMenuLabel>
+              <DropdownMenuItem>
+                <Settings className="w-4 h-4" />
+                Workspace Settings
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Help & Support</DropdownMenuLabel>
+              <DropdownMenuItem>
+                <HelpCircle className="w-4 h-4" />
+                Help Center
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <Keyboard className="w-4 h-4" />
+                Keyboard Shortcuts
+                <DropdownMenuShortcut>⌘K</DropdownMenuShortcut>
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <Info className="w-4 h-4" />
+                About Baton
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400">
+                <LogOut className="w-4 h-4" />
+                Sign Out
+                <DropdownMenuShortcut>⇧⌘Q</DropdownMenuShortcut>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </header>
