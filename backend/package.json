@@ -49,12 +49,15 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.57.0",
     "@modelcontextprotocol/sdk": "^1.17.1",
     "@prisma/client": "^5.22.0",
+    "@types/multer": "^2.0.0",
     "@types/ws": "^8.18.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.1",
     "express": "^4.18.2",
+    "multer": "^2.0.2",
     "pg": "^8.11.3",
     "prisma": "^5.22.0",
     "socket.io": "^4.7.4",

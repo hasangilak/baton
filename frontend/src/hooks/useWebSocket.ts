@@ -275,6 +275,39 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
         queryKey: claudeTodosKeys.byProject(data.projectId)
       });
     });
+
+    // Chat events
+    socket.on('conversation:created', (conversation: any) => {
+      console.log('💬 Conversation created:', conversation);
+      if (!shouldProcessEvent(conversation.projectId)) {
+        console.log('🚫 Ignoring conversation:created event for inactive project:', conversation.projectId);
+        return;
+      }
+      queryClient.invalidateQueries({ 
+        queryKey: ['chat', 'conversations', conversation.projectId] 
+      });
+    });
+
+    socket.on('conversation:archived', ({ conversationId }: { conversationId: string }) => {
+      console.log('📦 Conversation archived:', conversationId);
+      queryClient.invalidateQueries({ 
+        queryKey: ['chat', 'conversations'] 
+      });
+    });
+
+    socket.on('conversation:deleted', ({ conversationId }: { conversationId: string }) => {
+      console.log('🗑️ Conversation deleted:', conversationId);
+      queryClient.invalidateQueries({ 
+        queryKey: ['chat', 'conversations'] 
+      });
+    });
+
+    socket.on('message:complete', ({ conversationId, messageId }: { conversationId: string; messageId: string }) => {
+      console.log('✅ Message complete:', messageId);
+      queryClient.invalidateQueries({ 
+        queryKey: ['chat', 'messages', conversationId] 
+      });
+    });
   }, [queryClient, shouldProcessEvent]);
 
   const disconnect = useCallback(() => {

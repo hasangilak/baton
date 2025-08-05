@@ -281,3 +281,80 @@ export interface CapturePlanRequest {
   capturedAt?: string;
   metadata?: any;
 }
+
+// Chat types
+export interface Conversation {
+  id: string;
+  title?: string | null;
+  projectId: string;
+  userId: string;
+  model: string;
+  status: 'active' | 'archived';
+  createdAt: string;
+  updatedAt: string;
+  metadata?: any;
+  project?: Project;
+  user?: User;
+  messages?: Message[];
+}
+
+export interface Message {
+  id: string;
+  conversationId: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  model?: string | null;
+  tokenCount?: number | null;
+  status: 'sending' | 'completed' | 'failed';
+  error?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  metadata?: any;
+  conversation?: Conversation;
+  attachments?: MessageAttachment[];
+  codeBlocks?: CodeBlock[];
+}
+
+export interface MessageAttachment {
+  id: string;
+  messageId: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  url: string;
+  createdAt: string;
+}
+
+export interface CodeBlock {
+  id: string;
+  messageId: string;
+  language: string;
+  code: string;
+  filename?: string | null;
+  lineStart?: number | null;
+  lineEnd?: number | null;
+  createdAt: string;
+}
+
+export interface CreateConversationRequest {
+  projectId: string;
+  title?: string;
+}
+
+export interface SendMessageRequest {
+  conversationId: string;
+  content: string;
+  attachments?: Array<{
+    filename: string;
+    mimeType: string;
+    size: number;
+    url: string;
+  }>;
+}
+
+export interface StreamingResponse {
+  id: string;
+  content: string;
+  isComplete: boolean;
+  error?: string;
+}

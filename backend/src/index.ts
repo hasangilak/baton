@@ -12,6 +12,7 @@ import mcpRoutes from './routes/mcp';
 import claudeTodosRoutes from './routes/claude-todos';
 import plansRoutes from './routes/plans';
 import claudeRoutes from './routes/claude';
+import chatRoutes from './routes/chat';
 import { BatonMCPServer } from './mcp/server/index';
 
 dotenv.config();
@@ -41,6 +42,9 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(logger);
 
+// Static files for chat uploads
+app.use('/uploads/chat', express.static('uploads/chat'));
+
 // Routes
 app.use('/api/projects', projectRoutes);
 app.use('/api/tasks', taskRoutes);
@@ -48,6 +52,7 @@ app.use('/api/mcp', mcpRoutes);
 app.use('/api/claude-todos', claudeTodosRoutes);
 app.use('/api/plans', plansRoutes);
 app.use('/api/claude', claudeRoutes);
+app.use('/api/chat', chatRoutes);
 
 // MCP SSE Transport Routes
 app.get('/mcp/sse', async (req, res) => {

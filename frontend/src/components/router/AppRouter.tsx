@@ -32,6 +32,7 @@ export const AppRouter: React.FC<AppRouterProps> = ({ projectId, onSync }) => {
       
       {/* Chat page */}
       <Route path="/chat" element={<ChatPage />} />
+      <Route path="/chat/:conversationId" element={<ChatPage />} />
       
       {/* Other sections - for now redirect to tasks */}
       <Route path="/dashboard" element={<Navigate to="/tasks" replace />} />

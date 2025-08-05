@@ -23,6 +23,7 @@ model User {
   assignedTasks Task[]     @relation("TaskAssignee")
   createdTasks  Task[]     @relation("TaskCreator")
   comments      Comment[]
+  conversations Conversation[]
 
   @@map("users")
 }
@@ -45,6 +46,7 @@ model Project {
   claudeTodos      ClaudeTodo[]
   workspaceMappings WorkspaceMapping[]
   claudeCodePlans  ClaudeCodePlan[]
+  conversations    Conversation[]
 
   @@map("projects")
 }
@@ -204,4 +206,85 @@ model ClaudeCodePlan {
   @@index([projectId])
   @@index([status])
   @@index([capturedAt])
+}
+
+model Conversation {
+  id          String    @id @default(cuid())
+  title       String?
+  projectId   String
+  userId      String
+  model       String    @default("claude-3-sonnet") // Model used for the conversation
+  status      String    @default("active") // active, archived
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  metadata    Json?     // Store additional conversation metadata
+
+  // Relations
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages    Message[]
+
+  @@map("conversations")
+  @@index([projectId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Message {
+  id             String    @id @default(cuid())
+  conversationId String
+  role           String    // user, assistant, system
+  content        String    @db.Text
+  model          String?   // Model used for this specific message (if different)
+  tokenCount     Int?      // Token count for the message
+  status         String    @default("completed") // sending, completed, failed
+  error          String?   // Error message if failed
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  metadata       Json?     // Store tool calls, citations, etc.
+
+  // Relations
+  conversation   Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  attachments    MessageAttachment[]
+  codeBlocks     CodeBlock[]
+
+  @@map("messages")
+  @@index([conversationId])
+  @@index([role])
+  @@index([createdAt])
+}
+
+model MessageAttachment {
+  id          String   @id @default(cuid())
+  messageId   String
+  filename    String
+  mimeType    String
+  size        Int      // File size in bytes
+  url         String   // URL or path to the file
+  createdAt   DateTime @default(now())
+
+  // Relations
+  message     Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@map("message_attachments")
+  @@index([messageId])
+}
+
+model CodeBlock {
+  id          String   @id @default(cuid())
+  messageId   String
+  language    String   // Programming language
+  code        String   @db.Text
+  filename    String?  // Optional filename
+  lineStart   Int?     // Starting line number if extracted from a file
+  lineEnd     Int?     // Ending line number if extracted from a file
+  createdAt   DateTime @default(now())
+
+  // Relations
+  message     Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@map("code_blocks")
+  @@index([messageId])
+  @@index([language])
 }

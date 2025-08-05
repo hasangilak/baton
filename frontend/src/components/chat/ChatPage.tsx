@@ -1,115 +1,133 @@
-import React, { useState } from 'react';
-import { Send, Plus, Hash, Search } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { ConversationList } from './ConversationList';
+import { MessageList } from './MessageList';
+import { MessageInput } from './MessageInput';
+import { useConversations, useMessages, useChat, useChatSearch } from '../../hooks/useChat';
+import { useProjects } from '../../hooks/useProjects';
+import { Loader2 } from 'lucide-react';
 
 export const ChatPage: React.FC = () => {
-  const [message, setMessage] = useState('');
+  const navigate = useNavigate();
+  const { conversationId } = useParams<{ conversationId?: string }>();
+  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(
+    conversationId || null
+  );
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (message.trim()) {
-      // TODO: Handle message submission
-      console.log('Message sent:', message);
-      setMessage('');
+  // Get current project
+  const { data: projects } = useProjects();
+  const currentProjectId = projects?.[0]?.id || 'demo-project-1';
+
+  // Chat hooks
+  const {
+    conversations,
+    isLoading: isLoadingConversations,
+    createConversation,
+    archiveConversation,
+    deleteConversation,
+  } = useConversations(currentProjectId);
+
+  const { messages, isLoading: isLoadingMessages } = useMessages(selectedConversationId);
+  
+  const {
+    sendMessage,
+    streamingMessage,
+    isStreaming,
+    uploadFile,
+  } = useChat(selectedConversationId);
+
+  const {
+    searchQuery,
+    setSearchQuery,
+    searchResults,
+    isSearching,
+  } = useChatSearch(currentProjectId);
+
+  // Update URL when conversation changes
+  useEffect(() => {
+    if (selectedConversationId) {
+      navigate(`/chat/${selectedConversationId}`, { replace: true });
+    } else {
+      navigate('/chat', { replace: true });
+    }
+  }, [selectedConversationId, navigate]);
+
+  const handleCreateConversation = async () => {
+    const result = await createConversation.mutateAsync();
+    if (result.conversation) {
+      setSelectedConversationId(result.conversation.id);
     }
   };
 
-  const quickActions = [
-    { id: 'write', label: 'Write', icon: Plus },
-    { id: 'learn', label: 'Learn', icon: Hash },
-    { id: 'code', label: 'Code', icon: Hash },
-    { id: 'life-stuff', label: 'Life stuff', icon: Hash }
-  ];
+  const handleSelectConversation = (conversationId: string) => {
+    setSelectedConversationId(conversationId);
+    setSearchQuery(''); // Clear search when selecting
+  };
+
+  const handleSendMessage = async (content: string, attachments?: any[]) => {
+    if (!selectedConversationId) {
+      // Create a new conversation if none selected
+      const result = await createConversation.mutateAsync();
+      if (result.conversation) {
+        setSelectedConversationId(result.conversation.id);
+        // Send message after conversation is created
+        setTimeout(() => {
+          sendMessage(content, attachments);
+        }, 100);
+      }
+    } else {
+      sendMessage(content, attachments);
+    }
+  };
+
+  const displayConversations = searchQuery.length > 2 && isSearching
+    ? searchResults
+    : conversations;
+
+  if (isLoadingConversations) {
+    return (
+      <div className="h-full flex items-center justify-center bg-gray-900">
+        <Loader2 className="animate-spin text-gray-400" size={32} />
+      </div>
+    );
+  }
 
   return (
-    <div className="h-full flex flex-col bg-gray-900 text-white">
-      {/* Main content area */}
-      <div className="flex-1 flex flex-col items-center justify-center p-8">
-        {/* Welcome message */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-4">
-            <span className="text-4xl mr-3">✨</span>
-            <h1 className="text-2xl font-normal text-gray-200">
-              What's new, Hassan?
-            </h1>
-          </div>
-        </div>
-
-        {/* Input form */}
-        <form onSubmit={handleSubmit} className="w-full max-w-2xl mb-6">
-          <div className="relative bg-gray-800 rounded-lg border border-gray-700">
-            <div className="flex items-center p-4">
-              {/* Action buttons on the left */}
-              <div className="flex items-center space-x-2 mr-4">
-                <button
-                  type="button"
-                  className="p-2 text-gray-400 hover:text-gray-300 hover:bg-gray-700 rounded-md transition-colors"
-                  aria-label="Add attachment"
-                >
-                  <Plus size={18} />
-                </button>
-                <button
-                  type="button"
-                  className="p-2 text-gray-400 hover:text-gray-300 hover:bg-gray-700 rounded-md transition-colors"
-                  aria-label="More options"
-                >
-                  <Hash size={18} />
-                </button>
-                <button
-                  type="button"
-                  className="flex items-center space-x-1 px-3 py-1.5 text-sm text-gray-400 hover:text-gray-300 hover:bg-gray-700 rounded-md transition-colors"
-                  aria-label="Research"
-                >
-                  <Search size={16} />
-                  <span>Research</span>
-                </button>
-              </div>
-
-              {/* Input field */}
-              <input
-                type="text"
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                placeholder="How can I help you today?"
-                className="flex-1 bg-transparent text-gray-200 placeholder-gray-500 focus:outline-none"
-              />
-
-              {/* Model selector and send button */}
-              <div className="flex items-center space-x-2 ml-4">
-                <div className="flex items-center space-x-2">
-                  <span className="text-sm text-gray-400">Claude Sonnet 4</span>
-                  <button
-                    type="submit"
-                    disabled={!message.trim()}
-                    className="p-2 bg-orange-600 text-white rounded-md hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    aria-label="Send message"
-                  >
-                    <Send size={18} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </form>
-
-        {/* Quick action buttons */}
-        <div className="flex flex-wrap gap-3 justify-center">
-          {quickActions.map((action) => {
-            const IconComponent = action.icon;
-            return (
-              <button
-                key={action.id}
-                className="flex items-center space-x-2 px-4 py-2 bg-gray-800 text-gray-300 rounded-lg border border-gray-700 hover:bg-gray-700 hover:text-gray-200 transition-colors"
-              >
-                <IconComponent size={16} />
-                <span className="text-sm">{action.label}</span>
-              </button>
-            );
-          })}
-        </div>
+    <div className="h-full flex bg-gray-900">
+      {/* Conversation sidebar */}
+      <div className="w-80 flex-shrink-0 border-r border-gray-800">
+        <ConversationList
+          conversations={displayConversations}
+          selectedConversationId={selectedConversationId}
+          onSelectConversation={handleSelectConversation}
+          onCreateConversation={handleCreateConversation}
+          onArchiveConversation={(id) => archiveConversation.mutate(id)}
+          onDeleteConversation={(id) => {
+            deleteConversation.mutate(id);
+            if (selectedConversationId === id) {
+              setSelectedConversationId(null);
+            }
+          }}
+          onSearch={setSearchQuery}
+        />
       </div>
 
-      {/* Footer spacer for mobile navigation */}
-      <div className="pb-bottom-nav md:pb-0" />
+      {/* Chat area */}
+      <div className="flex-1 flex flex-col">
+        {/* Messages */}
+        <MessageList
+          messages={messages}
+          streamingMessage={streamingMessage}
+        />
+
+        {/* Input */}
+        <MessageInput
+          onSendMessage={handleSendMessage}
+          onUploadFile={uploadFile.mutateAsync}
+          isStreaming={isStreaming}
+          disabled={isLoadingMessages}
+        />
+      </div>
     </div>
   );
 };
