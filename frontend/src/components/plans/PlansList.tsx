@@ -5,7 +5,7 @@ import {
   Clock,
   Archive,
   RefreshCw,
-  MoreHorizontal,
+  Trash2,
   ChevronDown,
   ChevronRight,
   Calendar,
@@ -18,6 +18,17 @@ import { usePlans, useUpdatePlan, useDeletePlan } from '../../hooks';
 import type { ClaudeCodePlan, ClaudeCodePlanStatus } from '../../types';
 import { useClaudeModal } from '../../hooks/useClaudeModal';
 import { ClaudePlanModal } from '../claude/ClaudePlanModal';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 interface PlansListProps {
   projectId: string;
@@ -44,6 +55,7 @@ const statusBadgeColors = {
 export const PlansList: React.FC<PlansListProps> = ({ projectId }) => {
   const [selectedPlans, setSelectedPlans] = useState<string[]>([]);
   const [expandedPlans, setExpandedPlans] = useState<string[]>([]);
+  const [deletingPlan, setDeletingPlan] = useState<ClaudeCodePlan | null>(null);
 
   // Use the custom hooks for plans data and mutations
   const { data: plansData, isLoading, error, refetch } = usePlans(projectId);
@@ -84,9 +96,10 @@ export const PlansList: React.FC<PlansListProps> = ({ projectId }) => {
     });
   };
 
-  const handleDelete = async (planId: string) => {
-    if (confirm('Are you sure you want to delete this plan?')) {
-      await deletePlanMutation.mutateAsync(planId);
+  const handleDeleteConfirm = async () => {
+    if (deletingPlan) {
+      await deletePlanMutation.mutateAsync(deletingPlan.id);
+      setDeletingPlan(null);
     }
   };
 
@@ -220,14 +233,39 @@ export const PlansList: React.FC<PlansListProps> = ({ projectId }) => {
                 <option value="archived">Archived</option>
               </select>
 
-              <button
-                onClick={() => handleDelete(plan.id)}
-                className="p-2 md:p-1 text-gray-400 hover:text-red-500 rounded opacity-70 md:opacity-0 md:group-hover:opacity-100 transition-opacity min-h-[44px] min-w-[44px] md:min-h-auto md:min-w-auto flex items-center justify-center"
-                title="Delete plan"
-                data-testid={`claude-plan-delete-${plan.id}`}
-              >
-                <MoreHorizontal className="w-4 h-4" />
-              </button>
+              <AlertDialog open={deletingPlan?.id === plan.id} onOpenChange={(open) => !open && setDeletingPlan(null)}>
+                <AlertDialogTrigger asChild>
+                  <button
+                    onClick={() => setDeletingPlan(plan)}
+                    className="p-2 md:p-1 text-gray-400 hover:text-red-500 rounded opacity-70 md:opacity-0 md:group-hover:opacity-100 transition-opacity min-h-[44px] min-w-[44px] md:min-h-auto md:min-w-auto flex items-center justify-center"
+                    title="Delete plan"
+                    data-testid={`claude-plan-delete-${plan.id}`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete Plan</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Are you sure you want to delete "{plan.title}"? This action cannot be undone.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel data-testid={`claude-plan-delete-cancel-${plan.id}`}>
+                      Cancel
+                    </AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={handleDeleteConfirm}
+                      disabled={deletePlanMutation.isPending}
+                      className="bg-red-600 hover:bg-red-700 focus:ring-red-500"
+                      data-testid={`claude-plan-delete-confirm-${plan.id}`}
+                    >
+                      {deletePlanMutation.isPending ? 'Deleting...' : 'Delete Plan'}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </div>
         </div>
