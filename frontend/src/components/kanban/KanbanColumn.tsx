@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { Plus } from 'lucide-react';
 import clsx from 'clsx';
 import type { TaskStatus } from '../../types';
+import { CreateTaskModal } from '../tasks/CreateTaskModal';
 
 interface KanbanColumnProps {
   id: string;
@@ -11,6 +12,7 @@ interface KanbanColumnProps {
   headerColor: string;
   count: number;
   status: TaskStatus;
+  projectId: string;
   children: React.ReactNode;
 }
 
@@ -34,8 +36,10 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
   headerColor,
   count,
   status,
+  projectId,
   children,
 }) => {
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const { setNodeRef, isOver } = useDroppable({
     id,
   });
@@ -65,6 +69,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
         <button 
           className="p-1 text-gray-400 hover:text-gray-600 hover:bg-white hover:bg-opacity-50 rounded"
           title="Add new task"
+          onClick={() => setIsCreateModalOpen(true)}
           data-testid={`kanban-column-add-task-${status}`}
         >
           <Plus className="w-4 h-4" />
@@ -84,6 +89,14 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
           </div>
         </div>
       )}
+
+      {/* Create Task Modal */}
+      <CreateTaskModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        projectId={projectId}
+        initialStatus={status}
+      />
     </div>
   );
 };

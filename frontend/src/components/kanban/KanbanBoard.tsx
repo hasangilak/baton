@@ -243,6 +243,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ projectId }) => {
                 headerColor={config.headerColor}
                 count={columnTasks.length}
                 status={status}
+                projectId={projectId}
               >
                 <SortableContext
                   items={columnTasks.map(task => task.id)}

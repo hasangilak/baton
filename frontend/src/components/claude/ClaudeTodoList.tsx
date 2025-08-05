@@ -8,9 +8,9 @@ import {
   RefreshCw,
   ArrowUpDown,
   ExternalLink,
-  MoreHorizontal,
   FileText,
-  Eye
+  Eye,
+  Trash2
 } from 'lucide-react';
 import clsx from 'clsx';
 import type { ClaudeTodo } from '../../types';
@@ -18,6 +18,16 @@ import { useClaudeTodos, useDeleteClaudeTodo } from '../../hooks/useClaudeTodos'
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useClaudeModal } from '../../hooks/useClaudeModal';
 import { ClaudeTodoModal } from './ClaudeTodoModal';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface ClaudeTodoListProps {
   projectId: string;
@@ -49,6 +59,7 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
   const { data: todosResponse, isLoading, refetch } = useClaudeTodos(projectId);
   const deleteTodoMutation = useDeleteClaudeTodo();
   const [selectedTodos, setSelectedTodos] = useState<string[]>([]);
+  const [deletingTodo, setDeletingTodo] = useState<ClaudeTodo | null>(null);
 
   // Modal state management
   const {
@@ -157,9 +168,14 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
     );
   };
 
-  const handleDelete = async (todoId: string) => {
-    if (confirm('Are you sure you want to delete this todo?')) {
-      await deleteTodoMutation.mutateAsync(todoId);
+  const handleDeleteClick = (todo: ClaudeTodo) => {
+    setDeletingTodo(todo);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (deletingTodo) {
+      await deleteTodoMutation.mutateAsync(deletingTodo.id);
+      setDeletingTodo(null);
     }
   };
 
@@ -243,16 +259,41 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
                 <Eye className="w-4 h-4" />
               </button>
               <button
-                onClick={() => handleDelete(todo.id)}
+                onClick={() => handleDeleteClick(todo)}
                 className="p-2 md:p-1 text-gray-400 hover:text-red-500 rounded min-h-[44px] min-w-[44px] md:min-h-auto md:min-w-auto flex items-center justify-center"
                 title="Delete todo"
                 data-testid={`claude-todo-delete-${todo.id}`}
               >
-                <MoreHorizontal className="w-4 h-4" />
+                <Trash2 className="w-4 h-4" />
               </button>
             </div>
           </div>
         </div>
+
+        {/* Delete Confirmation Modal */}
+        <AlertDialog open={deletingTodo?.id === todo.id} onOpenChange={(open) => !open && setDeletingTodo(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Todo</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete "{todo.content}"? This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel data-testid={`claude-todo-delete-cancel-${todo.id}`}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDeleteConfirm}
+                disabled={deleteTodoMutation.isPending}
+                className="bg-red-600 hover:bg-red-700 focus:ring-red-500"
+                data-testid={`claude-todo-delete-confirm-${todo.id}`}
+              >
+                {deleteTodoMutation.isPending ? 'Deleting...' : 'Delete Todo'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     );
   };
