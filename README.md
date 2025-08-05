@@ -98,36 +98,71 @@ That's it! Baton is running with a seeded demo project and tasks.
 - **Todo Lists**: Claude Code plan mode automatically syncs with Baton
 - **Bidirectional Sync**: "Sync my current todos to Baton tasks"
 
-## 📝 Claude Code Hooks Configuration
+## 🪝 Claude Code Hooks Integration
 
-**IMPORTANT**: Add these into your own .claude project folder. grab the scritps from this repo in scripts folder:
+Baton now supports **automatic capture** of your Claude Code plans and todos through PostToolUse hooks!
 
-````
-"hooks": {
-   "PostToolUse": [
-      {
-         "matcher": "TodoWrite",
-         "hooks": [
-            {
-            "type": "command",
-            "command": "cd /home/hassan/work/baton && node scripts/capture-todos.js"
-            }
-         ]
-      },
-      {
-         "matcher": "ExitPlanMode",
-         "hooks": [
-            {
-            "type": "command",
-            "command": "cd /home/hassan/work/baton && node scripts/capture-plan.js"
-            }
-         ]
-      }
-   ]
-}
-````
+### ✨ What It Does
+- 📝 **Auto-capture Plans**: When you exit plan mode in Claude Code, plans are automatically saved to Baton
+- ✅ **Todo Sync**: Claude Code todos are automatically synced to Baton in real-time
+- 🎯 **Project Detection**: Uses `.baton-project` files to associate todos with correct projects
+- 🔄 **Real-time Updates**: WebSocket notifications keep your Baton UI in sync
 
-**Simply copy the entire code block above and paste it into your Claude Code memory for seamless integration.**
+### 🚀 Quick Setup
+
+1. **Create Project Context File**
+   ```bash
+   # In your project root directory
+   echo '{"projectId": "your-project-id-from-baton"}' > .baton-project
+   ```
+
+2. **Configure Claude Code Hooks**
+   
+   Add this to your `~/.claude/settings.json` or `.claude/settings.local.json`:
+   
+   ```json
+   {
+     "hooks": {
+       "PostToolUse": [
+         {
+           "matcher": "TodoWrite",
+           "hooks": [
+             {
+               "type": "command",
+               "command": "cd /path/to/your/baton && node scripts/capture-todos.js"
+             }
+           ]
+         },
+         {
+           "matcher": "ExitPlanMode",
+           "hooks": [
+             {
+               "type": "command",
+               "command": "cd /path/to/your/baton && node scripts/capture-plan.js"
+             }
+           ]
+         }
+       ]
+     }
+   }
+   ```
+   
+   **Replace `/path/to/your/baton`** with your actual Baton installation path.
+
+3. **Ensure Baton is Running**
+   ```bash
+   docker compose up -d
+   ```
+
+### 🎯 How to Use
+1. Work in Claude Code plan mode as usual
+2. Accept plans - they're automatically captured in Baton
+3. Create todos in Claude Code - they sync automatically to Baton
+4. View everything in the Baton UI at http://localhost:5173
+
+### 📚 Full Documentation
+- [Quick Start Guide](./docs/CLAUDE_CODE_HOOKS_QUICKSTART.md) - Get running in 5 minutes
+- [Full Setup Guide](./docs/CLAUDE_CODE_HOOKS_SETUP.md) - Detailed configuration and troubleshooting
 
 ## 🏗️ Multi-Project Workspace System
 
