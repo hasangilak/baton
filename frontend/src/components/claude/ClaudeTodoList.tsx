@@ -8,7 +8,8 @@ import {
   RefreshCw,
   ArrowUpDown,
   ExternalLink,
-  MoreHorizontal
+  MoreHorizontal,
+  FileText
 } from 'lucide-react';
 import clsx from 'clsx';
 import type { ClaudeTodo } from '../../types';
@@ -210,6 +211,14 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
                     <span className="hidden sm:inline">Synced to task</span>
                     <span className="sm:hidden">Synced</span>
                     <ExternalLink className="w-3 h-3" />
+                  </div>
+                )}
+
+                {todo.linkedPlan && (
+                  <div className="flex items-center space-x-1 text-xs text-purple-600">
+                    <FileText className="w-3 h-3" />
+                    <span className="hidden sm:inline">Plan: {todo.linkedPlan.title}</span>
+                    <span className="sm:hidden">Planned</span>
                   </div>
                 )}
               </div>

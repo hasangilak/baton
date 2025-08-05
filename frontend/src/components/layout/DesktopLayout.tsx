@@ -19,7 +19,7 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = React.memo(({
         className="h-full grid gap-6"
         style={{
           gridTemplateAreas: '"kanban kanban sidebar"',
-          gridTemplateColumns: '1fr 1fr 320px',
+          gridTemplateColumns: '1fr 1fr 500px',
           gridTemplateRows: '1fr'
         }}
       >

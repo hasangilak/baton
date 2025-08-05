@@ -104,6 +104,23 @@ router.get('/', async (req, res) => {
             name: true,
             color: true
           }
+        },
+        linkedTodos: {
+          select: {
+            id: true,
+            content: true,
+            status: true,
+            priority: true,
+            orderIndex: true
+          },
+          orderBy: {
+            orderIndex: 'asc'
+          }
+        },
+        _count: {
+          select: {
+            linkedTodos: true
+          }
         }
       },
       orderBy: {
@@ -152,6 +169,25 @@ router.get('/:id', async (req, res) => {
             id: true,
             name: true,
             color: true
+          }
+        },
+        linkedTodos: {
+          select: {
+            id: true,
+            content: true,
+            status: true,
+            priority: true,
+            orderIndex: true,
+            createdAt: true,
+            updatedAt: true
+          },
+          orderBy: {
+            orderIndex: 'asc'
+          }
+        },
+        _count: {
+          select: {
+            linkedTodos: true
           }
         }
       }

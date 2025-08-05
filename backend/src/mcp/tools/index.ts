@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { planContextManager } from '../planContext';
 
 export class BatonToolProvider {
   constructor(private prisma: PrismaClient, private workspaceManager?: any, private io?: any) {}
@@ -424,6 +425,31 @@ export class BatonToolProvider {
         }
       },
       
+      // Plan-Todo Linking Tools
+      {
+        name: "LinkTodosToplan",
+        description: "Manually link existing todos to a Claude Code plan",
+        inputSchema: {
+          type: "object",
+          properties: {
+            planId: {
+              type: "string",
+              description: "Claude Code plan ID to link todos to"
+            },
+            todoIds: {
+              type: "array",
+              items: { type: "string" },
+              description: "Array of todo IDs to link to the plan"
+            },
+            projectId: {
+              type: "string",
+              description: "Project ID (optional, will be inferred from plan if not provided)"
+            }
+          },
+          required: ["planId", "todoIds"]
+        }
+      },
+
       // Workspace Management Tools
       {
         name: "associate_workspace_project",
@@ -501,6 +527,8 @@ export class BatonToolProvider {
         return this.syncTodosToTasks(args);
       case "sync_tasks_to_todos":
         return this.syncTasksToTodos(args);
+      case "LinkTodosToplan":
+        return this.linkTodosToPlan(args);
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -1253,6 +1281,32 @@ export class BatonToolProvider {
       
       console.log(`✅ Using project: ${project.name} (${project.id})`);
 
+      // Check for active plan context to link todos
+      let activePlanId = planContextManager.getActivePlan(projectId);
+      
+      // If no active plan from context, check for recently accepted plans (within 10 minutes)
+      if (!activePlanId) {
+        const recentPlan = await this.prisma.claudeCodePlan.findFirst({
+          where: {
+            projectId,
+            status: 'accepted',
+            capturedAt: {
+              gte: new Date(Date.now() - 10 * 60 * 1000) // 10 minutes ago
+            }
+          },
+          orderBy: {
+            capturedAt: 'desc'
+          }
+        });
+        
+        if (recentPlan) {
+          activePlanId = recentPlan.id;
+          console.log(`🕒 Found recently accepted plan ${activePlanId} (within 10 minutes), will auto-link todos`);
+        }
+      } else {
+        console.log(`🔗 Found active plan ${activePlanId}, will link todos to this plan`);
+      }
+
       // Use transaction to ensure data consistency
       const result = await this.prisma.$transaction(async (tx) => {
         // First, get existing todos to track what needs to be deleted
@@ -1286,7 +1340,9 @@ export class BatonToolProvider {
               status: todo.status,
               priority: todo.priority,
               orderIndex: i,
-              updatedAt: new Date()
+              updatedAt: new Date(),
+              // Only update plan link if there's an active plan and todo doesn't already have one
+              ...(activePlanId && { claudeCodePlanId: activePlanId })
             },
             create: {
               id: todo.id,
@@ -1295,7 +1351,8 @@ export class BatonToolProvider {
               priority: todo.priority,
               projectId,
               orderIndex: i,
-              createdBy: 'claude'
+              createdBy: 'claude',
+              claudeCodePlanId: activePlanId
             }
           });
           processedCount++;
@@ -1303,6 +1360,9 @@ export class BatonToolProvider {
         
         return processedCount;
       });
+
+      // Check and update plan statuses based on todo completion
+      await this.checkAllPlanStatuses(projectId);
 
       // Emit WebSocket event after successful database transaction
       if (this.io) {
@@ -1468,6 +1528,18 @@ export class BatonToolProvider {
         
         return processedCount;
       });
+
+      // Set active plan context for accepted plans
+      for (const plan of plans) {
+        if (plan.status === 'accepted') {
+          planContextManager.setActivePlan(
+            plan.id,
+            projectId,
+            plan.sessionId
+          );
+          console.log(`🎯 Set active plan context: ${plan.id} for project ${projectId}`);
+        }
+      }
 
       // Emit WebSocket event after successful database transaction
       if (this.io) {
@@ -1785,6 +1857,184 @@ export class BatonToolProvider {
         success: false,
         error: `Failed to initiate workspace detection: ${error instanceof Error ? error.message : 'Unknown error'}`
       };
+    }
+  }
+
+  private async linkTodosToPlan(args: any): Promise<any> {
+    try {
+      const { planId, todoIds, projectId: providedProjectId } = args;
+
+      // Verify plan exists and get its project ID
+      const plan = await this.prisma.claudeCodePlan.findUnique({
+        where: { id: planId },
+        select: { id: true, title: true, projectId: true }
+      });
+
+      if (!plan) {
+        return {
+          success: false,
+          message: `Plan with ID '${planId}' not found`
+        };
+      }
+
+      const projectId = providedProjectId || plan.projectId;
+
+      // Verify todos exist and belong to the same project
+      const todos = await this.prisma.claudeTodo.findMany({
+        where: {
+          id: { in: todoIds },
+          projectId
+        },
+        select: { id: true, content: true, claudeCodePlanId: true }
+      });
+
+      if (todos.length !== todoIds.length) {
+        const foundIds = todos.map(t => t.id);
+        const missingIds = todoIds.filter((id: string) => !foundIds.includes(id));
+        return {
+          success: false,
+          message: `Some todos not found or don't belong to project: ${missingIds.join(', ')}`
+        };
+      }
+
+      // Update todos to link them to the plan
+      const updateResult = await this.prisma.claudeTodo.updateMany({
+        where: {
+          id: { in: todoIds },
+          projectId
+        },
+        data: {
+          claudeCodePlanId: planId
+        }
+      });
+
+      // Check if plan status should be updated based on the newly linked todos
+      await this.updatePlanStatusFromTodos(planId);
+
+      // Emit WebSocket event for real-time updates
+      if (this.io) {
+        try {
+          this.io.to(`project-${projectId}`).emit('todos-linked-to-plan', {
+            projectId,
+            planId,
+            planTitle: plan.title,
+            linkedTodoIds: todoIds,
+            action: 'todos-plan-linked'
+          });
+        } catch (wsError) {
+          console.error('Failed to emit WebSocket event for todos-linked-to-plan:', wsError);
+        }
+      }
+
+      return {
+        success: true,
+        linkedCount: updateResult.count,
+        planId,
+        planTitle: plan.title,
+        message: `Successfully linked ${updateResult.count} todos to plan "${plan.title}"`
+      };
+
+    } catch (error) {
+      return {
+        success: false,
+        error: `Failed to link todos to plan: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
+    }
+  }
+
+  /**
+   * Update plan status based on linked todos completion status
+   */
+  private async updatePlanStatusFromTodos(planId: string): Promise<{ updated: boolean; newStatus?: string }> {
+    try {
+      // Get plan with linked todos
+      const plan = await this.prisma.claudeCodePlan.findUnique({
+        where: { id: planId },
+        include: {
+          linkedTodos: {
+            select: { status: true }
+          }
+        }
+      });
+
+      if (!plan || !plan.linkedTodos || plan.linkedTodos.length === 0) {
+        return { updated: false };
+      }
+
+      const todos = plan.linkedTodos;
+      const completedTodos = todos.filter(todo => todo.status === 'completed');
+      const totalTodos = todos.length;
+
+      // Determine new status based on completion percentage
+      let newStatus: string | null = null;
+      
+      if (completedTodos.length === totalTodos) {
+        // All todos completed - mark plan as implemented
+        if (plan.status !== 'implemented') {
+          newStatus = 'implemented';
+        }
+      } else if (completedTodos.length > 0 && plan.status === 'accepted') {
+        // Some progress made but plan still in accepted status - could stay accepted or move to implemented
+        // For now, we'll only auto-update when ALL todos are completed
+      }
+
+      if (newStatus && newStatus !== plan.status) {
+        await this.prisma.claudeCodePlan.update({
+          where: { id: planId },
+          data: { status: newStatus }
+        });
+
+        console.log(`📋 Auto-updated plan ${planId} status from ${plan.status} to ${newStatus} (${completedTodos.length}/${totalTodos} todos completed)`);
+
+        // Emit WebSocket event for plan status update
+        if (this.io) {
+          try {
+            this.io.to(`project-${plan.projectId}`).emit('plan:status-updated', {
+              planId,
+              oldStatus: plan.status,
+              newStatus,
+              trigger: 'todo-completion',
+              completionStats: {
+                completed: completedTodos.length,
+                total: totalTodos,
+                percentage: Math.round((completedTodos.length / totalTodos) * 100)
+              }
+            });
+          } catch (wsError) {
+            console.error('Failed to emit plan status update event:', wsError);
+          }
+        }
+
+        return { updated: true, newStatus };
+      }
+
+      return { updated: false };
+    } catch (error) {
+      console.error('Error updating plan status from todos:', error);
+      return { updated: false };
+    }
+  }
+
+  /**
+   * Check and update status for all plans that have linked todos
+   */
+  private async checkAllPlanStatuses(projectId: string): Promise<void> {
+    try {
+      const plansWithTodos = await this.prisma.claudeCodePlan.findMany({
+        where: {
+          projectId,
+          linkedTodos: {
+            some: {}
+          }
+        },
+        select: { id: true }
+      });
+
+      for (const plan of plansWithTodos) {
+        await this.updatePlanStatusFromTodos(plan.id);
+      }
+    } catch (error) {
+      console.error('Error checking plan statuses:', error);
     }
   }
 }

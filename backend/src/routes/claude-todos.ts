@@ -32,6 +32,14 @@ router.get('/', async (req, res, next) => {
             status: true,
             priority: true
           }
+        },
+        linkedPlan: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            capturedAt: true
+          }
         }
       }
     });
@@ -44,6 +52,7 @@ router.get('/', async (req, res, next) => {
       priority: todo.priority,
       project: todo.project,
       syncedTask: todo.syncedTask,
+      linkedPlan: todo.linkedPlan,
       createdAt: todo.createdAt,
       updatedAt: todo.updatedAt,
       metadata: todo.metadata

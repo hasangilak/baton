@@ -186,6 +186,12 @@ export interface ClaudeTodo {
     status: TaskStatus;
     priority: TaskPriority;
   };
+  linkedPlan?: {
+    id: string;
+    title: string;
+    status: ClaudeCodePlanStatus;
+    capturedAt: string;
+  };
 }
 
 export interface CreateClaudeTodosRequest {
@@ -240,6 +246,18 @@ export interface ClaudeCodePlan {
     id: string;
     name: string;
     color: string;
+  };
+  linkedTodos?: {
+    id: string;
+    content: string;
+    status: ClaudeTodoStatus;
+    priority: ClaudeTodoPriority;
+    orderIndex: number;
+    createdAt?: string;
+    updatedAt?: string;
+  }[];
+  _count?: {
+    linkedTodos: number;
   };
 }
 

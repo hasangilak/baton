@@ -178,6 +178,13 @@ export const PlansList: React.FC<PlansListProps> = ({ projectId }) => {
                     </span>
                   </div>
                 )}
+
+                {plan._count?.linkedTodos && plan._count.linkedTodos > 0 && (
+                  <div className="flex items-center space-x-1 text-xs text-green-600">
+                    <CheckCircle2 className="w-3 h-3" />
+                    <span>{plan._count.linkedTodos} todo{plan._count.linkedTodos === 1 ? '' : 's'}</span>
+                  </div>
+                )}
               </div>
             </div>
 
