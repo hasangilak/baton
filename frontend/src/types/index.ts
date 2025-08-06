@@ -362,3 +362,42 @@ export interface StreamingResponse {
   isComplete: boolean;
   error?: string;
 }
+
+// Interactive Prompt Types
+export interface PromptOption {
+  id: string;
+  label: string;
+  value: string;
+  isDefault?: boolean;
+  isRecommended?: boolean;
+}
+
+export interface PromptContext {
+  toolName?: string;
+  toolType?: string;
+  action?: string;
+  command?: string;
+  filePath?: string;
+  projectPath?: string;
+  fullMessage?: string;
+}
+
+export type PromptType = 'permission' | 'tool_usage' | 'multiple_choice' | 'three_option' | 'file_selection';
+export type PromptStatus = 'pending' | 'answered' | 'timeout' | 'auto_handled';
+
+export interface InteractivePrompt {
+  id: string;
+  conversationId: string;
+  sessionId?: string;
+  type: PromptType;
+  title?: string;
+  message: string;
+  options: PromptOption[];
+  context?: PromptContext;
+  status: PromptStatus;
+  selectedOption?: string;
+  autoHandler?: string;
+  timeoutAt: string;
+  createdAt: string;
+  respondedAt?: string;
+}

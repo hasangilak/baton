@@ -613,4 +613,133 @@ router.put('/conversations/:conversationId/compact', async (req: Request, res: R
   }
 });
 
+/**
+ * GET /api/chat/conversations/:conversationId/prompts/pending
+ * Get pending interactive prompts for a conversation
+ */
+router.get('/conversations/:conversationId/prompts/pending', async (req: Request, res: Response) => {
+  try {
+    const conversationId = req.params.conversationId;
+
+    if (!conversationId) {
+      return res.status(400).json({
+        error: 'Conversation ID is required',
+      });
+    }
+
+    const prompts = await prisma.interactivePrompt.findMany({
+      where: {
+        conversationId,
+        status: 'pending',
+        timeoutAt: {
+          gt: new Date()
+        }
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    return res.json({
+      success: true,
+      prompts,
+    });
+  } catch (error) {
+    console.error('Error fetching pending prompts:', error);
+    return res.status(500).json({
+      error: 'Failed to fetch pending prompts',
+    });
+  }
+});
+
+/**
+ * POST /api/chat/prompts/:promptId/respond
+ * Respond to an interactive prompt
+ */
+router.post('/prompts/:promptId/respond', async (req: Request, res: Response) => {
+  try {
+    const promptId = req.params.promptId;
+    const { selectedOption } = req.body;
+
+    if (!promptId) {
+      return res.status(400).json({
+        error: 'Prompt ID is required',
+      });
+    }
+
+    if (!selectedOption) {
+      return res.status(400).json({
+        error: 'Selected option is required',
+      });
+    }
+
+    // Update the prompt
+    const prompt = await prisma.interactivePrompt.update({
+      where: { id: promptId },
+      data: {
+        status: 'answered',
+        selectedOption,
+        respondedAt: new Date(),
+        autoHandler: 'user_selection'
+      }
+    });
+
+    // Emit response via WebSocket
+    io.emit('prompt:response', {
+      promptId,
+      selectedOption,
+      timestamp: Date.now()
+    });
+
+    console.log(`📝 User responded to prompt ${promptId} with option ${selectedOption}`);
+
+    return res.json({
+      success: true,
+      prompt,
+    });
+  } catch (error) {
+    console.error('Error responding to prompt:', error);
+    return res.status(500).json({
+      error: 'Failed to respond to prompt',
+    });
+  }
+});
+
+/**
+ * PUT /api/chat/prompts/:promptId/timeout
+ * Mark a prompt as timed out
+ */
+router.put('/prompts/:promptId/timeout', async (req: Request, res: Response) => {
+  try {
+    const promptId = req.params.promptId;
+
+    if (!promptId) {
+      return res.status(400).json({
+        error: 'Prompt ID is required',
+      });
+    }
+
+    const prompt = await prisma.interactivePrompt.update({
+      where: { id: promptId },
+      data: {
+        status: 'timeout',
+        respondedAt: new Date(),
+        autoHandler: 'timeout'
+      }
+    });
+
+    console.log(`⏰ Prompt ${promptId} timed out`);
+
+    return res.json({
+      success: true,
+      prompt,
+    });
+  } catch (error) {
+    console.error('Error timing out prompt:', error);
+    return res.status(500).json({
+      error: 'Failed to timeout prompt',
+    });
+  }
+});
+
 export default router;

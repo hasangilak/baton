@@ -5,6 +5,7 @@ import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
 import { useConversations, useMessages, useChat, useChatSearch } from '../../hooks/useChat';
 import { useProjects } from '../../hooks/useProjects';
+import { useInteractivePrompts } from '../../hooks/useInteractivePrompts';
 import { Loader2 } from 'lucide-react';
 
 export const ChatPage: React.FC = () => {
@@ -42,6 +43,13 @@ export const ChatPage: React.FC = () => {
     searchResults,
     isSearching,
   } = useChatSearch(currentProjectId);
+
+  // Interactive prompts
+  const {
+    pendingPrompts,
+    isRespondingToPrompt,
+    handlePromptResponse,
+  } = useInteractivePrompts({ conversationId: selectedConversationId });
 
   // Update URL when conversation changes
   useEffect(() => {
@@ -120,6 +128,9 @@ export const ChatPage: React.FC = () => {
         <MessageList
           messages={messages}
           streamingMessage={streamingMessage}
+          pendingPrompts={pendingPrompts}
+          onPromptResponse={handlePromptResponse}
+          isRespondingToPrompt={isRespondingToPrompt}
         />
 
         {/* Input */}

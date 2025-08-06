@@ -9,6 +9,8 @@
 const { query } = require('@anthropic-ai/claude-code');
 const axios = require('axios');
 const { io } = require('socket.io-client');
+const { PromptDetector } = require('./prompt-detector');
+const { PromptDecisionEngine } = require('./decision-engine');
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3001';
 const POLLING_INTERVAL = process.env.POLLING_INTERVAL || 1000;
@@ -22,6 +24,7 @@ class ChatHandler {
   constructor() {
     this.processing = false;
     this.socket = null;
+    this.decisionEngine = null; // Will be initialized after socket connection
   }
 
   connectSocket() {
@@ -33,6 +36,8 @@ class ChatHandler {
 
     this.socket.on('connect', () => {
       console.log('Connected to Baton backend via Socket.IO');
+      // Initialize decision engine with socket for user delegation
+      this.decisionEngine = new PromptDecisionEngine(this.socket);
       // Register as a chat bridge
       this.socket.emit('chat-bridge:connect');
     });
@@ -55,6 +60,20 @@ class ChatHandler {
 
     this.socket.on('error', (error) => {
       console.error('Socket error:', error);
+    });
+
+    // Handle user responses to interactive prompts
+    this.socket.on('prompt:response', async (response) => {
+      console.log(`📝 Received user response for prompt ${response.promptId}`);
+      if (this.decisionEngine?.strategies) {
+        // Find the user delegation strategy and handle the response
+        const userStrategy = this.decisionEngine.strategies.find(
+          s => s.constructor.name === 'UserDelegationStrategy'
+        );
+        if (userStrategy) {
+          userStrategy.handleUserResponse(response.promptId, response.selectedOption);
+        }
+      }
     });
   }
 
@@ -112,6 +131,33 @@ class ChatHandler {
         
         // Handle different message types from Claude Code SDK
         if (message.type === 'assistant' && message.message) {
+          // Extract text content for prompt detection
+          const textContent = this.extractContent(message);
+          
+          // Check for interactive prompts first
+          if (textContent) {
+            const prompt = PromptDetector.detectPrompt(textContent);
+            if (prompt && this.decisionEngine) {
+              console.log(`🔔 Interactive prompt detected: ${PromptDetector.getPromptSummary(prompt)}`);
+              
+              // Handle the prompt using our decision engine
+              const decision = await this.decisionEngine.handlePrompt(
+                prompt,
+                conversationId,
+                currentSessionId
+              );
+              
+              if (decision) {
+                console.log(`✅ Prompt handled automatically: ${decision.action}`);
+                // For now, continue processing - in a full implementation,
+                // we might need to send the decision back to Claude Code
+                continue;
+              } else {
+                console.log(`👤 Prompt delegated to user, continuing...`);
+                // Continue processing while waiting for user response
+              }
+            }
+          }
           // Check for tool use in assistant messages
           if (message.message.content && Array.isArray(message.message.content)) {
             const toolUseBlocks = message.message.content.filter(c => c.type === 'tool_use');

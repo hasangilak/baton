@@ -1,17 +1,24 @@
 import React, { useEffect, useRef } from 'react';
 import { User, Bot, Copy, Check } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import type { Message } from '../../types';
+import type { Message, InteractivePrompt } from '../../types';
 import { Button } from '../ui/button';
+import { InteractivePrompt as InteractivePromptComponent } from './InteractivePrompt';
 
 interface MessageListProps {
   messages: Message[];
   streamingMessage?: Message | null;
+  pendingPrompts?: InteractivePrompt[];
+  onPromptResponse?: (promptId: string, optionId: string) => void;
+  isRespondingToPrompt?: boolean;
 }
 
 export const MessageList: React.FC<MessageListProps> = ({
   messages,
   streamingMessage,
+  pendingPrompts = [],
+  onPromptResponse,
+  isRespondingToPrompt = false,
 }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [copiedId, setCopiedId] = React.useState<string | null>(null);
@@ -22,7 +29,7 @@ export const MessageList: React.FC<MessageListProps> = ({
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, streamingMessage]);
+  }, [messages, streamingMessage, pendingPrompts]);
 
   const handleCopy = async (content: string, messageId: string) => {
     try {
@@ -180,6 +187,18 @@ export const MessageList: React.FC<MessageListProps> = ({
       ) : (
         <>
           {allMessages.map(renderMessage)}
+          
+          {/* Render pending interactive prompts */}
+          {pendingPrompts.map(prompt => (
+            <div key={prompt.id} className="px-4 py-2">
+              <InteractivePromptComponent
+                prompt={prompt}
+                onOptionSelect={onPromptResponse || (() => {})}
+                isResponding={isRespondingToPrompt}
+              />
+            </div>
+          ))}
+          
           <div ref={messagesEndRef} />
         </>
       )}
