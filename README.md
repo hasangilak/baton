@@ -17,6 +17,7 @@ AI-powered task management designed for seamless integration with Claude Code. B
 - **Context-Aware** - Automatic project detection based on workspace
 - **16 MCP Tools** - Create tasks, manage projects, analytics, and more
 - **8 MCP Prompts** - Project planning, task breakdown, retrospectives
+- **Chat Agent** - Built-in AI chat assistant powered by Claude Code
 
 ### 🏗️ Technical Features
 - **Docker Compose** - One-command setup with PostgreSQL
@@ -38,6 +39,7 @@ AI-powered task management designed for seamless integration with Claude Code. B
    - Frontend: http://localhost:5173
    - Backend API: http://localhost:3001
    - Health Check: http://localhost:3001/health
+   - Chat Interface: http://localhost:5173/chat
 
 That's it! Baton is running with a seeded demo project and tasks.
 
@@ -97,6 +99,116 @@ That's it! Baton is running with a seeded demo project and tasks.
 - **Planning**: "Create a project plan for a new feature"
 - **Todo Lists**: Claude Code plan mode automatically syncs with Baton
 - **Bidirectional Sync**: "Sync my current todos to Baton tasks"
+
+## 💬 Chat Agent (Claude Code Chat Integration)
+
+Baton includes a built-in AI chat assistant that uses your local Claude Code installation to provide intelligent responses about your projects, tasks, and general development questions.
+
+### 🎯 Chat Agent Features
+- **Project Context Awareness** - Automatically includes current project context in conversations
+- **Streaming Responses** - Real-time streaming of Claude's responses as they're generated
+- **Claude.ai-style Interface** - Familiar dark theme chat UI similar to Claude.ai
+- **Persistent Conversations** - All chat history is saved and searchable
+- **File Attachments** - Support for uploading and discussing files (coming soon)
+
+### 🚀 Setting Up the Chat Agent
+
+#### Prerequisites
+- Claude Code installed globally: `npm install -g @anthropic-ai/claude-code`
+- Baton running (see Quick Start above)
+
+#### Setup Steps
+
+1. **Install Dependencies**
+   ```bash
+   cd baton
+   npm install axios socket.io-client
+   ```
+
+2. **Start the Chat Bridge**
+   ```bash
+   # This connects your local Claude Code to Baton's chat service
+   ./scripts/start-chat-bridge.sh
+   ```
+   
+   The script will:
+   - Verify Claude Code is installed
+   - Connect to Baton's backend via Socket.IO
+   - Process chat messages using Claude Code in headless mode
+   - Stream responses back to the UI
+
+3. **Access the Chat Interface**
+   ```bash
+   open http://localhost:5173/chat
+   ```
+
+### 📝 Using the Chat Agent
+
+1. **Start a Conversation**
+   - Navigate to the Chat section in Baton
+   - Type your message in the input field
+   - Press Enter or click Send
+
+2. **Example Queries**
+   - "What is Baton and how does it work?"
+   - "Help me create a project plan for a new feature"
+   - "Explain how to implement authentication in Node.js"
+   - "What tasks are currently in progress?"
+   - "Generate a retrospective for the current sprint"
+
+3. **Project Context**
+   - The chat agent automatically includes your current project context
+   - Responses are tailored to your specific project and tasks
+   - Ask about project-specific information like task status or team productivity
+
+### 🔧 Technical Architecture
+
+The chat agent uses a bridge architecture:
+
+```
+[Baton UI] ← WebSocket → [Baton Backend] ← Socket.IO → [Chat Handler] → [Claude Code]
+```
+
+1. **Frontend** - React-based chat UI with streaming support
+2. **Backend** - Queues messages and manages conversation state
+3. **Chat Handler** - Node.js bridge that runs Claude Code in headless mode
+4. **Claude Code** - Processes messages using the `query()` API
+
+### 🐛 Troubleshooting Chat Agent
+
+#### Chat not responding?
+```bash
+# Check if chat handler is running
+ps aux | grep chat-handler
+
+# Check handler logs
+tail -f /tmp/chat-handler.log
+
+# Restart the chat bridge
+pkill -f chat-handler.js
+./scripts/start-chat-bridge.sh
+```
+
+#### Claude Code not found?
+```bash
+# Verify Claude Code installation
+which claude
+
+# Install if missing
+npm install -g @anthropic-ai/claude-code
+```
+
+#### Connection issues?
+```bash
+# Check backend is running
+curl http://localhost:3001/health
+
+# Check WebSocket connection
+curl http://localhost:3001/api/chat/pending
+
+# View backend logs
+docker logs baton-backend
+```
 
 ## 🪝 Claude Code Hooks Integration
 
