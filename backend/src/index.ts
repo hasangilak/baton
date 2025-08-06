@@ -157,22 +157,29 @@ io.on('connection', (socket) => {
   });
   
   socket.on('chat-bridge:response', async (data: any) => {
-    const { messageId, content, isComplete, error } = data;
+    const { messageId, content, isComplete, error, toolUsages } = data;
     console.log(`Chat bridge response for message ${messageId}`);
+    
+    // Log tool usage if present
+    if (toolUsages && toolUsages.length > 0) {
+      console.log(`Tool usages for message ${messageId}:`, toolUsages.map((t: any) => t.name));
+    }
     
     await chatService.processBridgeResponse(
       messageId,
       content,
       isComplete,
-      error
+      error,
+      toolUsages
     );
     
-    // Broadcast to all clients
+    // Broadcast to all clients including tool usage
     io.emit('message:updated', { 
       messageId, 
       content, 
       isComplete,
-      error 
+      error,
+      toolUsages 
     });
   });
   

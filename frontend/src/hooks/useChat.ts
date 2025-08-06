@@ -117,6 +117,7 @@ export function useChat(conversationId: string | null) {
                 content: response.content,
                 status: response.isComplete ? 'completed' : 'sending',
                 error: response.error,
+                toolUsages: (response as any).toolUsages,
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
               } as Message;
@@ -127,6 +128,7 @@ export function useChat(conversationId: string | null) {
               content: response.content,
               status: response.isComplete ? 'completed' : 'sending',
               error: response.error,
+              toolUsages: (response as any).toolUsages || prev.toolUsages,
             };
           });
 

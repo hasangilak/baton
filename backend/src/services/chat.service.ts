@@ -206,7 +206,8 @@ export class ChatService extends EventEmitter {
     messageId: string,
     content: string,
     isComplete: boolean,
-    error?: string
+    error?: string,
+    toolUsages?: any[]
   ) {
     // Remove from pending if complete
     if (isComplete) {
@@ -218,21 +219,29 @@ export class ChatService extends EventEmitter {
       return;
     }
 
-    // Emit streaming update
+    // Emit streaming update with tool usage
     this.emit('stream', {
       id: messageId,
       content,
       isComplete,
+      toolUsages,
     } as StreamingResponse);
 
     if (isComplete) {
-      // Update message with complete content
+      // Store tool usage in metadata if present
+      const metadata: any = {};
+      if (toolUsages && toolUsages.length > 0) {
+        metadata.toolUsages = toolUsages;
+      }
+
+      // Update message with complete content and tool usage
       await prisma.message.update({
         where: { id: messageId },
         data: {
           content: content || 'No response generated',
           status: 'completed',
           tokenCount: this.estimateTokens(content),
+          metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
         },
       });
 

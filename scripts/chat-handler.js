@@ -67,6 +67,8 @@ class ChatHandler {
 
       const messages = [];
       let fullContent = '';
+      let toolUsages = [];
+      let finalResult = '';
       const abortController = new AbortController();
 
       console.log(`Sending to Claude Code: "${contextPrompt.substring(0, 100)}..."`);
@@ -83,8 +85,32 @@ class ChatHandler {
         
         console.log('Received message type:', message.type);
         
+        // Log full message structure for debugging tool usage
+        if (message.type === 'user' || message.toolUses) {
+          console.log('Full message:', JSON.stringify(message, null, 2));
+        }
+        
         // Handle different message types from Claude Code SDK
         if (message.type === 'assistant' && message.message) {
+          // Check for tool use in assistant messages
+          if (message.message.content && Array.isArray(message.message.content)) {
+            const toolUseBlocks = message.message.content.filter(c => c.type === 'tool_use');
+            if (toolUseBlocks.length > 0) {
+              console.log('Tool use blocks detected:', toolUseBlocks.length);
+              toolUsages = toolUseBlocks.map(block => ({
+                name: block.name || 'Unknown Tool',
+                id: block.id
+              }));
+              
+              // Send tool usage update
+              await this.sendUpdate(messageId, {
+                content: fullContent,
+                toolUsages: toolUsages,
+                isComplete: false,
+              });
+            }
+          }
+          
           // Assistant message with actual content
           const content = this.extractContent(message);
           if (content && content !== fullContent) {
@@ -93,19 +119,56 @@ class ChatHandler {
             // Send streaming update
             await this.sendUpdate(messageId, {
               content: fullContent,
+              toolUsages: toolUsages,
               isComplete: false,
             });
           }
+        } else if (message.type === 'user' && message.message) {
+          // User message with tool results
+          const content = message.message.content;
+          if (Array.isArray(content)) {
+            const toolResults = content.filter(c => c.type === 'tool_result');
+            if (toolResults.length > 0) {
+              console.log('Tool results detected:', toolResults.length);
+              // Extract tool names from the content (typically in the result text)
+              toolUsages = toolResults.map(result => {
+                // Try to extract tool name from content
+                const match = result.content?.match(/Web search|WebSearch|WebFetch/i);
+                return {
+                  name: match ? 'WebSearch' : 'Tool',
+                  id: result.tool_use_id
+                };
+              });
+              
+              // Send tool usage update
+              await this.sendUpdate(messageId, {
+                content: fullContent,
+                toolUsages: toolUsages,
+                isComplete: false,
+              });
+            }
+          }
         } else if (message.type === 'result') {
-          // Final result message - completion indicator
+          // Final result message with complete response
           console.log('Query completed successfully');
-          // The fullContent should already have the complete response
+          if (message.result) {
+            finalResult = message.result;
+            console.log('Final result:', finalResult.substring(0, 200));
+            
+            // Send the final result immediately as an update
+            await this.sendUpdate(messageId, {
+              content: finalResult,
+              toolUsages: toolUsages,
+              isComplete: false, // Keep streaming for now
+            });
+          }
         }
       }
 
-      // Send final response
+      // Send final response with result
       await this.sendUpdate(messageId, {
-        content: fullContent,
+        content: finalResult || fullContent,
+        toolUsages: toolUsages,
         isComplete: true,
       });
 

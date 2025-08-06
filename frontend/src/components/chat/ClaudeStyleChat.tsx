@@ -315,6 +315,7 @@ const ActionButton: React.FC<{ icon: React.ElementType; label: string }> = ({ ic
 // Message Bubble Component
 const MessageBubble: React.FC<{ message: Message; isStreaming?: boolean }> = ({ message, isStreaming }) => {
   const isUser = message.role === 'user';
+  const toolUsages = (message as any).toolUsages || (message as any).metadata?.toolUsages;
   
   return (
     <div className={`mb-6 ${isUser ? 'flex justify-end' : ''}`}>
@@ -334,6 +335,19 @@ const MessageBubble: React.FC<{ message: Message; isStreaming?: boolean }> = ({ 
             <p className="text-xs text-[#8B8B8D] mb-1">
               {isUser ? 'You' : 'Claude'}
             </p>
+            
+            {/* Tool Usage Display */}
+            {!isUser && toolUsages && toolUsages.length > 0 && (
+              <div className="mb-2 space-y-1">
+                {toolUsages.map((tool: any, index: number) => (
+                  <div key={index} className="inline-flex items-center px-2 py-1 bg-[#3E3E42] rounded-md text-xs text-[#8B8B8D] mr-2 mb-1">
+                    <Code2 className="w-3 h-3 mr-1" />
+                    <span>Using {tool.name || tool}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            
             <div className={`inline-block px-4 py-2 rounded-xl ${
               isUser 
                 ? 'bg-[#3E3E42] text-[#E5E5E5]' 

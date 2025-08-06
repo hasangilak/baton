@@ -228,6 +228,19 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
       });
     });
 
+    // Chat message events
+    socket.on('message:updated', (data) => {
+      console.log('💬 Message updated:', data);
+      // Store tool usage in a temporary cache if needed
+      if (data.toolUsages) {
+        console.log('🔧 Tool usages:', data.toolUsages);
+      }
+      // Invalidate message queries to refetch with updated data
+      queryClient.invalidateQueries({ 
+        queryKey: ['chat', 'messages']
+      });
+    });
+
     // Plan events (new)
     socket.on('plan:created', (plan) => {
       console.log('📋 Plan created:', plan);
