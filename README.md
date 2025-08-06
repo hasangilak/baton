@@ -100,47 +100,70 @@ That's it! Baton is running with a seeded demo project and tasks.
 - **Todo Lists**: Claude Code plan mode automatically syncs with Baton
 - **Bidirectional Sync**: "Sync my current todos to Baton tasks"
 
-## 💬 Chat Agent (Claude Code Chat Integration)
+## 💬 AI Chat Agent with Claude Code Integration
 
-Baton includes a built-in AI chat assistant that uses your local Claude Code installation to provide intelligent responses about your projects, tasks, and general development questions.
+Baton includes a powerful AI chat assistant that uses your local Claude Code installation to provide intelligent responses about your projects, tasks, and general development questions. **Now with automated permission handling for seamless file operations!**
 
 ### 🎯 Chat Agent Features
 - **Project Context Awareness** - Automatically includes current project context in conversations
 - **Streaming Responses** - Real-time streaming of Claude's responses as they're generated
 - **Claude.ai-style Interface** - Familiar dark theme chat UI similar to Claude.ai
 - **Persistent Conversations** - All chat history is saved and searchable
-- **File Attachments** - Support for uploading and discussing files (coming soon)
+- **Interactive Prompt Handling** - Automatic UI prompts for user approval when needed
+- **Permission Mode Support** - Automated file operations without manual approval for trusted tools
+- **Session Continuation** - Maintain context across multiple interactions
+- **Tool Integration** - Full access to Write, Edit, Read, Web Search, and MCP tools
 
-### 🚀 Setting Up the Chat Agent
+### 🚀 Quick Setup with Makefile
 
 #### Prerequisites
-- Claude Code installed globally: `npm install -g @anthropic-ai/claude-code`
+- Claude Code installed: `npm install -g @anthropic-ai/claude-code`
 - Baton running (see Quick Start above)
 
-#### Setup Steps
+#### One-Command Setup
+```bash
+# Start everything (database, backend, frontend, chat bridge, and handler)
+make dev-full
 
-1. **Install Dependencies**
-   ```bash
-   cd baton
-   npm install axios socket.io-client
-   ```
+# Or if you already have Baton running:
+make dev
+```
 
-2. **Start the Chat Bridge**
+#### Manual Setup Steps
+
+1. **Start the Chat Handler**
    ```bash
-   # This connects your local Claude Code to Baton's chat service
-   ./scripts/start-chat-bridge.sh
-   ```
+   # Automated permission handling - no prompts for trusted tools
+   make handler
    
-   The script will:
-   - Verify Claude Code is installed
-   - Connect to Baton's backend via Socket.IO
-   - Process chat messages using Claude Code in headless mode
-   - Stream responses back to the UI
+   # Or manually:
+   node scripts/chat-handler.js > /tmp/chat-handler.log 2>&1 &
+   ```
+
+2. **Start the Chat Bridge** (Optional - for WebSocket connections)
+   ```bash
+   make bridge
+   
+   # Or manually:
+   node scripts/chat-bridge.js > /tmp/chat-bridge.log 2>&1 &
+   ```
 
 3. **Access the Chat Interface**
    ```bash
    open http://localhost:5173/chat
    ```
+
+#### Check Status
+```bash
+# View status of all services
+make status
+
+# View real-time logs
+make logs
+
+# Test integration
+make test-integration
+```
 
 ### 📝 Using the Chat Agent
 
@@ -149,44 +172,97 @@ Baton includes a built-in AI chat assistant that uses your local Claude Code ins
    - Type your message in the input field
    - Press Enter or click Send
 
-2. **Example Queries**
-   - "What is Baton and how does it work?"
-   - "Help me create a project plan for a new feature"
-   - "Explain how to implement authentication in Node.js"
-   - "What tasks are currently in progress?"
-   - "Generate a retrospective for the current sprint"
+2. **File Operations (Automated!)**
+   ```
+   💬 You: "Create a README.md file for this project with setup instructions"
+   🤖 Claude: I'll create a comprehensive README file for you.
+   ✅ File created automatically at: /home/user/project/README.md
+   ```
+   
+   **No permission prompts needed!** The system automatically allows:
+   - File creation and editing (Write, Edit, MultiEdit)
+   - File reading and searching (Read, Glob, Grep, LS) 
+   - Safe commands (npm, git, node, python basics)
+   - Web searches and MCP tool access
 
-3. **Project Context**
+3. **Interactive Prompts (When Needed)**
+   For potentially dangerous operations, you'll see inline prompts:
+   ```
+   🤖 Claude wants to run: rm -rf old-folder/
+   [Yes] [No] [Yes, don't ask again]
+   ```
+
+4. **Example Queries**
+   - **File Operations**: "Create a config.json file with database settings"
+   - **Code Generation**: "Write a Python script to analyze CSV data"
+   - **Project Tasks**: "What tasks are currently in progress?"
+   - **Planning**: "Create a project plan for user authentication feature"
+   - **Analysis**: "Review the current codebase and suggest improvements"
+   - **Research**: "Explain how to implement JWT authentication in Node.js"
+
+5. **Project Context**
    - The chat agent automatically includes your current project context
    - Responses are tailored to your specific project and tasks
-   - Ask about project-specific information like task status or team productivity
+   - File operations are scoped to your project directory
 
 ### 🔧 Technical Architecture
 
-The chat agent uses a bridge architecture:
+The chat agent uses an advanced bridge architecture with permission management:
 
 ```
 [Baton UI] ← WebSocket → [Baton Backend] ← Socket.IO → [Chat Handler] → [Claude Code]
+                                     ↑                      ↓
+                              [Interactive Prompts] ← [Permission Engine]
 ```
 
-1. **Frontend** - React-based chat UI with streaming support
-2. **Backend** - Queues messages and manages conversation state
-3. **Chat Handler** - Node.js bridge that runs Claude Code in headless mode
-4. **Claude Code** - Processes messages using the `query()` API
+1. **Frontend** - React-based chat UI with streaming support and inline prompt handling
+2. **Backend** - Queues messages, manages conversation state, and handles prompt responses
+3. **Chat Handler** - Node.js bridge with automated permission modes and session continuation
+4. **Permission Engine** - Multi-strategy decision engine (allowlist, denylist, user delegation)
+5. **Claude Code** - Processes messages with `permissionMode: 'acceptEdits'` for trusted operations
 
 ### 🐛 Troubleshooting Chat Agent
 
+#### Quick Diagnosis
+```bash
+# Check status of all services
+make status
+
+# View real-time logs from all services
+make logs
+
+# Test integration
+make test-integration
+
+# Test permission handling specifically
+make test-claude-permissions
+```
+
 #### Chat not responding?
 ```bash
-# Check if chat handler is running
+# Restart chat services
+make restart
+
+# Or manually check processes
 ps aux | grep chat-handler
 
-# Check handler logs
-tail -f /tmp/chat-handler.log
+# View handler logs specifically
+make logs-handler
 
-# Restart the chat bridge
-pkill -f chat-handler.js
-./scripts/start-chat-bridge.sh
+# View bridge logs specifically
+make logs-bridge
+```
+
+#### Permission prompts not working?
+```bash
+# Check if permission mode is configured
+grep -A 10 "permissionMode" scripts/chat-handler.js
+
+# Test file creation (should work without prompts)
+make test-claude-permissions
+
+# Check for errors in handler logs
+tail -f /tmp/baton-chat-handler.log | grep -i error
 ```
 
 #### Claude Code not found?
@@ -196,18 +272,24 @@ which claude
 
 # Install if missing
 npm install -g @anthropic-ai/claude-code
+
+# Test Claude Code directly
+claude --help | grep permission-mode
 ```
 
 #### Connection issues?
 ```bash
-# Check backend is running
+# Check all services are running
+make status
+
+# Check backend health
 curl http://localhost:3001/health
 
-# Check WebSocket connection
-curl http://localhost:3001/api/chat/pending
+# View Docker container logs
+make logs-docker
 
-# View backend logs
-docker logs baton-backend
+# Restart everything
+make stop && make dev
 ```
 
 ## 🪝 Claude Code Hooks Integration

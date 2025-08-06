@@ -71,9 +71,15 @@ class ChatHandler {
           s => s.constructor.name === 'UserDelegationStrategy'
         );
         if (userStrategy) {
-          userStrategy.handleUserResponse(response.promptId, response.selectedOption);
+          await userStrategy.handleUserResponse(response.promptId, response.selectedOption);
         }
       }
+    });
+
+    // Handle session continuation requests
+    this.socket.on('session:continue', async (data) => {
+      console.log(`🔄 Received session continuation request: ${data.sessionId}`);
+      await this.continueSession(data.sessionId, data.response);
     });
   }
 
@@ -123,6 +129,15 @@ class ChatHandler {
         messages.push(message);
         
         console.log('Received message type:', message.type);
+        
+        // Capture session ID early from any message that has it
+        const sessionId = message.sessionId || message.session_id || 
+                         (message.message && (message.message.sessionId || message.message.session_id));
+        
+        if (sessionId && !currentSessionId) {
+          currentSessionId = sessionId;
+          console.log(`🆔 Early session ID capture: ${currentSessionId}`);
+        }
         
         // Log full message structure for debugging tool usage
         if (message.type === 'user' || message.toolUses) {
@@ -201,6 +216,30 @@ class ChatHandler {
               const toolResultContent = toolResults.map(result => result.content).join('\n\n');
               console.log('Tool result content length:', toolResultContent.length);
               
+              // Check for interactive prompts in tool result errors
+              if (toolResults.some(result => result.is_error)) {
+                for (const result of toolResults.filter(r => r.is_error)) {
+                  const prompt = PromptDetector.detectPrompt(result.content);
+                  if (prompt && this.decisionEngine) {
+                    console.log(`🔔 Interactive prompt detected in tool result: ${PromptDetector.getPromptSummary(prompt)}`);
+                    console.log(`🔍 Session ID at prompt detection: ${currentSessionId}`);
+                    
+                    // Handle the prompt using our decision engine
+                    const decision = await this.decisionEngine.handlePrompt(
+                      prompt,
+                      conversationId,
+                      currentSessionId
+                    );
+                    
+                    if (decision) {
+                      console.log(`✅ Prompt handled automatically: ${decision.action}`);
+                    } else {
+                      console.log(`👤 Prompt delegated to user, continuing...`);
+                    }
+                  }
+                }
+              }
+              
               // Update fullContent with the tool results
               if (toolResultContent && toolResultContent.length > fullContent.length) {
                 fullContent = toolResultContent;
@@ -237,12 +276,6 @@ class ChatHandler {
               isComplete: false, // Keep streaming for now
             });
           }
-        }
-        
-        // Capture session ID if available for future context preservation
-        if (message.sessionId && !currentSessionId) {
-          currentSessionId = message.sessionId;
-          console.log(`🆔 Captured session ID: ${currentSessionId}`);
         }
       }
 
@@ -333,11 +366,27 @@ class ChatHandler {
   }
 
   getSessionOptions(conversation) {
+    // Base options with permission handling for automated workflows
+    const baseOptions = {
+      permissionMode: 'acceptEdits', // Automatically accept file writes/edits
+      allowedTools: [
+        'Write', 'Edit', 'MultiEdit',  // File operations
+        'Read', 'Glob', 'Grep', 'LS',  // File reading/searching
+        'Bash(npm:*)', 'Bash(git:*)', 'Bash(node:*)', 'Bash(python:*)',  // Safe commands
+        'Bash(ls:*)', 'Bash(cat:*)', 'Bash(mkdir:*)', 'Bash(touch:*)',   // Basic file system
+        'mcp__*',  // MCP tools (context7, exa, etc.)
+        'WebFetch', 'WebSearch'  // Web tools
+      ]
+    };
+
     if (!conversation) {
       return {
         mode: 'new',
         sessionId: null,
-        options: { continue: true }
+        options: { 
+          continue: true,
+          ...baseOptions
+        }
       };
     }
 
@@ -345,14 +394,20 @@ class ChatHandler {
       return {
         mode: 'resume',
         sessionId: conversation.claudeSessionId,
-        options: { resume: conversation.claudeSessionId }
+        options: { 
+          resume: conversation.claudeSessionId,
+          ...baseOptions
+        }
       };
     }
 
     return {
       mode: 'continue',
       sessionId: null,
-      options: { continue: true }
+      options: { 
+        continue: true,
+        ...baseOptions
+      }
     };
   }
 
@@ -460,6 +515,44 @@ class ChatHandler {
       }
     } catch (error) {
       console.error('Error polling for requests:', error.message);
+    }
+  }
+
+  /**
+   * Continue Claude Code session with user response to interactive prompt
+   */
+  async continueSession(sessionId, userResponse) {
+    try {
+      console.log(`🔄 Continuing Claude Code session ${sessionId} with response: "${userResponse}"`);
+      
+      // Use Claude Code's resume capability to continue the session with the user's response
+      const options = {
+        resume: sessionId,
+        maxTurns: 1,
+        outputFormat: 'stream-json'
+      };
+
+      // Send the user response as a continuation of the session
+      console.log(`📡 Resuming session with prompt: "${userResponse}"`);
+      
+      for await (const message of query({
+        prompt: userResponse,
+        options
+      })) {
+        if (message.type === 'assistant') {
+          console.log(`✅ Session continued successfully, Claude responded`);
+          
+          // The session should now continue with the file operation or next step
+          const content = this.extractContent(message);
+          if (content) {
+            console.log(`📝 Claude continued with: ${content.substring(0, 200)}...`);
+          }
+          break;
+        }
+      }
+      
+    } catch (error) {
+      console.error('❌ Error continuing session:', error);
     }
   }
 

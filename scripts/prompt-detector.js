@@ -10,6 +10,9 @@ class PromptDetector {
     // Tool usage pattern from screenshot - more flexible matching
     TOOL_USAGE: /Tool use[\s\S]*?Do you want to proceed\?\s*[\s\S]*?>\s*1\.?\s*(.+?)[\s\S]*?>\s*2\.?\s*(.+?)[\s\S]*?>\s*3\.?\s*(.+?)(?:\s*\(esc\))?/i,
     
+    // Claude Code permission request pattern - NEW
+    CLAUDE_PERMISSION: /Claude requested permissions to (.+?), but you haven't granted it yet\./i,
+    
     // General permission pattern: "Can I edit this file?"
     PERMISSION: /^(?:Can I|May I|Should I)\s+(.+)\?/i,
     
@@ -29,6 +32,10 @@ class PromptDetector {
     // Clean the message for better pattern matching
     const cleanMessage = message.trim();
     
+    // Check for Claude Code permission request first (most specific)
+    const claudePermissionMatch = this.detectClaudePermissionPrompt(cleanMessage);
+    if (claudePermissionMatch) return claudePermissionMatch;
+    
     // Check for tool usage prompt (most common, like in screenshot)
     const toolMatch = this.detectToolUsagePrompt(cleanMessage);
     if (toolMatch) return toolMatch;
@@ -46,6 +53,35 @@ class PromptDetector {
     if (fileMatch) return fileMatch;
     
     return null;
+  }
+
+  /**
+   * Detect Claude Code permission request prompts
+   */
+  static detectClaudePermissionPrompt(message) {
+    const match = message.match(this.PATTERNS.CLAUDE_PERMISSION);
+    if (!match) return null;
+
+    const [, action] = match;
+
+    // Extract file path from the action if it contains file operations
+    const fileMatch = action.match(/write to (.+?)$/);
+    const filePath = fileMatch ? fileMatch[1] : null;
+
+    return {
+      type: 'permission',
+      title: 'File Permission Request',
+      message: match[0],
+      context: {
+        action: action.trim(),
+        filePath: filePath,
+        fullMessage: message
+      },
+      options: [
+        { id: '1', label: 'Yes', value: 'yes', isDefault: true, isRecommended: true },
+        { id: '2', label: 'No', value: 'no' }
+      ]
+    };
   }
 
   /**

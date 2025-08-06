@@ -289,6 +289,31 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
       });
     });
 
+    // Interactive prompt events
+    socket.on('interactive_prompt', (data) => {
+      console.log('🔔 Interactive prompt received:', data);
+      // Invalidate queries to refetch pending prompts for the specific conversation
+      queryClient.invalidateQueries({
+        queryKey: ['interactivePrompts', 'pending', data.conversationId]
+      });
+    });
+
+    socket.on('prompt:response', (data) => {
+      console.log('📝 Prompt response received:', data);
+      // Find which conversation this prompt belongs to and invalidate queries
+      queryClient.invalidateQueries({
+        queryKey: ['interactivePrompts', 'pending']
+      });
+    });
+
+    socket.on('prompt:timeout', (data) => {
+      console.log('⏰ Prompt timeout received:', data);
+      // Invalidate queries to refetch pending prompts
+      queryClient.invalidateQueries({
+        queryKey: ['interactivePrompts', 'pending']
+      });
+    });
+
     // Chat events
     socket.on('conversation:created', (conversation: any) => {
       console.log('💬 Conversation created:', conversation);

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { io, Socket } from 'socket.io-client';
+import { useWebSocket } from './useWebSocket';
 import type { InteractivePrompt } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
@@ -11,7 +11,7 @@ interface UseInteractivePromptsProps {
 
 export const useInteractivePrompts = ({ conversationId }: UseInteractivePromptsProps) => {
   const queryClient = useQueryClient();
-  const [socket, setSocket] = useState<Socket | null>(null);
+  const { socket } = useWebSocket(); // Use shared WebSocket connection
   const [isRespondingToPrompt, setIsRespondingToPrompt] = useState(false);
 
   // Fetch pending prompts
@@ -72,62 +72,9 @@ export const useInteractivePrompts = ({ conversationId }: UseInteractivePromptsP
     },
   });
 
-  // WebSocket connection for real-time prompt updates
-  useEffect(() => {
-    if (!conversationId) return;
-
-    const socketInstance = io('http://localhost:3001', {
-      transports: ['websocket'],
-    });
-
-    socketInstance.on('connect', () => {
-      console.log('🔗 Connected to WebSocket for prompt updates');
-      
-      // Join conversation-specific room for prompts
-      socketInstance.emit('join', `conversation-${conversationId}`);
-    });
-
-    socketInstance.on('disconnect', () => {
-      console.log('🔗 Disconnected from WebSocket');
-    });
-
-    // Listen for new interactive prompts (matches decision-engine.js event name)
-    socketInstance.on('interactive_prompt', (data: InteractivePrompt) => {
-      console.log('🔔 New interactive prompt received:', data);
-      
-      // Invalidate queries to refetch prompts
-      queryClient.invalidateQueries({
-        queryKey: ['interactivePrompts', 'pending', conversationId]
-      });
-    });
-
-    // Listen for prompt responses (from other sources)
-    socketInstance.on('prompt:response', (data: { promptId: string; selectedOption: string }) => {
-      console.log('🔔 Prompt response received:', data);
-      
-      // Invalidate queries to refetch prompts
-      queryClient.invalidateQueries({
-        queryKey: ['interactivePrompts', 'pending', conversationId]
-      });
-    });
-
-    // Listen for prompt timeouts
-    socketInstance.on('prompt:timeout', (data: { promptId: string }) => {
-      console.log('⏰ Prompt timeout received:', data);
-      
-      // Invalidate queries to refetch prompts
-      queryClient.invalidateQueries({
-        queryKey: ['interactivePrompts', 'pending', conversationId]
-      });
-    });
-
-    setSocket(socketInstance);
-
-    return () => {
-      socketInstance.disconnect();
-      setSocket(null);
-    };
-  }, [conversationId, queryClient]);
+  // WebSocket event listeners are now handled in the shared useWebSocket hook
+  // No need for separate event listeners here since the shared connection 
+  // already handles 'interactive_prompt', 'prompt:response', and 'prompt:timeout' events
 
   const handlePromptResponse = useCallback(async (promptId: string, optionId: string) => {
     try {

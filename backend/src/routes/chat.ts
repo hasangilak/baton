@@ -693,6 +693,33 @@ router.post('/prompts/:promptId/respond', async (req: Request, res: Response) =>
 
     console.log(`📝 User responded to prompt ${promptId} with option ${selectedOption}`);
 
+    // If the prompt has a session ID, trigger session continuation
+    if (prompt.sessionId) {
+      console.log(`🔄 Triggering session continuation for ${prompt.sessionId}`);
+      
+      // Map the selected option to the appropriate response
+      const options = prompt.options as any[];
+      const option = options.find((o: any) => o.id === selectedOption);
+      let response = 'yes'; // Default
+      
+      if (option) {
+        if (option.value === 'no' || option.label.toLowerCase().includes('no')) {
+          response = 'no';
+        } else if (option.value === 'yes_dont_ask' || option.label.toLowerCase().includes("don't ask")) {
+          response = 'yes and don\'t ask again';
+        }
+      }
+      
+      // Emit session continuation event
+      io.emit('session:continue', {
+        sessionId: prompt.sessionId,
+        response: response,
+        timestamp: Date.now()
+      });
+      
+      console.log(`📡 Session continuation event emitted for ${prompt.sessionId} with response: ${response}`);
+    }
+
     return res.json({
       success: true,
       prompt,
@@ -701,6 +728,83 @@ router.post('/prompts/:promptId/respond', async (req: Request, res: Response) =>
     console.error('Error responding to prompt:', error);
     return res.status(500).json({
       error: 'Failed to respond to prompt',
+    });
+  }
+});
+
+/**
+ * POST /api/chat/prompts/notify
+ * Notify frontend about a new interactive prompt via WebSocket
+ */
+router.post('/prompts/notify', async (req: Request, res: Response) => {
+  try {
+    const { promptId, conversationId, type, title, message, options, context, timeout } = req.body;
+
+    if (!promptId || !conversationId) {
+      return res.status(400).json({
+        error: 'Prompt ID and conversation ID are required',
+      });
+    }
+
+    // Emit interactive prompt event to all connected clients
+    io.emit('interactive_prompt', {
+      promptId,
+      conversationId,
+      type,
+      title,
+      message,
+      options,
+      context,
+      timeout
+    });
+
+    console.log(`📡 Emitted interactive_prompt event for prompt ${promptId} to all clients`);
+
+    return res.json({
+      success: true,
+      message: 'Prompt notification sent',
+    });
+  } catch (error) {
+    console.error('Error sending prompt notification:', error);
+    return res.status(500).json({
+      error: 'Failed to send prompt notification',
+    });
+  }
+});
+
+/**
+ * POST /api/chat/prompts/continue-session
+ * Continue Claude Code session with user response
+ */
+router.post('/prompts/continue-session', async (req: Request, res: Response) => {
+  try {
+    const { sessionId, response } = req.body;
+    
+    if (!sessionId || !response) {
+      return res.status(400).json({
+        error: 'Session ID and response are required'
+      });
+    }
+    
+    // Emit to Socket.IO to trigger session continuation in chat handler
+    io.emit('session:continue', {
+      sessionId,
+      response,
+      timestamp: Date.now()
+    });
+    
+    console.log(`📡 Session continuation event emitted for ${sessionId}`);
+    
+    return res.json({
+      success: true,
+      sessionId,
+      response
+    });
+    
+  } catch (error) {
+    console.error('Error continuing session:', error);
+    return res.status(500).json({
+      error: 'Failed to continue session'
     });
   }
 });

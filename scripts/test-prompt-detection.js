@@ -48,6 +48,14 @@ Do you want to proceed?
     }
   },
   {
+    name: "Claude Code Permission Request",
+    message: "Claude requested permissions to write to /home/hassan/work/baton/test_merge_sort.md, but you haven't granted it yet.",
+    expected: {
+      type: 'permission',
+      optionCount: 2
+    }
+  },
+  {
     name: "Multiple Choice",
     message: `Choose one approach for implementing this feature:
 1. Use a React Hook

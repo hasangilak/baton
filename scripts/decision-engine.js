@@ -11,6 +11,8 @@ const path = require('path');
 const backendPath = path.join(__dirname, '../backend');
 const { PrismaClient } = require(path.join(backendPath, 'node_modules/@prisma/client'));
 
+// Use native fetch (Node.js 18+)
+
 class PromptDecisionEngine {
   constructor(io) {
     this.io = io;
@@ -336,16 +338,33 @@ class UserDelegationStrategy {
   async decide(prompt, storedPrompt) {
     console.log(`👤 Delegating prompt to user: ${storedPrompt.id}`);
     
-    // Emit prompt to frontend via WebSocket
-    this.io.to(`conversation-${storedPrompt.conversationId}`).emit('interactive_prompt', {
-      promptId: storedPrompt.id,
-      type: prompt.type,
-      title: prompt.title,
-      message: prompt.message,
-      options: prompt.options,
-      context: prompt.context,
-      timeout: 30000 // 30 seconds
-    });
+    // Send prompt to backend API which will emit WebSocket event to all clients
+    try {
+      const response = await fetch('http://localhost:3001/api/chat/prompts/notify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          promptId: storedPrompt.id,
+          conversationId: storedPrompt.conversationId,
+          type: prompt.type,
+          title: prompt.title,
+          message: prompt.message,
+          options: prompt.options,
+          context: prompt.context,
+          timeout: 30000
+        })
+      });
+      
+      if (response.ok) {
+        console.log(`📡 Prompt notification sent to backend for prompt ${storedPrompt.id}`);
+      } else {
+        console.error(`❌ Failed to notify backend about prompt ${storedPrompt.id}: ${response.statusText}`);
+      }
+    } catch (error) {
+      console.error(`❌ Error notifying backend about prompt ${storedPrompt.id}:`, error);
+    }
 
     // Wait for user response with timeout
     return new Promise((resolve) => {
@@ -361,11 +380,23 @@ class UserDelegationStrategy {
   /**
    * Handle user response from WebSocket
    */
-  handleUserResponse(promptId, selectedOptionId) {
+  async handleUserResponse(promptId, selectedOptionId) {
     const pending = this.pendingResponses.get(promptId);
     if (pending) {
       clearTimeout(pending.timeoutId);
       this.pendingResponses.delete(promptId);
+      
+      // Get the prompt from database to access session info
+      const storedPrompt = await this.prisma.interactivePrompt.findUnique({
+        where: { id: promptId }
+      });
+      
+      if (storedPrompt && storedPrompt.sessionId) {
+        console.log(`🔄 Attempting to continue Claude Code session ${storedPrompt.sessionId} with user response`);
+        
+        // Send the user's response to Claude Code via session continuation
+        await this.continueClaudeSession(storedPrompt, selectedOptionId);
+      }
       
       pending.resolve({
         action: 'user_selected',
@@ -376,6 +407,48 @@ class UserDelegationStrategy {
         automatic: false,
         response: 'User selection received.'
       });
+    }
+  }
+  
+  /**
+   * Continue Claude Code session with user's response
+   */
+  async continueClaudeSession(storedPrompt, selectedOptionId) {
+    try {
+      // Map the selected option to the appropriate response
+      const option = storedPrompt.options.find(o => o.id === selectedOptionId);
+      let response = 'yes'; // Default
+      
+      if (option) {
+        if (option.value === 'no' || option.label.toLowerCase().includes('no')) {
+          response = 'no';
+        } else if (option.value === 'yes_dont_ask' || option.label.toLowerCase().includes("don't ask")) {
+          response = 'yes and don\'t ask again';
+        }
+      }
+      
+      console.log(`📤 Sending response "${response}" to Claude Code session ${storedPrompt.sessionId}`);
+      
+      // Notify the chat handler about the user response for session continuation
+      // We'll use a simpler approach: emit to Socket.IO to trigger continuation
+      try {
+        await fetch('http://localhost:3001/api/chat/prompts/continue-session', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            sessionId: storedPrompt.sessionId,
+            response: response
+          })
+        });
+        console.log(`✅ Session continuation request sent for ${storedPrompt.sessionId}`);
+      } catch (error) {
+        console.error('❌ Error sending session continuation request:', error);
+      }
+      
+    } catch (error) {
+      console.error('❌ Error continuing Claude Code session:', error);
     }
   }
 }
