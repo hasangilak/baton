@@ -2,7 +2,7 @@ import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { DesktopLayout } from '../layout/DesktopLayout';
 import { MobileLayout } from '../layout/MobileLayout';
-import { ClaudeStyleChat } from '../chat/ClaudeStyleChat';
+import { ChatPage } from '../chat/ChatPage';
 import { useBreakpoints } from '../../hooks/useBreakpoints';
 
 interface AppRouterProps {
@@ -31,8 +31,8 @@ export const AppRouter: React.FC<AppRouterProps> = ({ projectId, onSync }) => {
       />
       
       {/* Chat page */}
-      <Route path="/chat" element={<ClaudeStyleChat />} />
-      <Route path="/chat/:conversationId" element={<ClaudeStyleChat />} />
+      <Route path="/chat" element={<ChatPage />} />
+      <Route path="/chat/:conversationId" element={<ChatPage />} />
       
       {/* Other sections - for now redirect to tasks */}
       <Route path="/dashboard" element={<Navigate to="/tasks" replace />} />

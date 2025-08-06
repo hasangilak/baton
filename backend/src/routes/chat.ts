@@ -5,6 +5,7 @@ import { io } from '../index';
 import multer from 'multer';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { handleStreamingChat, handleAbortRequest } from '../handlers/streaming-chat';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -195,14 +196,15 @@ router.get('/messages/:conversationId', async (req: Request, res: Response) => {
  * POST /api/chat/messages
  * Send a message and stream the response
  */
-router.post('/messages', async (req: Request, res: Response) => {
+router.post('/messages', async (req: Request, res: Response): Promise<void> => {
   try {
     const { conversationId, content, attachments } = req.body;
 
     if (!conversationId || !content) {
-      return res.status(400).json({
+      res.status(400).json({
         error: 'Conversation ID and content are required',
       });
+      return;
     }
 
     // Get conversation to verify it exists and get project ID
@@ -212,9 +214,10 @@ router.post('/messages', async (req: Request, res: Response) => {
     });
 
     if (!conversation) {
-      return res.status(404).json({
+      res.status(404).json({
         error: 'Conversation not found',
       });
+      return;
     }
 
     // Send message and get assistant message placeholder
@@ -273,12 +276,14 @@ router.post('/messages', async (req: Request, res: Response) => {
     });
 
     // Note: Response is handled via SSE streaming above
+    // No explicit return needed as response is handled by streaming
     
   } catch (error) {
     console.error('Error sending message:', error);
-    return res.status(500).json({
+    res.status(500).json({
       error: 'Failed to send message',
     });
+    return;
   }
 });
 
@@ -849,14 +854,15 @@ router.put('/prompts/:promptId/timeout', async (req: Request, res: Response) => 
  * POST /api/chat/messages/stream
  * New Claude Code streaming implementation based on WebUI patterns
  */
-router.post('/messages/stream', async (req: Request, res: Response) => {
+router.post('/messages/stream', async (req: Request, res: Response): Promise<void> => {
   try {
     const { conversationId, content, requestId } = req.body;
 
     if (!conversationId || !content || !requestId) {
-      return res.status(400).json({
+      res.status(400).json({
         error: 'Conversation ID, content, and requestId are required',
       });
+      return;
     }
 
     // Get conversation to verify it exists and get project context
@@ -866,13 +872,14 @@ router.post('/messages/stream', async (req: Request, res: Response) => {
     });
 
     if (!conversation) {
-      return res.status(404).json({
+      res.status(404).json({
         error: 'Conversation not found',
       });
+      return;
     }
 
     // Store user message first
-    const userMessage = await prisma.message.create({
+    await prisma.message.create({
       data: {
         conversationId,
         role: 'user',
@@ -923,7 +930,11 @@ router.post('/messages/stream', async (req: Request, res: Response) => {
         prompt: contextPrompt,
         options: {
           abortController,
+          executable: "/usr/local/bin/node" as const,
+          executableArgs: [],
+          pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_PATH || "/home/hassan/.claude/local/node_modules/.bin/claude",
           maxTurns: 1,
+          cwd: "/home/hassan/work/baton",
           // Use simple options - avoid canUseTool complexity
           permissionMode: 'default' as const,
           ...(conversation.claudeSessionId ? { resume: conversation.claudeSessionId } : {}),
@@ -1018,30 +1029,29 @@ router.post('/messages/stream', async (req: Request, res: Response) => {
     } finally {
       res.end();
     }
+    // Response handled by streaming above
 
   } catch (error) {
     console.error('❌ Stream setup error:', error);
-    return res.status(500).json({
+    res.status(500).json({
       error: 'Failed to set up streaming response',
       details: error instanceof Error ? error.message : String(error),
     });
+    return;
   }
 });
 
 /**
- * POST /api/chat/messages/abort/:requestId
- * Abort a streaming request (TODO: implement proper abort controller management)
+ * POST /api/chat/messages/stream-webui
+ * New streaming endpoint following Claude Code WebUI architecture exactly
+ * Uses AsyncGenerator pattern with NDJSON streaming and shared abort controllers
  */
-router.post('/messages/abort/:requestId', async (req: Request, res: Response) => {
-  const requestId = req.params.requestId;
-  
-  // TODO: Implement shared abort controller map like Claude Code WebUI
-  console.log(`⏹️ Abort requested for: ${requestId}`);
-  
-  return res.json({ 
-    success: true, 
-    message: 'Abort functionality will be implemented with shared abort controller map' 
-  });
-});
+router.post('/messages/stream-webui', handleStreamingChat);
+
+/**
+ * POST /api/chat/messages/abort/:requestId
+ * Abort a streaming request using WebUI shared abort controller pattern
+ */
+router.post('/messages/abort/:requestId', handleAbortRequest);
 
 export default router;

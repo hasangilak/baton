@@ -50,6 +50,7 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
+    "@anthropic-ai/claude-code": "^1.0.70",
     "@anthropic-ai/sdk": "^0.57.0",
     "@modelcontextprotocol/sdk": "^1.17.1",
     "@prisma/client": "^5.22.0",

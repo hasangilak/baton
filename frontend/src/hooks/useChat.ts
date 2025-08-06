@@ -132,7 +132,7 @@ export function useChat(conversationId: string | null) {
                 content: response.content,
                 status: response.isComplete ? 'completed' : 'sending',
                 error: response.error,
-                toolUsages: (response as any).toolUsages,
+                metadata: (response as any).toolUsages ? { toolUsages: (response as any).toolUsages } : undefined,
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
               } as Message;
@@ -143,7 +143,10 @@ export function useChat(conversationId: string | null) {
               content: response.content,
               status: response.isComplete ? 'completed' : 'sending',
               error: response.error,
-              toolUsages: (response as any).toolUsages || prev.toolUsages,
+              metadata: { 
+                ...(prev.metadata || {}),
+                ...(response as any).toolUsages && { toolUsages: (response as any).toolUsages }
+              },
             };
           });
 

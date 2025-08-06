@@ -8,6 +8,7 @@ interface MessageInputProps {
   onUploadFile: (file: File) => Promise<MessageAttachment>;
   isStreaming?: boolean;
   disabled?: boolean;
+  onAbort?: () => Promise<void>;
 }
 
 export const MessageInput: React.FC<MessageInputProps> = ({
@@ -15,6 +16,7 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   onUploadFile,
   isStreaming = false,
   disabled = false,
+  onAbort: _onAbort,
 }) => {
   const [message, setMessage] = useState('');
   const [attachments, setAttachments] = useState<MessageAttachment[]>([]);

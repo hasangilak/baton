@@ -6,6 +6,7 @@ import { MessageInput } from './MessageInput';
 import { useConversations, useMessages, useChat, useChatSearch } from '../../hooks/useChat';
 import { useProjects } from '../../hooks/useProjects';
 import { useInteractivePrompts } from '../../hooks/useInteractivePrompts';
+import { useClaudeStreaming } from '../../hooks/useClaudeStreaming';
 import { Loader2 } from 'lucide-react';
 
 export const ChatPage: React.FC = () => {
@@ -28,12 +29,9 @@ export const ChatPage: React.FC = () => {
     deleteConversation,
   } = useConversations(currentProjectId);
 
-  const { messages, isLoading: isLoadingMessages } = useMessages(selectedConversationId);
+  const { isLoading: isLoadingMessages } = useMessages(selectedConversationId);
   
   const {
-    sendMessage,
-    streamingMessage,
-    isStreaming,
     uploadFile,
   } = useChat(selectedConversationId);
 
@@ -50,6 +48,17 @@ export const ChatPage: React.FC = () => {
     isRespondingToPrompt,
     handlePromptResponse,
   } = useInteractivePrompts({ conversationId: selectedConversationId });
+
+  // New WebUI-based streaming (optional - can be toggled)
+  const claudeStreaming = useClaudeStreaming({ 
+    conversationId: selectedConversationId || undefined,
+    onSessionId: (sessionId) => {
+      console.log('🆔 Session ID received in ChatPage:', sessionId);
+    },
+    onPermissionError: (error) => {
+      console.warn('🔒 Permission error in ChatPage:', error);
+    }
+  });
   
   console.log('🔍 ChatPage - selectedConversationId:', selectedConversationId, 'pendingPrompts:', pendingPrompts.length);
 
@@ -75,20 +84,21 @@ export const ChatPage: React.FC = () => {
     setSearchQuery(''); // Clear search when selecting
   };
 
-  const handleSendMessage = async (content: string, attachments?: any[]) => {
+  const handleSendMessage = async (content: string) => {
     if (!selectedConversationId) {
       // Create a new conversation if none selected
       const result = await createConversation.mutateAsync(undefined);
       const conversation = result.conversation || result.data;
       if (conversation) {
         setSelectedConversationId(conversation.id);
-        // Send message after conversation is created
+        // Send message after conversation is created using WebUI streaming
         setTimeout(() => {
-          sendMessage(content, attachments);
+          claudeStreaming.sendMessage(content, conversation.id);
         }, 100);
       }
     } else {
-      sendMessage(content, attachments);
+      // Use new WebUI streaming for better performance
+      claudeStreaming.sendMessage(content);
     }
   };
 
@@ -126,10 +136,59 @@ export const ChatPage: React.FC = () => {
 
       {/* Chat area */}
       <div className="flex-1 flex flex-col">
-        {/* Messages */}
+        {/* Messages - Use WebUI streaming messages */}
         <MessageList
-          messages={messages}
-          streamingMessage={streamingMessage}
+          messages={claudeStreaming.messages.map((msg, index) => {
+            // Safe conversion from AllMessage to Message type
+            const messageId = msg.timestamp?.toString() || `msg-${index}-${Date.now()}`;
+            const timestamp = msg.timestamp ? new Date(msg.timestamp) : new Date();
+            
+            // Handle different message types
+            if (msg.type === 'chat') {
+              const chatMsg = msg as any; // ChatMessage
+              return {
+                id: messageId,
+                conversationId: selectedConversationId || '',
+                role: chatMsg.role || 'assistant',
+                content: chatMsg.content || '',
+                status: 'completed' as const,
+                createdAt: timestamp.toISOString(),
+                updatedAt: timestamp.toISOString(),
+              };
+            } else if (msg.type === 'system' || msg.type === 'result' || msg.type === 'error') {
+              const systemMsg = msg as any; // SystemMessage
+              return {
+                id: messageId,
+                conversationId: selectedConversationId || '',
+                role: 'system' as const,
+                content: systemMsg.message || systemMsg.content || '',
+                status: 'completed' as const,
+                createdAt: timestamp.toISOString(),
+                updatedAt: timestamp.toISOString(),
+              };
+            } else {
+              // Handle other message types (tool_use, tool_result, abort)
+              const otherMsg = msg as any;
+              return {
+                id: messageId,
+                conversationId: selectedConversationId || '',
+                role: 'system' as const,
+                content: otherMsg.message || otherMsg.content || JSON.stringify(otherMsg),
+                status: 'completed' as const,
+                createdAt: timestamp.toISOString(),
+                updatedAt: timestamp.toISOString(),
+              };
+            }
+          })}
+          streamingMessage={claudeStreaming.currentAssistantMessage ? {
+            id: 'streaming',
+            conversationId: selectedConversationId || '',
+            role: 'assistant',
+            content: claudeStreaming.currentAssistantMessage.content || '',
+            status: 'sending',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          } : null}
           pendingPrompts={pendingPrompts}
           onPromptResponse={handlePromptResponse}
           isRespondingToPrompt={isRespondingToPrompt}
@@ -150,8 +209,9 @@ export const ChatPage: React.FC = () => {
               createdAt: new Date().toISOString()
             };
           }}
-          isStreaming={isStreaming}
+          isStreaming={claudeStreaming.isStreaming}
           disabled={isLoadingMessages}
+          onAbort={claudeStreaming.handleAbort}
         />
       </div>
     </div>

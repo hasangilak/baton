@@ -26,7 +26,7 @@ import { formatDistanceToNow } from 'date-fns';
 export const ClaudeStyleChat: React.FC = () => {
   const navigate = useNavigate();
   const { conversationId } = useParams<{ conversationId?: string }>();
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(
     conversationId || null
   );
