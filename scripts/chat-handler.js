@@ -130,9 +130,18 @@ class ChatHandler {
             const toolResults = content.filter(c => c.type === 'tool_result');
             if (toolResults.length > 0) {
               console.log('Tool results detected:', toolResults.length);
-              // Extract tool names from the content (typically in the result text)
+              
+              // Extract and combine all tool result content
+              const toolResultContent = toolResults.map(result => result.content).join('\n\n');
+              console.log('Tool result content length:', toolResultContent.length);
+              
+              // Update fullContent with the tool results
+              if (toolResultContent && toolResultContent.length > fullContent.length) {
+                fullContent = toolResultContent;
+              }
+              
+              // Extract tool names from the content
               toolUsages = toolResults.map(result => {
-                // Try to extract tool name from content
                 const match = result.content?.match(/Web search|WebSearch|WebFetch/i);
                 return {
                   name: match ? 'WebSearch' : 'Tool',
@@ -140,7 +149,7 @@ class ChatHandler {
                 };
               });
               
-              // Send tool usage update
+              // Send tool usage update with result content
               await this.sendUpdate(messageId, {
                 content: fullContent,
                 toolUsages: toolUsages,

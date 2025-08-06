@@ -255,7 +255,7 @@ export const ClaudeStyleChat: React.FC = () => {
           <div className="flex-1 flex flex-col">
             {/* Messages */}
             <div className="flex-1 overflow-y-auto">
-              <div className="max-w-3xl mx-auto px-4 py-8">
+              <div className="max-w-3xl mx-auto px-4 py-8 h-[calc(100vh-250px)] overflow-y-auto no-scrollbar">
                 {messages.map((message: Message) => (
                   <MessageBubble key={message.id} message={message} />
                 ))}
