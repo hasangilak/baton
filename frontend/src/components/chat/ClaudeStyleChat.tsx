@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Plus, 
   MoreHorizontal, 
@@ -14,9 +14,11 @@ import {
   Menu,
   X,
   Send,
-  Paperclip
+  Paperclip,
+  Link,
+  Copy
 } from 'lucide-react';
-import { useConversations, useMessages, useChat } from '../../hooks/useChat';
+import { useConversations, useMessages, useChat, useConversation } from '../../hooks/useChat';
 import { useProjects } from '../../hooks/useProjects';
 import type { Conversation, Message } from '../../types';
 import { formatDistanceToNow } from 'date-fns';
@@ -24,6 +26,7 @@ import { formatDistanceToNow } from 'date-fns';
 export const ClaudeStyleChat: React.FC = () => {
   const navigate = useNavigate();
   const { conversationId } = useParams<{ conversationId?: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(
     conversationId || null
   );
@@ -53,16 +56,26 @@ export const ClaudeStyleChat: React.FC = () => {
     isWaitingForResponse,
   } = useChat(selectedConversationId);
 
-  // Update URL when conversation changes
+  // Get conversation details including Claude session ID
+  const { data: conversationDetails } = useConversation(selectedConversationId);
+  
+  // Get session ID from URL parameters for session tuning
+  const urlSessionId = searchParams.get('sessionId');
+
+  // Update URL when conversation changes, including session ID
   useEffect(() => {
     if (selectedConversationId) {
-      navigate(`/chat/${selectedConversationId}`, { replace: true });
+      const sessionId = conversationDetails?.claudeSessionId;
+      const url = sessionId 
+        ? `/chat/${selectedConversationId}?sessionId=${sessionId}`
+        : `/chat/${selectedConversationId}`;
+      navigate(url, { replace: true });
       setIsNewChat(false);
     } else {
       navigate('/chat', { replace: true });
       setIsNewChat(true);
     }
-  }, [selectedConversationId, navigate]);
+  }, [selectedConversationId, conversationDetails?.claudeSessionId, navigate]);
 
   const pendingMessageRef = useRef<string | null>(null);
 
@@ -255,6 +268,38 @@ export const ClaudeStyleChat: React.FC = () => {
         ) : (
           // Conversation View
           <div className="flex-1 flex flex-col">
+            {/* Session Info Bar */}
+            {(conversationDetails?.claudeSessionId || urlSessionId) && (
+              <div className="bg-[#252526] border-b border-[#3E3E42] px-4 py-2 flex items-center justify-between text-xs">
+                <div className="flex items-center space-x-2">
+                  <Link className="w-3 h-3 text-[#8B8B8D]" />
+                  <span className="text-[#8B8B8D]">Claude Session:</span>
+                  <code className="text-[#E5E5E5] bg-[#3E3E42] px-2 py-1 rounded">
+                    {conversationDetails?.claudeSessionId || urlSessionId}
+                  </code>
+                  {conversationDetails?.contextTokens && (
+                    <span className="text-[#8B8B8D] ml-2">
+                      ({conversationDetails.contextTokens.toLocaleString()} tokens)
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center space-x-1">
+                  <button 
+                    onClick={() => {
+                      const sessionId = conversationDetails?.claudeSessionId || urlSessionId;
+                      if (sessionId) {
+                        navigator.clipboard.writeText(sessionId);
+                      }
+                    }}
+                    className="p-1 hover:bg-[#3E3E42] rounded transition-colors"
+                    title="Copy session ID"
+                  >
+                    <Copy className="w-3 h-3 text-[#8B8B8D]" />
+                  </button>
+                </div>
+              </div>
+            )}
+            
             {/* Messages */}
             <div className="flex-1 overflow-y-auto">
               <div className="max-w-3xl mx-auto px-4 py-8 h-[calc(100vh-250px)] overflow-y-auto no-scrollbar">

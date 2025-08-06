@@ -196,6 +196,28 @@ export function useChat(conversationId: string | null) {
   };
 }
 
+/**
+ * Hook to fetch conversation details including Claude session ID
+ */
+export function useConversation(conversationId: string | null) {
+  return useQuery({
+    queryKey: ['conversation', conversationId],
+    queryFn: async () => {
+      if (!conversationId) return null;
+      
+      const response = await chatService.getConversation(conversationId);
+      return response.conversation;
+    },
+    enabled: !!conversationId,
+    staleTime: 30 * 1000, // 30 seconds
+    retry: (failureCount, error: any) => {
+      // Don't retry on 404s
+      if (error?.status === 404) return false;
+      return failureCount < 2;
+    },
+  });
+}
+
 export function useChatSearch(projectId: string) {
   const [query, setQuery] = useState('');
 

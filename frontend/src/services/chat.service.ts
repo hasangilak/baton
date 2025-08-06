@@ -68,6 +68,11 @@ class ChatService {
     return this.request<Message[]>(`/api/chat/messages/${conversationId}`);
   }
 
+  // Get conversation details including Claude session ID
+  async getConversation(conversationId: string): Promise<ApiResponse<any>> {
+    return this.request<any>(`/api/chat/conversation/${conversationId}`);
+  }
+
   // Send message with SSE streaming
   async sendMessage(
     data: SendMessageRequest,
