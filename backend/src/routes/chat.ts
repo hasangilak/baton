@@ -845,4 +845,203 @@ router.put('/prompts/:promptId/timeout', async (req: Request, res: Response) => 
   }
 });
 
+/**
+ * POST /api/chat/messages/stream
+ * New Claude Code streaming implementation based on WebUI patterns
+ */
+router.post('/messages/stream', async (req: Request, res: Response) => {
+  try {
+    const { conversationId, content, requestId } = req.body;
+
+    if (!conversationId || !content || !requestId) {
+      return res.status(400).json({
+        error: 'Conversation ID, content, and requestId are required',
+      });
+    }
+
+    // Get conversation to verify it exists and get project context
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: { project: true },
+    });
+
+    if (!conversation) {
+      return res.status(404).json({
+        error: 'Conversation not found',
+      });
+    }
+
+    // Store user message first
+    const userMessage = await prisma.message.create({
+      data: {
+        conversationId,
+        role: 'user',
+        content,
+        status: 'completed',
+      },
+    });
+
+    // Create assistant message placeholder
+    const assistantMessage = await prisma.message.create({
+      data: {
+        conversationId,
+        role: 'assistant',
+        content: '',
+        status: 'sending',
+      },
+    });
+
+    // Set up streaming headers
+    res.writeHead(200, {
+      'Content-Type': 'application/x-ndjson',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+    });
+
+    let fullContent = '';
+    let currentSessionId = null;
+
+    try {
+      // Import Claude Code SDK
+      const { query } = require('@anthropic-ai/claude-code');
+      
+      // Build context prompt
+      let contextPrompt = content;
+      if (conversation.project) {
+        contextPrompt = `Project: ${conversation.project.name}\n\n${content}`;
+      }
+
+      console.log(`🎬 Starting Claude Code stream for message ${assistantMessage.id}`);
+      console.log(`📡 Context: "${contextPrompt.substring(0, 150)}..."`);
+
+      // Create abort controller (TODO: implement shared abort controller management)
+      const abortController = new AbortController();
+
+      // Stream Claude Code responses directly
+      for await (const sdkMessage of query({
+        prompt: contextPrompt,
+        options: {
+          abortController,
+          maxTurns: 1,
+          // Use simple options - avoid canUseTool complexity
+          permissionMode: 'default' as const,
+          ...(conversation.claudeSessionId ? { resume: conversation.claudeSessionId } : {}),
+        },
+      })) {
+        // Capture session ID early
+        const sessionId = sdkMessage.sessionId || sdkMessage.session_id || 
+                         (sdkMessage.message && (sdkMessage.message.sessionId || sdkMessage.message.session_id));
+        
+        if (sessionId && !currentSessionId) {
+          currentSessionId = sessionId;
+          console.log(`🆔 Captured session ID: ${currentSessionId}`);
+        }
+
+        // Extract content for database storage
+        if (sdkMessage.type === 'assistant' && sdkMessage.message) {
+          let textContent = '';
+          if (Array.isArray(sdkMessage.message.content)) {
+            textContent = sdkMessage.message.content
+              .filter((block: any) => block.type === 'text')
+              .map((block: any) => block.text)
+              .join('');
+          } else if (typeof sdkMessage.message.content === 'string') {
+            textContent = sdkMessage.message.content;
+          }
+          
+          if (textContent && textContent !== fullContent) {
+            fullContent = textContent;
+          }
+        } else if (sdkMessage.type === 'result' && sdkMessage.result) {
+          fullContent = sdkMessage.result;
+        }
+
+        // Forward raw SDK message to frontend
+        const streamResponse = {
+          type: 'claude_json',
+          data: sdkMessage,
+          messageId: assistantMessage.id, // Include message ID for frontend reference
+        };
+        
+        const chunk = JSON.stringify(streamResponse) + '\n';
+        res.write(chunk);
+      }
+
+      // Update message in database with final content
+      await prisma.message.update({
+        where: { id: assistantMessage.id },
+        data: {
+          content: fullContent,
+          status: 'completed',
+        },
+      });
+
+      // Store session ID if captured
+      if (currentSessionId) {
+        await prisma.conversation.update({
+          where: { id: conversationId },
+          data: { claudeSessionId: currentSessionId },
+        });
+        console.log(`💾 Stored session ID ${currentSessionId}`);
+      }
+
+      // Send completion signal
+      const doneResponse = { 
+        type: 'done',
+        messageId: assistantMessage.id,
+        finalContent: fullContent 
+      };
+      res.write(JSON.stringify(doneResponse) + '\n');
+
+      console.log(`✅ Stream completed for message ${assistantMessage.id}`);
+
+    } catch (error) {
+      console.error('❌ Claude Code streaming error:', error);
+      
+      // Update message status to failed
+      await prisma.message.update({
+        where: { id: assistantMessage.id },
+        data: {
+          status: 'failed',
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+
+      // Send error to frontend
+      const errorResponse = {
+        type: 'error',
+        messageId: assistantMessage.id,
+        error: error instanceof Error ? error.message : String(error),
+      };
+      res.write(JSON.stringify(errorResponse) + '\n');
+    } finally {
+      res.end();
+    }
+
+  } catch (error) {
+    console.error('❌ Stream setup error:', error);
+    return res.status(500).json({
+      error: 'Failed to set up streaming response',
+      details: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+/**
+ * POST /api/chat/messages/abort/:requestId
+ * Abort a streaming request (TODO: implement proper abort controller management)
+ */
+router.post('/messages/abort/:requestId', async (req: Request, res: Response) => {
+  const requestId = req.params.requestId;
+  
+  // TODO: Implement shared abort controller map like Claude Code WebUI
+  console.log(`⏹️ Abort requested for: ${requestId}`);
+  
+  return res.json({ 
+    success: true, 
+    message: 'Abort functionality will be implemented with shared abort controller map' 
+  });
+});
+
 export default router;

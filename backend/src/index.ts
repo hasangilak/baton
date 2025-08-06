@@ -183,6 +183,15 @@ io.on('connection', (socket) => {
     });
   });
   
+  // Handle interactive prompts from chat bridge
+  socket.on('interactive_prompt', (data: any) => {
+    console.log(`📡 Received interactive prompt from chat bridge: ${data.promptId}`);
+    console.log(`🔔 Broadcasting to all frontend clients`);
+    
+    // Broadcast to all frontend clients
+    io.emit('interactive_prompt', data);
+  });
+  
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
   });

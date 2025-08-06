@@ -14,13 +14,13 @@ const { PrismaClient } = require(path.join(backendPath, 'node_modules/@prisma/cl
 // Use native fetch (Node.js 18+)
 
 class PromptDecisionEngine {
-  constructor(io) {
-    this.io = io;
+  constructor(socket) {
+    this.socket = socket;
     this.prisma = new PrismaClient();
     this.strategies = [
       new AllowlistStrategy(),
       new DenylistStrategy(),
-      new UserDelegationStrategy(io, this.prisma)
+      new UserDelegationStrategy(socket, this.prisma)
     ];
   }
 
@@ -338,8 +338,8 @@ class DenylistStrategy {
  * Strategy for delegating decisions to users via WebSocket
  */
 class UserDelegationStrategy {
-  constructor(io, prisma) {
-    this.io = io;
+  constructor(socket, prisma) {
+    this.socket = socket; // Socket.IO client connection, not server
     this.prisma = prisma;
     this.pendingResponses = new Map();
   }
@@ -351,9 +351,9 @@ class UserDelegationStrategy {
   async decide(prompt, storedPrompt) {
     console.log(`👤 Delegating prompt to user: ${storedPrompt.id}`);
     
-    // Send prompt directly via WebSocket (like successful implementations do)
+    // Send prompt directly via WebSocket client to backend server
     try {
-      this.io.emit('interactive_prompt', {
+      this.socket.emit('interactive_prompt', {
         promptId: storedPrompt.id,
         conversationId: storedPrompt.conversationId,
         type: prompt.type,
@@ -365,7 +365,7 @@ class UserDelegationStrategy {
         timeout: 30000
       });
       
-      console.log(`📡 Prompt sent directly via WebSocket: ${storedPrompt.id}`);
+      console.log(`📡 Prompt sent to backend via WebSocket client: ${storedPrompt.id}`);
     } catch (error) {
       console.error(`❌ Error sending prompt via WebSocket:`, error);
     }
