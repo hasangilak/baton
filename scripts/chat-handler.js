@@ -59,11 +59,32 @@ class ChatHandler {
     console.log(`Processing chat for message ${messageId}`);
     
     try {
-      // Build context-aware prompt
-      let contextPrompt = prompt;
+      // Fetch conversation history for context preservation
+      const conversationHistory = await this.getConversationHistory(conversationId);
+      
+      // Build complete conversation context with history
+      let contextPrompt = '';
+      
+      // Add project context
       if (projectContext) {
-        contextPrompt = `Project: ${projectContext.name}\n\n${prompt}`;
+        contextPrompt = `Project: ${projectContext.name}\n\n`;
       }
+      
+      // Add conversation history to maintain context
+      if (conversationHistory.length > 0) {
+        contextPrompt += "Previous conversation:\n\n";
+        for (const historyMessage of conversationHistory) {
+          if (historyMessage.role === 'user') {
+            contextPrompt += `Human: ${historyMessage.content}\n\n`;
+          } else if (historyMessage.role === 'assistant' && historyMessage.content) {
+            contextPrompt += `Assistant: ${historyMessage.content}\n\n`;
+          }
+        }
+        contextPrompt += "---\n\n";
+      }
+      
+      // Add current user message
+      contextPrompt += `Human: ${prompt}\n\nAssistant: `;
 
       const messages = [];
       let fullContent = '';
@@ -71,9 +92,9 @@ class ChatHandler {
       let finalResult = '';
       const abortController = new AbortController();
 
-      console.log(`Sending to Claude Code: "${contextPrompt.substring(0, 100)}..."`);
+      console.log(`Sending to Claude Code with ${conversationHistory.length} history messages: "${contextPrompt.substring(0, 200)}..."`);
 
-      // Use local Claude Code in headless mode
+      // Use local Claude Code in headless mode with conversation history embedded in prompt
       for await (const message of query({
         prompt: contextPrompt,
         abortController,
@@ -218,6 +239,23 @@ class ChatHandler {
       return message.text;
     }
     return '';
+  }
+
+  async getConversationHistory(conversationId) {
+    try {
+      const response = await axios.get(`${BACKEND_URL}/api/chat/messages/${conversationId}`);
+      const messages = response.data.messages || response.data.data || [];
+      
+      // Filter out the last user message (it's the current prompt) and pending assistant messages
+      return messages.filter(msg => 
+        !(msg.role === 'assistant' && msg.status === 'sending') &&
+        msg.content && msg.content.trim() !== ''
+      ).slice(0, -1); // Remove the most recent message as it's the current prompt
+      
+    } catch (error) {
+      console.error('Error fetching conversation history:', error.message);
+      return [];
+    }
   }
 
   async sendUpdate(messageId, data) {
