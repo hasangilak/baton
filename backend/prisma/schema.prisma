@@ -228,6 +228,7 @@ model Conversation {
   user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages          Message[]
   interactivePrompts InteractivePrompt[]
+  permissions       ConversationPermission[]
 
   @@map("conversations")
   @@index([projectId])
@@ -235,6 +236,28 @@ model Conversation {
   @@index([status])
   @@index([createdAt])
   @@index([claudeSessionId])
+}
+
+model ConversationPermission {
+  id             String   @id @default(cuid())
+  conversationId String
+  toolName       String   // Edit, MultiEdit, Write, Bash, etc.
+  status         String   @default("granted") // granted, denied, temporary
+  grantedBy      String   @default("user") // user, system, auto
+  grantedAt      DateTime @default(now())
+  expiresAt      DateTime? // Optional expiration for temporary permissions
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  metadata       Json?    // Store additional permission context
+
+  // Relations
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@map("conversation_permissions")
+  @@unique([conversationId, toolName])
+  @@index([conversationId])
+  @@index([toolName])
+  @@index([status])
 }
 
 model Message {

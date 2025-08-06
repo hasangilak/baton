@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { chatService } from '../services/chat.service';
+import { ConversationPermissionsService } from '../services/conversation-permissions.service';
 import { io } from '../index';
 import multer from 'multer';
 import path from 'path';
@@ -1117,5 +1118,99 @@ router.post('/messages/stream-webui', handleStreamingChat);
  * Abort a streaming request using WebUI shared abort controller pattern
  */
 router.post('/messages/abort/:requestId', handleAbortRequest);
+
+/**
+ * GET /api/chat/conversations/:conversationId/permissions
+ * Get granted permissions for a conversation
+ */
+router.get('/conversations/:conversationId/permissions', async (req: Request, res: Response) => {
+  try {
+    const conversationId = req.params.conversationId;
+
+    if (!conversationId) {
+      return res.status(400).json({
+        error: 'Conversation ID is required',
+      });
+    }
+
+    const permissions = await ConversationPermissionsService.getGrantedPermissions(conversationId);
+
+    return res.json({
+      success: true,
+      permissions,
+    });
+  } catch (error) {
+    console.error('Error fetching conversation permissions:', error);
+    return res.status(500).json({
+      error: 'Failed to fetch conversation permissions',
+    });
+  }
+});
+
+/**
+ * POST /api/chat/conversations/:conversationId/permissions
+ * Grant permission for a tool in a conversation
+ */
+router.post('/conversations/:conversationId/permissions', async (req: Request, res: Response) => {
+  try {
+    const conversationId = req.params.conversationId;
+    const { toolName, status, grantedBy, expiresAt } = req.body;
+
+    if (!conversationId || !toolName) {
+      return res.status(400).json({
+        error: 'Conversation ID and tool name are required',
+      });
+    }
+
+    const permission = status === 'denied' 
+      ? await ConversationPermissionsService.denyPermission(conversationId, toolName, grantedBy)
+      : await ConversationPermissionsService.grantPermission(
+          conversationId, 
+          toolName, 
+          grantedBy || 'user', 
+          expiresAt ? new Date(expiresAt) : undefined
+        );
+
+    console.log(`🔐 ${status === 'denied' ? 'Denied' : 'Granted'} permission for ${toolName} in conversation ${conversationId}`);
+
+    return res.json({
+      success: true,
+      permission,
+    });
+  } catch (error) {
+    console.error('Error managing conversation permission:', error);
+    return res.status(500).json({
+      error: 'Failed to manage conversation permission',
+    });
+  }
+});
+
+/**
+ * DELETE /api/chat/conversations/:conversationId/permissions/:toolName
+ * Revoke permission for a tool in a conversation
+ */
+router.delete('/conversations/:conversationId/permissions/:toolName', async (req: Request, res: Response) => {
+  try {
+    const conversationId = req.params.conversationId;
+    const toolName = req.params.toolName;
+
+    if (!conversationId || !toolName) {
+      return res.status(400).json({
+        error: 'Conversation ID and tool name are required',
+      });
+    }
+
+    await ConversationPermissionsService.revokePermission(conversationId, toolName);
+
+    console.log(`🗑️ Revoked permission for ${toolName} in conversation ${conversationId}`);
+
+    return res.status(204).send();
+  } catch (error) {
+    console.error('Error revoking conversation permission:', error);
+    return res.status(500).json({
+      error: 'Failed to revoke conversation permission',
+    });
+  }
+});
 
 export default router;

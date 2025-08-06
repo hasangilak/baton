@@ -14,6 +14,10 @@ const { io } = require("socket.io-client");
 const BACKEND_URL = process.env.BACKEND_URL || "http://localhost:3001";
 const POLLING_INTERVAL = process.env.POLLING_INTERVAL || 2000;
 
+// Token-efficient session management constants
+const COMPACTION_THRESHOLD = 150000; // 150k tokens (75% of 200k limit)
+const TOKEN_ESTIMATE_PER_MESSAGE = 500; // Rough estimate for token tracking
+
 // Request tracking (following WebUI pattern exactly)
 const requestAbortControllers = new Map();
 
@@ -124,7 +128,92 @@ class WebUIChatHandler {
   }
 
   /**
-   * Main streaming function using WebUI permission pattern
+   * Load conversation details including session ID and context tokens
+   */
+  async loadConversation(conversationId) {
+    try {
+      const response = await axios.get(`${BACKEND_URL}/api/chat/conversation/${conversationId}`);
+      const conversation = response.data.conversation;
+      
+      console.log(`📊 Loaded conversation: ID=${conversationId}, Session=${conversation?.claudeSessionId || 'new'}, Tokens=${conversation?.contextTokens || 0}`);
+      
+      return conversation;
+    } catch (error) {
+      console.error(`❌ Failed to load conversation ${conversationId}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Store Claude Code session ID for conversation
+   */
+  async storeSessionId(conversationId, sessionId) {
+    try {
+      await axios.put(`${BACKEND_URL}/api/chat/conversations/${conversationId}/session`, {
+        claudeSessionId: sessionId,
+      });
+      console.log(`💾 Stored session ID ${sessionId} for conversation ${conversationId}`);
+    } catch (error) {
+      console.error(`❌ Failed to store session ID:`, error.message);
+    }
+  }
+
+  /**
+   * Update token usage for conversation
+   */
+  async updateTokenUsage(conversationId, additionalTokens) {
+    try {
+      await axios.put(`${BACKEND_URL}/api/chat/conversations/${conversationId}/tokens`, {
+        additionalTokens: additionalTokens,
+      });
+      console.log(`📈 Updated tokens: +${additionalTokens} for conversation ${conversationId}`);
+    } catch (error) {
+      console.error(`❌ Failed to update token usage:`, error.message);
+    }
+  }
+
+  /**
+   * Compact conversation context using Claude Code's built-in /compact command
+   */
+  async compactContext(conversation) {
+    if (!conversation?.claudeSessionId) {
+      console.log("⚠️  No session ID available for compaction");
+      return false;
+    }
+
+    console.log(`🗜️  Compacting context for session ${conversation.claudeSessionId} (${conversation.contextTokens} tokens)`);
+
+    try {
+      // Use Claude Code's built-in compaction
+      for await (const message of query({
+        prompt: "/compact Preserve key context about our discussion topics, ongoing tasks, and project-specific information",
+        options: {
+          maxTurns: 1,
+          resume: conversation.claudeSessionId,
+          executable: "node",
+          executableArgs: [],
+          pathToClaudeCodeExecutable: "/home/hassan/.claude/local/node_modules/.bin/claude",
+        },
+      })) {
+        console.log(`✅ Context compacted for conversation ${conversation.id}`);
+      }
+
+      // Update compaction timestamp
+      await axios.put(`${BACKEND_URL}/api/chat/conversations/${conversation.id}/compact`, {
+        compactedAt: new Date().toISOString(),
+        tokenReductionEstimate: 0.7, // Estimate 70% reduction
+      });
+
+      console.log(`🗜️  Compaction completed for conversation ${conversation.id}`);
+      return true;
+    } catch (error) {
+      console.error(`❌ Failed to compact context:`, error.message);
+      return false;
+    }
+  }
+
+  /**
+   * Main streaming function using WebUI permission pattern with token-efficient session management
    */
   async* executeClaudeCommand(message, requestId, sessionId, allowedTools, workingDirectory, permissionMode) {
     let abortController;
@@ -265,12 +354,46 @@ class WebUIChatHandler {
     console.log(`📦 Processing Claude Code request ${requestId} for conversation ${conversationId}`);
     console.log(`🔧 AllowedTools: ${JSON.stringify(allowedTools)} (length: ${allowedTools?.length || 0})`);
 
-    // Use extremely restrictive allowedTools to force permission errors
-    const baseAllowedTools = allowedTools || [];
-    const essentialTools = []; // NO essential tools to force permission errors
-    let effectiveAllowedTools = [...new Set([...baseAllowedTools, ...essentialTools])];
+    // Load conversation details for token-efficient session management
+    const conversation = await this.loadConversation(conversationId);
     
-    console.log(`🛠️  Using effective allowedTools: ${JSON.stringify(effectiveAllowedTools)}`);
+    // Check if context compaction is needed (token efficiency)
+    if (conversation && conversation.contextTokens > COMPACTION_THRESHOLD) {
+      console.log(`🗜️  Context tokens (${conversation.contextTokens}) exceed threshold (${COMPACTION_THRESHOLD}), attempting compaction...`);
+      await this.compactContext(conversation);
+      // Reload conversation after compaction
+      const updatedConversation = await this.loadConversation(conversationId);
+      if (updatedConversation) {
+        conversation.contextTokens = updatedConversation.contextTokens;
+        conversation.lastCompacted = updatedConversation.lastCompacted;
+      }
+    }
+
+    // Determine effective session ID (stored session takes precedence)
+    const effectiveSessionId = conversation?.claudeSessionId || sessionId;
+    console.log(`🔗 Session management: stored=${conversation?.claudeSessionId || 'none'}, provided=${sessionId || 'none'}, using=${effectiveSessionId || 'new'}`);
+
+    // Load conversation-level permissions (WebUI-inspired approach)
+    const baseAllowedTools = allowedTools || [];
+    const essentialTools = ["Read", "LS", "Glob", "Grep", "WebFetch"]; // Always safe tools
+    
+    let effectiveAllowedTools;
+    
+    try {
+      // Fetch granted permissions for this conversation from database
+      const permissionsResponse = await axios.get(`${BACKEND_URL}/api/chat/conversations/${conversationId}/permissions`);
+      const conversationPermissions = permissionsResponse.data.permissions || [];
+      console.log(`🔐 Loaded ${conversationPermissions.length} conversation permissions: ${JSON.stringify(conversationPermissions)}`);
+      
+      // Combine base tools + essential tools + granted conversation permissions
+      effectiveAllowedTools = [...new Set([...baseAllowedTools, ...essentialTools, ...conversationPermissions])];
+      console.log(`🛠️  Using effective allowedTools with conversation permissions: ${JSON.stringify(effectiveAllowedTools)}`);
+      
+    } catch (error) {
+      console.error(`⚠️  Could not load conversation permissions, using base tools only:`, error.message);
+      effectiveAllowedTools = [...new Set([...baseAllowedTools, ...essentialTools])];
+      console.log(`🛠️  Using fallback allowedTools: ${JSON.stringify(effectiveAllowedTools)}`);
+    }
     
     // No canUseTool callback - we'll detect permission errors reactively from tool_result messages
 
@@ -285,29 +408,22 @@ class WebUIChatHandler {
       console.log(`📡 Message: "${contextPrompt.substring(0, 100)}..."`);
       
       let fullContent = '';
-      let currentSessionId = sessionId;
-
-      // Restart loop - allows restarting Claude Code execution with updated permissions
-      let restartExecution = true;
-      let restartCount = 0;
-      const maxRestarts = 5; // Prevent infinite restart loops
-
-      while (restartExecution && restartCount < maxRestarts) {
-        restartExecution = false; // Will be set to true if we need to restart
-        restartCount++;
-        
-        console.log(`🔄 Execution attempt ${restartCount} with tools: ${JSON.stringify(effectiveAllowedTools)}`);
-
-        try {
-          // Execute Claude Code locally and stream responses back to backend via Socket.IO
-          for await (const streamResponse of this.executeClaudeCommand(
-            contextPrompt,
-            requestId,
-            currentSessionId || sessionId, // Use captured session ID for continuity
-            effectiveAllowedTools,
-            workingDirectory,
-            permissionMode
-          )) {
+      let currentSessionId = effectiveSessionId; // Use stored session ID for continuity
+      let newSessionCaptured = false;
+      let estimatedTokenUsage = 0;
+      
+      console.log(`🚀 Starting execution with session continuity: ${currentSessionId ? 'resume' : 'new'}, tools: ${JSON.stringify(effectiveAllowedTools)}`);
+      
+      try {
+        // Execute Claude Code locally with token-efficient session management
+        for await (const streamResponse of this.executeClaudeCommand(
+          contextPrompt,
+          requestId,
+          currentSessionId, // Use stored session ID for continuity
+          effectiveAllowedTools,
+          workingDirectory,
+          permissionMode
+        )) {
             
             // Handle permission errors
             if (streamResponse.type === 'permission_error') {
@@ -320,15 +436,39 @@ class WebUIChatHandler {
               });
               
               if (permissionResult.allowed) {
-                console.log(`✅ Permission granted for ${permissionResult.toolName}, restarting with updated tools`);
+                console.log(`✅ Permission granted for ${permissionResult.toolName} - stored in conversation permissions`);
                 
-                // Add the granted tool to effective allowed tools
-                effectiveAllowedTools = [...new Set([...effectiveAllowedTools, permissionResult.toolName])];
-                console.log(`🔧 Updated allowedTools: ${JSON.stringify(effectiveAllowedTools)}`);
+                // Store permission in database for future use
+                try {
+                  await axios.post(`${BACKEND_URL}/api/chat/conversations/${conversationId}/permissions`, {
+                    toolName: permissionResult.toolName,
+                    status: 'granted',
+                    grantedBy: 'user'
+                  });
+                  console.log(`💾 Stored ${permissionResult.toolName} permission in database`);
+                } catch (error) {
+                  console.error(`⚠️  Failed to store permission in database:`, error.message);
+                }
                 
-                // Set restart flag to break out of current stream and restart
-                restartExecution = true;
-                break; // Break out of the streaming loop
+                // Send informational message about permission being granted
+                if (this.socket && this.socket.connected) {
+                  this.socket.emit('chat-bridge:response', {
+                    messageId,
+                    requestId,
+                    streamResponse: {
+                      type: "claude_json",
+                      data: {
+                        type: "system",
+                        message: {
+                          content: `Permission granted for ${permissionResult.toolName} tool. This permission will be remembered for future requests in this conversation. Please retry your request.`
+                        }
+                      }
+                    },
+                    content: `Permission granted for ${permissionResult.toolName} tool. This permission will be remembered for future requests in this conversation.`,
+                    isComplete: false,
+                    sessionId: currentSessionId
+                  });
+                }
                 
               } else {
                 console.log(`❌ Permission denied, continuing with error`);
@@ -348,22 +488,36 @@ class WebUIChatHandler {
                 }
                 return; // Exit completely on permission denial
               }
+              
+              // Continue processing the stream without restarting
+              continue;
             }
             
             // Extract content for database storage
             if (streamResponse.type === 'claude_json' && streamResponse.data) {
               const sdkMessage = streamResponse.data;
               
-              // Capture session ID
+              // Token-efficient session ID capture and management
               const newSessionId = sdkMessage.sessionId || sdkMessage.session_id ||
                                 (sdkMessage.message && (sdkMessage.message.sessionId || sdkMessage.message.session_id));
               
-              if (newSessionId && !currentSessionId) {
+              // Store new session ID if captured and not already stored
+              if (newSessionId && (!conversation?.claudeSessionId || newSessionId !== conversation.claudeSessionId)) {
                 currentSessionId = newSessionId;
-                console.log(`🆔 Captured session ID: ${currentSessionId}`);
+                console.log(`🆔 Captured new session ID: ${currentSessionId}`);
+                
+                // Store session ID asynchronously for future requests
+                if (!newSessionCaptured) {
+                  newSessionCaptured = true;
+                  this.storeSessionId(conversationId, newSessionId).catch(err => {
+                    console.error(`⚠️  Failed to store session ID:`, err.message);
+                  });
+                }
+              } else if (!currentSessionId && conversation?.claudeSessionId) {
+                currentSessionId = conversation.claudeSessionId;
               }
 
-              // Extract text content for database storage
+              // Extract text content for database storage and estimate token usage
               if (sdkMessage.type === 'assistant' && sdkMessage.message) {
                 let textContent = '';
                 if (Array.isArray(sdkMessage.message.content)) {
@@ -377,14 +531,17 @@ class WebUIChatHandler {
                 
                 if (textContent && textContent !== fullContent) {
                   fullContent = textContent;
+                  // Estimate token usage for tracking (rough approximation: ~4 chars per token)
+                  estimatedTokenUsage = Math.max(estimatedTokenUsage, Math.ceil(textContent.length / 4));
                 }
               } else if (sdkMessage.type === 'result' && sdkMessage.result) {
                 fullContent = sdkMessage.result;
+                estimatedTokenUsage = Math.max(estimatedTokenUsage, Math.ceil(sdkMessage.result.length / 4));
               }
             }
 
-            // Send streaming response back to backend via Socket.IO (only if not restarting)
-            if (!restartExecution && this.socket && this.socket.connected) {
+            // Send streaming response back to backend via Socket.IO
+            if (this.socket && this.socket.connected) {
               this.socket.emit('chat-bridge:response', {
                 messageId,
                 requestId,
@@ -395,21 +552,24 @@ class WebUIChatHandler {
               });
             }
             
-            // Handle completion
+            // Handle completion and update token usage
             if (streamResponse.type === 'done' || streamResponse.type === 'error' || streamResponse.type === 'aborted') {
               console.log(`✅ Claude Code execution completed for request ${requestId}`);
-              restartExecution = false; // Ensure we don't restart on completion
+              
+              // Update token usage for session management (token efficiency)
+              if (estimatedTokenUsage > 0) {
+                const totalEstimatedTokens = estimatedTokenUsage + TOKEN_ESTIMATE_PER_MESSAGE;
+                this.updateTokenUsage(conversationId, totalEstimatedTokens).catch(err => {
+                  console.error(`⚠️  Failed to update token usage:`, err.message);
+                });
+              }
+              
               break;
             }
           }
-
-        } catch (restartError) {
-          console.error(`❌ Error during execution attempt ${restartCount}:`, restartError);
-          if (restartCount >= maxRestarts) {
-            throw restartError; // Re-throw if max restarts exceeded
-          }
-          // Continue to next restart attempt
-        }
+      } catch (executionError) {
+        console.error(`❌ Error during Claude Code execution:`, executionError);
+        throw executionError;
       }
 
     } catch (error) {
