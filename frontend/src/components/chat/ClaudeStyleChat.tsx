@@ -203,7 +203,6 @@ export const ClaudeStyleChat: React.FC = () => {
               
               <div className="relative">
                 <textarea
-                  data-testid="chat-text-area"
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyDown={handleKeyPress}
@@ -211,7 +210,7 @@ export const ClaudeStyleChat: React.FC = () => {
                   className="w-full px-4 py-3 pr-12 bg-[#3E3E42] border border-[#565658] rounded-xl text-[#E5E5E5] placeholder-[#8B8B8D] resize-none focus:outline-none focus:border-[#6B6B6D] transition-colors"
                   style={{ minHeight: '85px', maxHeight: '200px' }}
                   rows={1}
-                  data-testid="chat-text-area"
+                  data-testid="chat-text-area-middle"
                 />
                 
                 <div className="absolute left-3 bottom-3 flex items-center space-x-2">
@@ -271,14 +270,14 @@ export const ClaudeStyleChat: React.FC = () => {
               <div className="max-w-3xl mx-auto px-4 py-4">
                 <div className="relative">
                   <textarea
-                    data-testid="chat-text-area"
+                    data-testid="chat-text-area-bottom"
                     value={inputValue}
                     onChange={(e) => setInputValue(e.target.value)}
                     onKeyDown={handleKeyPress}
                     placeholder="Reply..."
                     disabled={isStreaming}
                     className="w-full px-4 py-3 pr-12 bg-[#3E3E42] border border-[#565658] rounded-xl text-[#E5E5E5] placeholder-[#8B8B8D] resize-none focus:outline-none focus:border-[#6B6B6D] transition-colors disabled:opacity-50"
-                    style={{ minHeight: '56px', maxHeight: '200px' }}
+                    style={{ minHeight: '76px', maxHeight: '200px' }}
                     rows={1}
                   />
                   

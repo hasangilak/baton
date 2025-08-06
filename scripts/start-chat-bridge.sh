@@ -36,4 +36,4 @@ echo "Press Ctrl+C to stop"
 echo ""
 
 # Start the chat handler
-node scripts/chat-handler.js
+cd "$(dirname "$0")/.." && node scripts/chat-handler.js
