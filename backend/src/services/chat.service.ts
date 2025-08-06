@@ -208,7 +208,15 @@ export class ChatService extends EventEmitter {
     isComplete: boolean,
     error?: string,
     toolUsages?: any[]
-  ) {
+  ): Promise<{ conversationId?: string }> {
+    // Get conversation ID from message
+    const message = await prisma.message.findUnique({
+      where: { id: messageId },
+      select: { conversationId: true }
+    });
+
+    const conversationId = message?.conversationId;
+
     // Remove from pending if complete
     if (isComplete) {
       this.pendingRequests.delete(messageId);
@@ -216,7 +224,7 @@ export class ChatService extends EventEmitter {
 
     if (error) {
       await this.handleError(messageId, error);
-      return;
+      return { conversationId };
     }
 
     // Emit streaming update with tool usage
@@ -248,6 +256,8 @@ export class ChatService extends EventEmitter {
       // Extract and save code blocks
       await this.extractAndSaveCodeBlocks(messageId, content);
     }
+    
+    return { conversationId };
   }
 
   /**

@@ -445,7 +445,7 @@ router.post('/response', async (req: Request, res: Response) => {
       });
     }
 
-    await chatService.processBridgeResponse(
+    const result = await chatService.processBridgeResponse(
       messageId,
       content,
       isComplete,
@@ -457,7 +457,8 @@ router.post('/response', async (req: Request, res: Response) => {
       messageId, 
       content, 
       isComplete,
-      error 
+      error,
+      conversationId: result.conversationId
     });
 
     return res.json({

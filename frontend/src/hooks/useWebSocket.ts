@@ -235,10 +235,35 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
       if (data.toolUsages) {
         console.log('🔧 Tool usages:', data.toolUsages);
       }
-      // Invalidate message queries to refetch with updated data
-      queryClient.invalidateQueries({ 
-        queryKey: ['chat', 'messages']
-      });
+      
+      // Emit custom event for WebUI streaming integration
+      if (data.content && data.conversationId) {
+        const customEvent = new CustomEvent('webui:message-updated', {
+          detail: {
+            content: data.content,
+            isComplete: data.isComplete,
+            conversationId: data.conversationId,
+            messageId: data.messageId,
+            toolUsages: data.toolUsages
+          }
+        });
+        window.dispatchEvent(customEvent);
+        console.log('📡 Dispatched custom event for WebUI streaming integration');
+      }
+      
+      // Invalidate conversation-specific message queries to refetch with updated data
+      if (data.conversationId) {
+        queryClient.invalidateQueries({ 
+          queryKey: ['chat', 'messages', data.conversationId]
+        });
+        console.log('🔄 Invalidated message queries for conversation:', data.conversationId);
+      } else {
+        // Fallback: invalidate all message queries if conversationId is missing
+        queryClient.invalidateQueries({ 
+          queryKey: ['chat', 'messages']
+        });
+        console.log('🔄 Invalidated all message queries (no conversationId)');
+      }
     });
 
     // Plan events (new)

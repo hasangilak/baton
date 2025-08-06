@@ -52,6 +52,26 @@ export function useStreamParser() {
         } else if (data.type === 'done') {
           // Handle completion
           console.log('🏁 Stream completed');
+          console.log('📊 Current assistant message state:', {
+            exists: !!context.currentAssistantMessage,
+            content: context.currentAssistantMessage?.content,
+            hasContent: !!(context.currentAssistantMessage && context.currentAssistantMessage.content)
+          });
+          
+          // Persist current streaming message before clearing it
+          if (context.currentAssistantMessage && context.currentAssistantMessage.content) {
+            console.log('💾 Persisting completed streaming message:', context.currentAssistantMessage.content);
+            const finalMessage = {
+              ...context.currentAssistantMessage,
+              type: "chat" as const,
+              role: "assistant" as const,
+              timestamp: Date.now(),
+            };
+            context.addMessage(finalMessage);
+          } else {
+            console.warn('⚠️ No assistant message to persist or message has no content');
+          }
+          
           context.setCurrentAssistantMessage(null);
         } else if (data.type === 'delegated') {
           // Handle delegation status (from backend)

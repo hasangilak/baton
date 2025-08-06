@@ -165,7 +165,7 @@ io.on('connection', (socket) => {
       console.log(`Tool usages for message ${messageId}:`, toolUsages.map((t: any) => t.name));
     }
     
-    await chatService.processBridgeResponse(
+    const result = await chatService.processBridgeResponse(
       messageId,
       content,
       isComplete,
@@ -173,13 +173,14 @@ io.on('connection', (socket) => {
       toolUsages
     );
     
-    // Broadcast to all clients including tool usage
+    // Broadcast to all clients including tool usage and conversationId
     io.emit('message:updated', { 
       messageId, 
       content, 
       isComplete,
       error,
-      toolUsages 
+      toolUsages,
+      conversationId: result.conversationId
     });
   });
   

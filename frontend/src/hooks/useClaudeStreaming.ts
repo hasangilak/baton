@@ -5,11 +5,12 @@
  * following the comprehensive implementation guide patterns.
  */
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useChatState } from './chat/useChatState';
 import { useAbortController } from './chat/useAbortController';
 import { useStreamParser } from './streaming/useStreamParser';
 import { usePermissions } from './chat/usePermissions';
+import { useWebSocket } from './useWebSocket';
 import type { 
   ChatMessage, 
   StreamingContext, 
@@ -37,6 +38,7 @@ export function useClaudeStreaming(options: ClaudeStreamingOptions = {}) {
   const abortController = useAbortController();
   const { processStreamLine } = useStreamParser();
   const { allowedTools, permissionRequest, showPermissionRequest } = usePermissions();
+  const webSocket = useWebSocket();
 
   // Current streaming state (following WebUI guide)
   const [currentAssistantMessage, setCurrentAssistantMessage] = useState<ChatMessage | null>(null);
@@ -44,6 +46,45 @@ export function useClaudeStreaming(options: ClaudeStreamingOptions = {}) {
   const [hasShownInitMessage, setHasShownInitMessage] = useState(false);
   const [hasReceivedInit, setHasReceivedInit] = useState(false);
   const streamReaderRef = useRef<ReadableStreamDefaultReader | null>(null);
+
+  // Custom event integration for message updates
+  useEffect(() => {
+    const handleMessageUpdate = (event: CustomEvent) => {
+      const data = event.detail;
+      
+      // Only process messages for the current conversation
+      if (!conversationId || data.conversationId !== conversationId) return;
+      
+      console.log('🎯 Custom event message update for current conversation:', data);
+      
+      if (data.content) {
+        // Create or update the current assistant message
+        const assistantMessage: ChatMessage = {
+          type: "chat",
+          role: "assistant",
+          content: data.content,
+          timestamp: Date.now(),
+        };
+
+        // Update current streaming message
+        setCurrentAssistantMessage(assistantMessage);
+
+        // If message is complete, add it to the persistent message list
+        if (data.isComplete) {
+          console.log('💾 Message complete, adding to chat history:', data.content);
+          chatState.addMessage(assistantMessage);
+          setCurrentAssistantMessage(null); // Clear streaming state
+          setIsStreaming(false);
+        }
+      }
+    };
+
+    window.addEventListener('webui:message-updated', handleMessageUpdate as EventListener);
+
+    return () => {
+      window.removeEventListener('webui:message-updated', handleMessageUpdate as EventListener);
+    };
+  }, [conversationId, chatState]);
 
   // Handle permission errors (WebUI guide signature)
   const handlePermissionError = useCallback((toolName: string, patterns: string[], toolUseId: string) => {
@@ -186,6 +227,28 @@ export function useClaudeStreaming(options: ClaudeStreamingOptions = {}) {
       
       // Note: permission errors will be handled by the stream processor
     } finally {
+      // Persist the current assistant message before clearing it
+      if (currentAssistantMessage && currentAssistantMessage.content) {
+        console.log('💾 Persisting final assistant message:', currentAssistantMessage.content);
+        
+        // Create a final completed message from the streaming message
+        const finalMessage = {
+          ...currentAssistantMessage,
+          type: "chat" as const,
+          role: "assistant" as const,
+          timestamp: Date.now(),
+        };
+        
+        // Add to message history if it's not already there
+        if (!chatState.messages.some(msg => 
+          msg.type === 'chat' && 
+          msg.role === 'assistant' && 
+          msg.content === currentAssistantMessage.content
+        )) {
+          chatState.addMessage(finalMessage);
+        }
+      }
+
       // Clean up (WebUI guide pattern)
       setIsStreaming(false);
       setCurrentAssistantMessage(null);

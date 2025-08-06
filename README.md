@@ -11,13 +11,15 @@ AI-powered task management designed for seamless integration with Claude Code. B
 - **Rich Task Details** - Descriptions, priorities, due dates, and custom fields
 
 ### 🤖 Claude Code Integration
+- **WebUI Chat Interface** - Gorgeous Claude-style chat with file upload support
 - **Native MCP Support** - Built-in Model Context Protocol server
+- **Real-time Streaming** - Claude Code SDK integration with Socket.IO bridge
 - **Plan Mode Sync** - Claude Code todos automatically sync with Baton
 - **Bidirectional Sync** - Convert between Claude todos and Baton tasks
 - **Context-Aware** - Automatic project detection based on workspace
 - **16 MCP Tools** - Create tasks, manage projects, analytics, and more
 - **8 MCP Prompts** - Project planning, task breakdown, retrospectives
-- **Chat Agent** - Built-in AI chat assistant powered by Claude Code
+- **File Attachments** - Upload code, images, documents (25MB, multiple formats)
 
 ### 🏗️ Technical Features
 - **Docker Compose** - One-command setup with PostgreSQL
@@ -45,17 +47,49 @@ That's it! Baton is running with a seeded demo project and tasks.
 
 ## 🔧 Claude Code Integration
 
-### Prerequisites
-- [Claude Code](https://claude.ai/code) installed
-- Baton running with Docker (see Quick Start above)
+Baton offers two powerful ways to integrate with Claude Code:
 
-### Setup Steps
+### 🎨 WebUI Chat Interface (Recommended for Interactive Use)
+
+**Prerequisites**: [Claude Code](https://claude.ai/code) installed, Docker services running
+
+**Setup Steps:**
+
+1. **Start All Services**
+   ```bash
+   docker compose up -d
+   ```
+
+2. **Start WebUI Handler**
+   ```bash
+   # Start the local Claude Code handler (runs outside Docker)
+   node scripts/webui-chat-handler.js
+   ```
+
+3. **Open Chat Interface**
+   ```bash
+   open http://localhost:5173/chat
+   ```
+
+**Features:**
+- 🎨 Gorgeous Claude-style dark theme with time-based greetings
+- 📎 File upload support (code, images, documents - up to 25MB)
+- 💬 Real-time streaming responses with session persistence
+- 🔧 Tool usage visualization and interactive prompts
+- 📱 Collapsible sidebar with conversation history
+- ✨ Professional chat bubbles with avatars and streaming indicators
+
+### 🔌 MCP Server Integration (Recommended for Programmatic Use)
+
+**Prerequisites**: [Claude Code](https://claude.ai/code) installed, Baton running with Docker
+
+**Setup Steps:**
 
 1. **Start Baton (Magic One-Command Setup)**
    ```bash
    docker compose up -d
    ```
-   That's it! The MCP server is automatically running with Claude Code-compatible transports:
+   The MCP server is automatically running with Claude Code-compatible transports:
    - SSE: http://localhost:3001/mcp/sse (HTTP-based)
    - STDIO: Available via docker exec (Most reliable)
 

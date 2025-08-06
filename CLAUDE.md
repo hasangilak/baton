@@ -39,6 +39,16 @@ The codebase implements enterprise-grade TypeScript with:
 - **Frontend**: TanStack Query for server state management with optimistic updates
 - **Real-time**: Socket.IO for collaborative features
 
+### Claude Code WebUI Integration
+Baton includes a complete Claude Code WebUI integration with professional chat interface:
+- **WebUI Streaming**: Real-time streaming chat with Claude Code SDK via WebSocket bridge
+- **Claude-Style UI**: Gorgeous dark theme with time-based greetings and action buttons
+- **File Upload System**: Comprehensive file attachment support (25MB, 5 files, multiple formats)
+- **Session Management**: Persistent Claude sessions with ID tracking and token counting
+- **Safe Content Parsing**: Robust streaming content rendering with whitespace preservation
+- **Interactive Prompts**: Permission handling and tool usage confirmations
+- **Socket.IO Bridge**: Local handler execution with backend streaming endpoints
+
 ## Common Commands
 
 ### Development Setup
@@ -59,6 +69,18 @@ npm run db:seed            # Seed with sample data
 npm run db:reset           # Reset and reseed database
 npx prisma studio          # Database GUI
 npx prisma generate        # Regenerate client after schema changes
+```
+
+### Claude Code WebUI Testing
+```bash
+# Start the WebUI chat handler (required for Claude Code integration)
+node scripts/webui-chat-handler.js  # Local handler with Claude Code executable path
+tail -f scripts/webui-chat-handler.log  # Monitor handler activity
+
+# WebUI streaming endpoints
+curl -X POST http://localhost:3001/api/chat/messages/stream-webui \
+  -H "Content-Type: application/json" \
+  -d '{"message":"test","requestId":"test","conversationId":"test"}'
 ```
 
 ### MCP Server Testing
@@ -235,8 +257,17 @@ Baton now supports automatic capture of plans and todos from Claude Code through
 
 ## Claude Code Integration Usage
 
-When using Claude Code with Baton, the following workflow is recommended:
+Baton offers two powerful ways to integrate with Claude Code:
 
+### WebUI Integration (Recommended for Interactive Use)
+1. **Start Services**: Ensure Docker services are running (`docker compose up -d`)
+2. **Start Handler**: Run `node scripts/webui-chat-handler.js` for local Claude Code execution
+3. **Open Chat**: Navigate to `/chat` in the Baton frontend for gorgeous Claude-style interface
+4. **Upload Files**: Use paperclip buttons to attach files (supports code, images, documents)
+5. **Stream Responses**: Real-time streaming with session persistence and tool usage
+6. **Interactive Experience**: Professional chat UI with collapsible sidebar and welcome screen
+
+### MCP Server Integration (Recommended for Programmatic Use)  
 1. **Setup**: Connect Claude Code to Baton MCP server via WebSocket
 2. **Project Context**: Use project query parameters or workspace detection
 3. **Plan Mode**: Use Claude Code's plan mode - todos are automatically stored in Baton
