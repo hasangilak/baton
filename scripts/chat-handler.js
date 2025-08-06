@@ -64,9 +64,16 @@ class ChatHandler {
 
     // Handle user responses to interactive prompts
     this.socket.on('prompt:response', async (response) => {
-      console.log(`📝 Received user response for prompt ${response.promptId}`);
+      console.log(`📝 Received user response for prompt ${response.promptId}: ${response.selectedOption}`);
+      
+      // Handle permission requests from canUseTool callback
+      if (response.promptId.startsWith('prompt_')) {
+        await this.handlePermissionResponse(response.promptId, response.selectedOption);
+        return;
+      }
+      
+      // Fallback to legacy decision engine for backward compatibility
       if (this.decisionEngine?.strategies) {
-        // Find the user delegation strategy and handle the response
         const userStrategy = this.decisionEngine.strategies.find(
           s => s.constructor.name === 'UserDelegationStrategy'
         );
@@ -87,6 +94,7 @@ class ChatHandler {
     const { messageId, conversationId, prompt, projectContext } = request;
     
     console.log(`🚀 Processing chat for message ${messageId} with session-aware context management`);
+    console.log(`📝 User prompt: "${prompt.substring(0, 200)}..."`);
     
     try {
       // Get conversation and check if context management is needed
@@ -116,17 +124,33 @@ class ChatHandler {
       
       console.log(`📡 Sending to Claude Code SDK: "${contextPrompt.substring(0, 150)}..."`);
       console.log(`🔗 Session mode: ${sessionOptions.mode}, Session ID: ${sessionOptions.sessionId || 'new'}`);
+      console.log(`🔧 Session options:`, JSON.stringify(sessionOptions.options, null, 2));
 
       // Use Claude Code SDK with efficient session management
+      // Temporarily disable canUseTool to fix the immediate issue
+      // TODO: Properly implement canUseTool with stream-json format
+      let queryOptions;
+      if (sessionOptions.options.canUseTool) {
+        // Remove canUseTool from options for now
+        const { canUseTool, ...optionsWithoutCanUseTool } = sessionOptions.options;
+        queryOptions = {
+          maxTurns: 1,
+          ...optionsWithoutCanUseTool
+        };
+        console.log('⚠️  Temporarily disabled canUseTool due to stream-json requirement');
+      } else {
+        queryOptions = {
+          maxTurns: 1,
+          ...sessionOptions.options
+        };
+      }
+
       for await (const message of query({
         prompt: contextPrompt,
         abortController,
-        options: {
-          maxTurns: 1,
-          ...sessionOptions.options
-        },
+        options: queryOptions,
       })) {
-        messages.push(message);
+          messages.push(message);
         
         console.log('Received message type:', message.type);
         
@@ -365,18 +389,74 @@ class ChatHandler {
     return shouldCompact;
   }
 
+  /**
+   * Interactive permission handler for Claude Code SDK canUseTool callback
+   */
+  async canUseToolHandler(toolName, input, conversationId) {
+    console.log(`🔐 canUseTool callback triggered for: ${toolName}`);
+    console.log(`📋 Tool input:`, JSON.stringify(input, null, 2));
+    
+    // Auto-approve safe read-only operations
+    const safeTools = [
+      'Read', 'LS', 'Glob', 'Grep', 'WebFetch', 'WebSearch',
+      'Bash(git status:*)', 'Bash(git log:*)', 'Bash(git diff:*)',
+      'Bash(npm list:*)', 'Bash(npm outdated:*)', 'Bash(npm audit:*)'
+    ];
+    
+    const isSafeTool = safeTools.some(pattern => {
+      if (pattern.includes('*')) {
+        const prefix = pattern.replace(':*', '');
+        return toolName.startsWith(prefix);
+      }
+      return toolName === pattern;
+    });
+    
+    if (isSafeTool) {
+      console.log(`✅ Auto-approved safe tool: ${toolName}`);
+      return { behavior: 'allow', updatedInput: input };
+    }
+    
+    // Auto-deny dangerous operations
+    const dangerousTools = [
+      'Bash(rm -rf:*)', 'Bash(sudo:*)', 'Bash(format:*)', 'Bash(dd:*)'
+    ];
+    
+    const isDangerousTool = dangerousTools.some(pattern => {
+      if (pattern.includes('*')) {
+        const prefix = pattern.replace(':*', '');
+        return toolName.startsWith(prefix);
+      }
+      return toolName === pattern;
+    });
+    
+    if (isDangerousTool) {
+      console.log(`❌ Auto-denied dangerous tool: ${toolName}`);
+      return { behavior: 'deny', message: `Tool ${toolName} is not allowed for security reasons` };
+    }
+    
+    // For all other tools (Write, Edit, MultiEdit, etc.), ask user interactively
+    return await this.requestUserPermission(toolName, input, conversationId);
+  }
+
   getSessionOptions(conversation) {
-    // Base options with permission handling for automated workflows
     const baseOptions = {
-      permissionMode: 'acceptEdits', // Automatically accept file writes/edits
-      allowedTools: [
-        'Write', 'Edit', 'MultiEdit',  // File operations
-        'Read', 'Glob', 'Grep', 'LS',  // File reading/searching
-        'Bash(npm:*)', 'Bash(git:*)', 'Bash(node:*)', 'Bash(python:*)',  // Safe commands
-        'Bash(ls:*)', 'Bash(cat:*)', 'Bash(mkdir:*)', 'Bash(touch:*)',   // Basic file system
-        'mcp__*',  // MCP tools (context7, exa, etc.)
-        'WebFetch', 'WebSearch'  // Web tools
-      ]
+      // Use canUseTool callback for interactive permission handling
+      canUseTool: (toolName, input) => this.canUseToolHandler(toolName, input, conversation?.id),
+      
+      // Allow all tools by default - canUseTool will handle filtering
+      permissionMode: 'default',
+      
+      // Configure MCP server for Baton integration
+      mcpConfig: JSON.stringify({
+        servers: {
+          baton: {
+            command: 'docker',
+            args: ['exec', '-i', 'baton-backend', 'npm', 'run', 'mcp:stdio'],
+            env: {},
+            timeout: 30000
+          }
+        }
+      })
     };
 
     if (!conversation) {
@@ -515,6 +595,130 @@ class ChatHandler {
       }
     } catch (error) {
       console.error('Error polling for requests:', error.message);
+    }
+  }
+
+  /**
+   * Request user permission for a tool via interactive prompt
+   * This is called by the canUseTool callback and waits for user response
+   */
+  async requestUserPermission(toolName, input, conversationId) {
+    return new Promise((resolve, reject) => {
+      // Create a unique prompt ID
+      const promptId = `prompt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      console.log(`👤 Requesting user permission for ${toolName} (prompt: ${promptId})`);
+      
+      // Create the interactive prompt payload
+      const promptPayload = {
+        promptId: promptId,
+        conversationId: conversationId,
+        type: 'tool_usage',
+        title: 'Tool Permission Request',
+        message: `Claude Code wants to use ${toolName}`,
+        options: [
+          {
+            id: '1',
+            label: 'Yes, allow this tool',
+            value: 'yes',
+            isRecommended: true
+          },
+          {
+            id: '2', 
+            label: 'Yes, and don\'t ask again for this tool',
+            value: 'yes_dont_ask',
+            isDefault: false
+          },
+          {
+            id: '3',
+            label: 'No, deny this tool',
+            value: 'no',
+            isDefault: false
+          }
+        ],
+        context: {
+          toolName: toolName,
+          toolInput: input,
+          projectPath: input.file_path || input.path || input.command
+        },
+        timeout: 300000, // 5 minutes timeout
+        sessionId: null,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+        timeoutAt: new Date(Date.now() + 300000).toISOString()
+      };
+      
+      // Store the promise resolver for when user responds
+      this._pendingPermissions = this._pendingPermissions || new Map();
+      this._pendingPermissions.set(promptId, { resolve, reject, toolName, input });
+      
+      // Send the prompt via WebSocket
+      if (this.socket && this.socket.connected) {
+        console.log(`🔔 Sending interactive prompt via WebSocket`);
+        this.socket.emit('interactive_prompt', promptPayload);
+      } else {
+        console.error(`❌ No WebSocket connection to send prompt`);
+        reject(new Error('No connection available to send permission request'));
+        return;
+      }
+      
+      // Set timeout to auto-reject if no response
+      const timeoutHandle = setTimeout(() => {
+        if (this._pendingPermissions.has(promptId)) {
+          this._pendingPermissions.delete(promptId);
+          console.log(`⏰ Permission request timeout for ${toolName}`);
+          reject(new Error(`Permission request timed out for tool: ${toolName}`));
+        }
+      }, 300000); // 5 minutes
+      
+      // Store timeout handle to clear it when user responds
+      this._pendingPermissions.get(promptId).timeoutHandle = timeoutHandle;
+    });
+  }
+
+  /**
+   * Handle user response to permission request
+   * This is called when we receive a prompt:response event
+   */
+  async handlePermissionResponse(promptId, selectedOption) {
+    if (!this._pendingPermissions || !this._pendingPermissions.has(promptId)) {
+      console.log(`⚠️  No pending permission found for prompt ${promptId}`);
+      return;
+    }
+    
+    const { resolve, reject, toolName, input, timeoutHandle } = this._pendingPermissions.get(promptId);
+    
+    // Clear timeout
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+    
+    // Remove from pending
+    this._pendingPermissions.delete(promptId);
+    
+    console.log(`✅ User response for ${toolName}: ${selectedOption}`);
+    
+    // Handle the user's choice
+    switch (selectedOption) {
+      case 'yes':
+        resolve({ behavior: 'allow', updatedInput: input });
+        break;
+        
+      case 'yes_dont_ask':
+        // TODO: Store persistent permission for this tool
+        console.log(`💾 Should store persistent permission for ${toolName}`);
+        resolve({ behavior: 'allow', updatedInput: input });
+        break;
+        
+      case 'no':
+        resolve({ 
+          behavior: 'deny', 
+          message: `User denied permission to use ${toolName}` 
+        });
+        break;
+        
+      default:
+        reject(new Error(`Unknown permission response: ${selectedOption}`));
     }
   }
 

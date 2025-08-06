@@ -78,7 +78,20 @@ class PromptDecisionEngine {
    */
   async executeDecision(storedPrompt, decision) {
     try {
-      // Update prompt status in database
+      // For timeout decisions, keep the prompt pending for user interaction
+      if (decision.action === 'timeout') {
+        console.log(`⏰ Prompt ${storedPrompt.id} timed out but staying pending for user interaction`);
+        return {
+          promptId: storedPrompt.id,
+          action: decision.action,
+          selectedOption: decision.selectedOption,
+          response: decision.response,
+          automatic: false,
+          pending: true // Flag to indicate it's still pending
+        };
+      }
+
+      // For actual decisions, update the database
       await this.prisma.interactivePrompt.update({
         where: { id: storedPrompt.id },
         data: {
@@ -338,40 +351,41 @@ class UserDelegationStrategy {
   async decide(prompt, storedPrompt) {
     console.log(`👤 Delegating prompt to user: ${storedPrompt.id}`);
     
-    // Send prompt to backend API which will emit WebSocket event to all clients
+    // Send prompt directly via WebSocket (like successful implementations do)
     try {
-      const response = await fetch('http://localhost:3001/api/chat/prompts/notify', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          promptId: storedPrompt.id,
-          conversationId: storedPrompt.conversationId,
-          type: prompt.type,
-          title: prompt.title,
-          message: prompt.message,
-          options: prompt.options,
-          context: prompt.context,
-          timeout: 30000
-        })
+      this.io.emit('interactive_prompt', {
+        promptId: storedPrompt.id,
+        conversationId: storedPrompt.conversationId,
+        type: prompt.type,
+        title: prompt.title || 'Permission Request',
+        message: prompt.message,
+        options: prompt.options,
+        context: prompt.context,
+        sessionId: storedPrompt.sessionId,
+        timeout: 30000
       });
       
-      if (response.ok) {
-        console.log(`📡 Prompt notification sent to backend for prompt ${storedPrompt.id}`);
-      } else {
-        console.error(`❌ Failed to notify backend about prompt ${storedPrompt.id}: ${response.statusText}`);
-      }
+      console.log(`📡 Prompt sent directly via WebSocket: ${storedPrompt.id}`);
     } catch (error) {
-      console.error(`❌ Error notifying backend about prompt ${storedPrompt.id}:`, error);
+      console.error(`❌ Error sending prompt via WebSocket:`, error);
     }
 
-    // Wait for user response with timeout
+    // Wait for user response with timeout (keeping prompt pending)
     return new Promise((resolve) => {
       const timeoutId = setTimeout(() => {
         this.pendingResponses.delete(storedPrompt.id);
-        resolve(null); // Let timeout handler take over
-      }, 30000);
+        // Don't resolve to null - let the prompt stay pending for user interaction
+        console.log(`⏰ Prompt ${storedPrompt.id} timed out, but keeping it pending for manual interaction`);
+        resolve({
+          action: 'timeout',
+          selectedOption: null,
+          confidence: 0,
+          handler: 'user_delegation_timeout',
+          reason: 'Timed out waiting for user response, prompt remains available',
+          automatic: false,
+          response: 'Waiting for user response...'
+        });
+      }, 300000); // 5 minutes instead of 30 seconds
 
       this.pendingResponses.set(storedPrompt.id, { resolve, timeoutId });
     });
