@@ -67,21 +67,28 @@ class ChatHandler {
 
       const messages = [];
       let fullContent = '';
+      const abortController = new AbortController();
 
-      // Use local Claude Code
+      console.log(`Sending to Claude Code: "${contextPrompt.substring(0, 100)}..."`);
+
+      // Use local Claude Code in headless mode
       for await (const message of query({
         prompt: contextPrompt,
+        abortController,
         options: {
-          maxTurns: 3,
+          maxTurns: 1,  // Single turn for chat responses
         },
       })) {
         messages.push(message);
         
-        // Extract content based on message structure
-        if (message.role === 'assistant') {
+        console.log('Received message type:', message.type);
+        
+        // Handle different message types from Claude Code SDK
+        if (message.type === 'assistant' && message.message) {
+          // Assistant message with actual content
           const content = this.extractContent(message);
-          if (content) {
-            fullContent += content;
+          if (content && content !== fullContent) {
+            fullContent = content;  // Claude sends the full content each time
             
             // Send streaming update
             await this.sendUpdate(messageId, {
@@ -89,6 +96,10 @@ class ChatHandler {
               isComplete: false,
             });
           }
+        } else if (message.type === 'result') {
+          // Final result message - completion indicator
+          console.log('Query completed successfully');
+          // The fullContent should already have the complete response
         }
       }
 
@@ -109,6 +120,25 @@ class ChatHandler {
   }
 
   extractContent(message) {
+    // Handle Claude Code SDK message format
+    if (message.message && message.message.content) {
+      // Content can be an array of content blocks
+      if (Array.isArray(message.message.content)) {
+        const textContent = message.message.content
+          .filter(block => block.type === 'text')
+          .map(block => block.text)
+          .join('');
+        console.log('Extracted text from content blocks:', textContent.substring(0, 100));
+        return textContent;
+      }
+      // Or a simple string
+      if (typeof message.message.content === 'string') {
+        console.log('Extracted string content:', message.message.content.substring(0, 100));
+        return message.message.content;
+      }
+    }
+    
+    // Fallback to simpler formats
     if ('content' in message && typeof message.content === 'string') {
       return message.content;
     }
