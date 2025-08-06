@@ -209,15 +209,18 @@ model ClaudeCodePlan {
 }
 
 model Conversation {
-  id          String    @id @default(cuid())
-  title       String?
-  projectId   String
-  userId      String
-  model       String    @default("claude-3-sonnet") // Model used for the conversation
-  status      String    @default("active") // active, archived
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  metadata    Json?     // Store additional conversation metadata
+  id               String    @id @default(cuid())
+  title            String?
+  projectId        String
+  userId           String
+  model            String    @default("claude-3-sonnet") // Model used for the conversation
+  status           String    @default("active") // active, archived
+  claudeSessionId  String?   // Claude Code SDK session ID for context preservation
+  contextTokens    Int       @default(0) // Current context window token usage
+  lastCompacted    DateTime? // When context was last compacted to manage token usage
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  metadata         Json?     // Store additional conversation metadata
 
   // Relations
   project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -229,6 +232,7 @@ model Conversation {
   @@index([userId])
   @@index([status])
   @@index([createdAt])
+  @@index([claudeSessionId])
 }
 
 model Message {

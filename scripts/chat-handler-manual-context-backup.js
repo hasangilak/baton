@@ -13,11 +13,6 @@ const { io } = require('socket.io-client');
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:3001';
 const POLLING_INTERVAL = process.env.POLLING_INTERVAL || 1000;
 
-// Context management constants
-const TOKEN_LIMIT = 200000;
-const COMPACT_THRESHOLD = 150000; // 75% of limit
-const EMERGENCY_THRESHOLD = 180000; // 90% of limit
-
 class ChatHandler {
   constructor() {
     this.processing = false;
@@ -61,44 +56,50 @@ class ChatHandler {
   async processChat(request) {
     const { messageId, conversationId, prompt, projectContext } = request;
     
-    console.log(`🚀 Processing chat for message ${messageId} with session-aware context management`);
+    console.log(`Processing chat for message ${messageId}`);
     
     try {
-      // Get conversation and check if context management is needed
-      const conversation = await this.getConversation(conversationId);
-      const shouldCompact = await this.shouldCompactContext(conversation);
+      // Fetch conversation history for context preservation
+      const conversationHistory = await this.getConversationHistory(conversationId);
       
-      if (shouldCompact) {
-        console.log(`🗜️  Context compaction needed for conversation ${conversationId}`);
-        await this.compactContext(conversation);
-      }
+      // Build complete conversation context with history
+      let contextPrompt = '';
       
-      // Build efficient prompt with project context only
-      let contextPrompt = prompt;
+      // Add project context
       if (projectContext) {
-        contextPrompt = `Project: ${projectContext.name}\n\n${prompt}`;
+        contextPrompt = `Project: ${projectContext.name}\n\n`;
       }
+      
+      // Add conversation history to maintain context
+      if (conversationHistory.length > 0) {
+        contextPrompt += "Previous conversation:\n\n";
+        for (const historyMessage of conversationHistory) {
+          if (historyMessage.role === 'user') {
+            contextPrompt += `Human: ${historyMessage.content}\n\n`;
+          } else if (historyMessage.role === 'assistant' && historyMessage.content) {
+            contextPrompt += `Assistant: ${historyMessage.content}\n\n`;
+          }
+        }
+        contextPrompt += "---\n\n";
+      }
+      
+      // Add current user message
+      contextPrompt += `Human: ${prompt}\n\nAssistant: `;
 
       const messages = [];
       let fullContent = '';
       let toolUsages = [];
       let finalResult = '';
-      let currentSessionId = null;
       const abortController = new AbortController();
 
-      // Determine session options for Claude Code SDK
-      const sessionOptions = this.getSessionOptions(conversation);
-      
-      console.log(`📡 Sending to Claude Code SDK: "${contextPrompt.substring(0, 150)}..."`);
-      console.log(`🔗 Session mode: ${sessionOptions.mode}, Session ID: ${sessionOptions.sessionId || 'new'}`);
+      console.log(`Sending to Claude Code with ${conversationHistory.length} history messages: "${contextPrompt.substring(0, 200)}..."`);
 
-      // Use Claude Code SDK with efficient session management
+      // Use local Claude Code in headless mode with conversation history embedded in prompt
       for await (const message of query({
         prompt: contextPrompt,
         abortController,
         options: {
-          maxTurns: 1,
-          ...sessionOptions.options
+          maxTurns: 1,  // Single turn for chat responses
         },
       })) {
         messages.push(message);
@@ -192,21 +193,7 @@ class ChatHandler {
             });
           }
         }
-        
-        // Capture session ID if available for future context preservation
-        if (message.sessionId && !currentSessionId) {
-          currentSessionId = message.sessionId;
-          console.log(`🆔 Captured session ID: ${currentSessionId}`);
-        }
       }
-
-      // Store session ID in database for future context preservation
-      if (currentSessionId && conversationId) {
-        await this.storeSessionId(conversationId, currentSessionId);
-      }
-      
-      // Update token usage estimate for this conversation
-      await this.updateTokenUsage(conversationId, finalResult || fullContent);
 
       // Send final response with result
       await this.sendUpdate(messageId, {
@@ -216,7 +203,7 @@ class ChatHandler {
       });
 
     } catch (error) {
-      console.error('❌ Error processing chat:', error);
+      console.error('Error processing chat:', error);
       await this.sendUpdate(messageId, {
         content: '',
         isComplete: true,
@@ -254,128 +241,20 @@ class ChatHandler {
     return '';
   }
 
-  /**
-   * Session-Aware Context Management Methods
-   * These methods implement token-efficient context preservation using Claude Code SDK's session management
-   */
-
-  async getConversation(conversationId) {
+  async getConversationHistory(conversationId) {
     try {
-      // Get conversation details including session ID and token usage
-      const response = await axios.get(`${BACKEND_URL}/api/chat/conversation/${conversationId}`);
-      return response.data.conversation || null;
-    } catch (error) {
-      console.error('Error fetching conversation:', error.message);
-      return null;
-    }
-  }
-
-  async shouldCompactContext(conversation) {
-    if (!conversation) return false;
-    
-    const tokenThresholdReached = conversation.contextTokens > COMPACT_THRESHOLD;
-    const timeThresholdReached = conversation.lastCompacted && 
-      (Date.now() - new Date(conversation.lastCompacted).getTime()) > (24 * 60 * 60 * 1000); // 24 hours
-    
-    const shouldCompact = tokenThresholdReached || timeThresholdReached;
-    
-    if (shouldCompact) {
-      console.log(`📊 Context stats: ${conversation.contextTokens}/${TOKEN_LIMIT} tokens (${Math.round(conversation.contextTokens/TOKEN_LIMIT*100)}%)`);
-    }
-    
-    return shouldCompact;
-  }
-
-  getSessionOptions(conversation) {
-    if (!conversation) {
-      return {
-        mode: 'new',
-        sessionId: null,
-        options: { continue: true }
-      };
-    }
-
-    if (conversation.claudeSessionId) {
-      return {
-        mode: 'resume',
-        sessionId: conversation.claudeSessionId,
-        options: { resume: conversation.claudeSessionId }
-      };
-    }
-
-    return {
-      mode: 'continue',
-      sessionId: null,
-      options: { continue: true }
-    };
-  }
-
-  async compactContext(conversation) {
-    if (!conversation?.claudeSessionId) {
-      console.log('⚠️  No session ID available for compaction');
-      return;
-    }
-
-    console.log(`🗜️  Compacting context for session ${conversation.claudeSessionId}`);
-    
-    try {
-      // Use Claude Code's built-in compact command
-      for await (const message of query({
-        prompt: "/compact Preserve key context about our discussion topics, ongoing tasks, and project-specific information",
-        options: { 
-          maxTurns: 1,
-          resume: conversation.claudeSessionId
-        }
-      })) {
-        console.log(`✅ Context compacted for conversation ${conversation.id}`);
-      }
+      const response = await axios.get(`${BACKEND_URL}/api/chat/messages/${conversationId}`);
+      const messages = response.data.messages || response.data.data || [];
       
-      // Update database with compaction timestamp and estimated token reduction
-      await this.updateCompactionStatus(conversation.id);
+      // Filter out the last user message (it's the current prompt) and pending assistant messages
+      return messages.filter(msg => 
+        !(msg.role === 'assistant' && msg.status === 'sending') &&
+        msg.content && msg.content.trim() !== ''
+      ).slice(0, -1); // Remove the most recent message as it's the current prompt
       
     } catch (error) {
-      console.error('❌ Error compacting context:', error.message);
-    }
-  }
-
-  async storeSessionId(conversationId, sessionId) {
-    try {
-      // Update conversation with Claude Code session ID
-      await axios.put(`${BACKEND_URL}/api/chat/conversations/${conversationId}/session`, {
-        claudeSessionId: sessionId
-      });
-      
-      console.log(`💾 Stored session ID ${sessionId} for conversation ${conversationId}`);
-    } catch (error) {
-      console.error('Error storing session ID:', error.message);
-    }
-  }
-
-  async updateTokenUsage(conversationId, content) {
-    try {
-      // Rough token estimation: ~4 characters per token
-      const estimatedTokens = Math.ceil(content.length / 4);
-      
-      await axios.put(`${BACKEND_URL}/api/chat/conversations/${conversationId}/tokens`, {
-        additionalTokens: estimatedTokens
-      });
-      
-      console.log(`📈 Updated token usage: +${estimatedTokens} tokens for conversation ${conversationId}`);
-    } catch (error) {
-      console.error('Error updating token usage:', error.message);
-    }
-  }
-
-  async updateCompactionStatus(conversationId) {
-    try {
-      await axios.put(`${BACKEND_URL}/api/chat/conversations/${conversationId}/compact`, {
-        compactedAt: new Date().toISOString(),
-        tokenReductionEstimate: 0.7 // Estimate 70% reduction
-      });
-      
-      console.log(`🗜️  Updated compaction status for conversation ${conversationId}`);
-    } catch (error) {
-      console.error('Error updating compaction status:', error.message);
+      console.error('Error fetching conversation history:', error.message);
+      return [];
     }
   }
 

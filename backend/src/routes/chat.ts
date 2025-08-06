@@ -11,10 +11,10 @@ const prisma = new PrismaClient();
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
+  destination: (_req, _file, cb) => {
     cb(null, 'uploads/chat/');
   },
-  filename: (req, file, cb) => {
+  filename: (_req, file, cb) => {
     const uniqueName = `${uuidv4()}${path.extname(file.originalname)}`;
     cb(null, uniqueName);
   },
@@ -25,7 +25,7 @@ const upload = multer({
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB limit
   },
-  fileFilter: (req, file, cb) => {
+  fileFilter: (_req, file, cb) => {
     // Allow common file types
     const allowedTypes = [
       'image/jpeg',
@@ -94,9 +94,15 @@ router.post('/conversations', async (req: Request, res: Response) => {
  */
 router.get('/conversations/:projectId', async (req: Request, res: Response) => {
   try {
-    const { projectId } = req.params;
+    const projectId = req.params.projectId;
     // For now, use a default user ID - in production, get from auth
     const userId = 'user_default';
+
+    if (!projectId) {
+      return res.status(400).json({
+        error: 'Project ID is required',
+      });
+    }
 
     const conversations = await chatService.getConversations(projectId, userId);
 
@@ -113,12 +119,63 @@ router.get('/conversations/:projectId', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/chat/conversation/:conversationId
+ * Get a specific conversation with session and context details
+ */
+router.get('/conversation/:conversationId', async (req: Request, res: Response) => {
+  try {
+    const conversationId = req.params.conversationId;
+
+    if (!conversationId) {
+      return res.status(400).json({
+        error: 'Conversation ID is required',
+      });
+    }
+
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: {
+        id: true,
+        title: true,
+        claudeSessionId: true,
+        contextTokens: true,
+        lastCompacted: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!conversation) {
+      return res.status(404).json({
+        error: 'Conversation not found',
+      });
+    }
+
+    return res.json({
+      success: true,
+      conversation,
+    });
+  } catch (error) {
+    console.error('Error fetching conversation:', error);
+    return res.status(500).json({
+      error: 'Failed to fetch conversation',
+    });
+  }
+});
+
+/**
  * GET /api/chat/messages/:conversationId
  * Get messages for a conversation
  */
 router.get('/messages/:conversationId', async (req: Request, res: Response) => {
   try {
-    const { conversationId } = req.params;
+    const conversationId = req.params.conversationId;
+
+    if (!conversationId) {
+      return res.status(400).json({
+        error: 'Conversation ID is required',
+      });
+    }
 
     const messages = await chatService.getMessages(conversationId);
 
@@ -215,6 +272,8 @@ router.post('/messages', async (req: Request, res: Response) => {
       chatService.removeListener('stream', streamHandler);
     });
 
+    // Note: Response is handled via SSE streaming above
+    
   } catch (error) {
     console.error('Error sending message:', error);
     return res.status(500).json({
@@ -260,7 +319,13 @@ router.post('/upload', upload.single('file'), async (req: Request, res: Response
  */
 router.put('/conversations/:conversationId/archive', async (req: Request, res: Response) => {
   try {
-    const { conversationId } = req.params;
+    const conversationId = req.params.conversationId;
+
+    if (!conversationId) {
+      return res.status(400).json({
+        error: 'Conversation ID is required',
+      });
+    }
 
     const conversation = await chatService.archiveConversation(conversationId);
 
@@ -285,7 +350,13 @@ router.put('/conversations/:conversationId/archive', async (req: Request, res: R
  */
 router.delete('/conversations/:conversationId', async (req: Request, res: Response) => {
   try {
-    const { conversationId } = req.params;
+    const conversationId = req.params.conversationId;
+
+    if (!conversationId) {
+      return res.status(400).json({
+        error: 'Conversation ID is required',
+      });
+    }
 
     await chatService.deleteConversation(conversationId);
 
@@ -391,6 +462,153 @@ router.post('/response', async (req: Request, res: Response) => {
     console.error('Error processing bridge response:', error);
     return res.status(500).json({
       error: 'Failed to process bridge response',
+    });
+  }
+});
+
+/**
+ * PUT /api/chat/conversations/:conversationId/session
+ * Store Claude Code session ID for context preservation
+ */
+router.put('/conversations/:conversationId/session', async (req: Request, res: Response) => {
+  try {
+    const conversationId = req.params.conversationId;
+    const { claudeSessionId } = req.body;
+
+    if (!conversationId) {
+      return res.status(400).json({
+        error: 'Conversation ID is required',
+      });
+    }
+
+    if (!claudeSessionId) {
+      return res.status(400).json({
+        error: 'Claude session ID is required',
+      });
+    }
+
+    const conversation = await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { claudeSessionId },
+    });
+
+    console.log(`💾 Stored session ID ${claudeSessionId} for conversation ${conversationId}`);
+
+    return res.json({
+      success: true,
+      conversation,
+    });
+  } catch (error) {
+    console.error('Error storing session ID:', error);
+    return res.status(500).json({
+      error: 'Failed to store session ID',
+    });
+  }
+});
+
+/**
+ * PUT /api/chat/conversations/:conversationId/tokens
+ * Update token usage for conversation
+ */
+router.put('/conversations/:conversationId/tokens', async (req: Request, res: Response) => {
+  try {
+    const conversationId = req.params.conversationId;
+    const { additionalTokens } = req.body;
+
+    if (!conversationId) {
+      return res.status(400).json({
+        error: 'Conversation ID is required',
+      });
+    }
+
+    if (typeof additionalTokens !== 'number') {
+      return res.status(400).json({
+        error: 'Additional tokens must be a number',
+      });
+    }
+
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { contextTokens: true },
+    });
+
+    if (!conversation) {
+      return res.status(404).json({
+        error: 'Conversation not found',
+      });
+    }
+
+    const updatedConversation = await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { 
+        contextTokens: conversation.contextTokens + additionalTokens,
+        updatedAt: new Date(),
+      },
+    });
+
+    console.log(`📈 Updated token usage: +${additionalTokens} tokens for conversation ${conversationId} (total: ${updatedConversation.contextTokens})`);
+
+    return res.json({
+      success: true,
+      conversation: updatedConversation,
+    });
+  } catch (error) {
+    console.error('Error updating token usage:', error);
+    return res.status(500).json({
+      error: 'Failed to update token usage',
+    });
+  }
+});
+
+/**
+ * PUT /api/chat/conversations/:conversationId/compact
+ * Update compaction status after context compression
+ */
+router.put('/conversations/:conversationId/compact', async (req: Request, res: Response) => {
+  try {
+    const conversationId = req.params.conversationId;
+    const { compactedAt, tokenReductionEstimate } = req.body;
+
+    if (!conversationId) {
+      return res.status(400).json({
+        error: 'Conversation ID is required',
+      });
+    }
+
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { contextTokens: true },
+    });
+
+    if (!conversation) {
+      return res.status(404).json({
+        error: 'Conversation not found',
+      });
+    }
+
+    // Estimate token reduction (default 70% reduction)
+    const reductionFactor = tokenReductionEstimate || 0.7;
+    const newTokenCount = Math.floor(conversation.contextTokens * (1 - reductionFactor));
+
+    const updatedConversation = await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { 
+        lastCompacted: new Date(compactedAt || Date.now()),
+        contextTokens: Math.max(newTokenCount, 0),
+        updatedAt: new Date(),
+      },
+    });
+
+    console.log(`🗜️  Context compacted for conversation ${conversationId}: ${conversation.contextTokens} → ${updatedConversation.contextTokens} tokens`);
+
+    return res.json({
+      success: true,
+      conversation: updatedConversation,
+    });
+  } catch (error) {
+    console.error('Error updating compaction status:', error);
+    return res.status(500).json({
+      error: 'Failed to update compaction status',
     });
   }
 });
