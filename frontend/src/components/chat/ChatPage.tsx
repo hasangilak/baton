@@ -50,6 +50,8 @@ export const ChatPage: React.FC = () => {
     isRespondingToPrompt,
     handlePromptResponse,
   } = useInteractivePrompts({ conversationId: selectedConversationId });
+  
+  console.log('🔍 ChatPage - selectedConversationId:', selectedConversationId, 'pendingPrompts:', pendingPrompts.length);
 
   // Update URL when conversation changes
   useEffect(() => {

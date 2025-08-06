@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
 import { planContextManager } from '../planContext';
+import { handlePermissionPrompt } from './permission-prompt';
 
 export class BatonToolProvider {
   constructor(private prisma: PrismaClient, private workspaceManager?: any, private io?: any) {}
@@ -485,6 +486,50 @@ export class BatonToolProvider {
             }
           }
         }
+      },
+
+      // Advanced Permission Handling Tool
+      {
+        name: "permission_prompt",
+        description: "Handle Claude Code permission prompts with advanced 3-option UI delegation and sophisticated decision making",
+        inputSchema: {
+          type: "object",
+          properties: {
+            action: {
+              type: "string",
+              description: "The action Claude wants to perform"
+            },
+            resource: {
+              type: "string",
+              description: "The resource being acted upon (file path, command, etc.)"
+            },
+            tool: {
+              type: "string", 
+              description: "The tool Claude wants to use"
+            },
+            context: {
+              type: "object",
+              properties: {
+                projectId: { type: "string" },
+                conversationId: { type: "string" },
+                sessionId: { type: "string" },
+                workingDirectory: { type: "string" },
+                message: { type: "string" }
+              },
+              description: "Additional context for the permission request"
+            },
+            danger_level: {
+              type: "string",
+              enum: ["safe", "moderate", "dangerous"],
+              description: "Risk assessment of the action"
+            },
+            auto_approve: {
+              type: "boolean",
+              description: "Whether to auto-approve based on allowlist"
+            }
+          },
+          required: ["action", "tool"]
+        }
       }
     ];
   }
@@ -529,6 +574,8 @@ export class BatonToolProvider {
         return this.syncTasksToTodos(args);
       case "LinkTodosToplan":
         return this.linkTodosToPlan(args);
+      case "permission_prompt":
+        return this.permissionPrompt(args, projectId);
       default:
         throw new Error(`Unknown tool: ${name}`);
     }
@@ -2035,6 +2082,31 @@ export class BatonToolProvider {
       }
     } catch (error) {
       console.error('Error checking plan statuses:', error);
+    }
+  }
+
+  private async permissionPrompt(args: any, contextProjectId?: string | null): Promise<any> {
+    try {
+      // Create a context object similar to what the MCP server provides
+      const context = {
+        projectContext: contextProjectId ? { id: contextProjectId } : undefined,
+        sessionId: args.context?.sessionId,
+        workspaceManager: this.workspaceManager
+      };
+
+      // Execute the permission prompt handler
+      const result = await handlePermissionPrompt(args, context);
+      
+      return {
+        success: true,
+        result: result.content?.[0]?.text ? JSON.parse(result.content[0].text) : result,
+        message: 'Permission prompt handled successfully'
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: `Failed to handle permission prompt: ${error instanceof Error ? error.message : 'Unknown error'}`
+      };
     }
   }
 }

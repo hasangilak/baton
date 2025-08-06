@@ -631,9 +631,8 @@ router.get('/conversations/:conversationId/prompts/pending', async (req: Request
       where: {
         conversationId,
         status: 'pending',
-        timeoutAt: {
-          gt: new Date()
-        }
+        // Note: Removed timeoutAt filter to show all pending prompts (including timed out ones)
+        // This supports our new approach where prompts remain available for user interaction
       },
       orderBy: {
         createdAt: 'desc'

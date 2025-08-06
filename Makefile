@@ -5,8 +5,8 @@
 BACKEND_URL ?= http://localhost:3001
 FRONTEND_URL ?= http://localhost:5173
 MCP_PORT ?= 3002
-CHAT_HANDLER_LOG ?= /tmp/baton-chat-handler.log
-BRIDGE_LOG ?= /tmp/baton-bridge.log
+CHAT_HANDLER_LOG ?= /home/hassan/work/baton/home/hassan/work/baton/baton-chat-handler.log
+BRIDGE_LOG ?= /home/hassan/work/baton/baton-bridge.log
 
 # Colors for output
 GREEN := \033[32m
@@ -67,27 +67,27 @@ bridge: ## Start chat bridge (connects frontend to Claude Code)
 	@echo "$(YELLOW)Starting chat bridge...$(RESET)"
 	@echo "$(BLUE)Bridge log:$(RESET) $(BRIDGE_LOG)"
 	@BACKEND_URL=$(BACKEND_URL) nohup node scripts/chat-bridge.js > $(BRIDGE_LOG) 2>&1 &
-	@echo $$! > /tmp/baton-bridge.pid
-	@echo "$(GREEN)✓ Chat bridge started (PID: $$(cat /tmp/baton-bridge.pid))$(RESET)"
+	@echo $$! > /home/hassan/work/baton/baton-bridge.pid
+	@echo "$(GREEN)✓ Chat bridge started (PID: $$(cat /home/hassan/work/baton/baton-bridge.pid))$(RESET)"
 
 handler: ## Start chat handler (processes Claude Code interactions)
 	@echo "$(YELLOW)Starting chat handler...$(RESET)"
 	@echo "$(BLUE)Handler log:$(RESET) $(CHAT_HANDLER_LOG)"
 	@BACKEND_URL=$(BACKEND_URL) nohup node scripts/chat-handler.js > $(CHAT_HANDLER_LOG) 2>&1 &
-	@echo $$! > /tmp/baton-chat-handler.pid
-	@echo "$(GREEN)✓ Chat handler started (PID: $$(cat /tmp/baton-chat-handler.pid))$(RESET)"
+	@echo $$! > /home/hassan/work/baton/baton-chat-handler.pid
+	@echo "$(GREEN)✓ Chat handler started (PID: $$(cat /home/hassan/work/baton/baton-chat-handler.pid))$(RESET)"
 
 # Process Management
 stop: ## Stop all Baton processes
 	@echo "$(YELLOW)Stopping Baton processes...$(RESET)"
-	@if [ -f /tmp/baton-bridge.pid ]; then \
-		kill $$(cat /tmp/baton-bridge.pid) 2>/dev/null || true; \
-		rm -f /tmp/baton-bridge.pid; \
+	@if [ -f /home/hassan/work/baton/baton-bridge.pid ]; then \
+		kill $$(cat /home/hassan/work/baton/baton-bridge.pid) 2>/dev/null || true; \
+		rm -f /home/hassan/work/baton/baton-bridge.pid; \
 		echo "$(GREEN)✓ Bridge stopped$(RESET)"; \
 	fi
-	@if [ -f /tmp/baton-chat-handler.pid ]; then \
-		kill $$(cat /tmp/baton-chat-handler.pid) 2>/dev/null || true; \
-		rm -f /tmp/baton-chat-handler.pid; \
+	@if [ -f /home/hassan/work/baton/baton-chat-handler.pid ]; then \
+		kill $$(cat /home/hassan/work/baton/baton-chat-handler.pid) 2>/dev/null || true; \
+		rm -f /home/hassan/work/baton/baton-chat-handler.pid; \
 		echo "$(GREEN)✓ Handler stopped$(RESET)"; \
 	fi
 	@pkill -f "chat-bridge.js" 2>/dev/null || true
@@ -113,13 +113,13 @@ status: ## Check status of all services
 	else \
 		echo "$(RED)✗ Frontend:$(RESET) Stopped"; \
 	fi
-	@if [ -f /tmp/baton-bridge.pid ] && kill -0 $$(cat /tmp/baton-bridge.pid) 2>/dev/null; then \
-		echo "$(GREEN)✓ Chat Bridge:$(RESET) Running (PID: $$(cat /tmp/baton-bridge.pid))"; \
+	@if [ -f /home/hassan/work/baton/baton-bridge.pid ] && kill -0 $$(cat /home/hassan/work/baton/baton-bridge.pid) 2>/dev/null; then \
+		echo "$(GREEN)✓ Chat Bridge:$(RESET) Running (PID: $$(cat /home/hassan/work/baton/baton-bridge.pid))"; \
 	else \
 		echo "$(RED)✗ Chat Bridge:$(RESET) Stopped"; \
 	fi
-	@if [ -f /tmp/baton-chat-handler.pid ] && kill -0 $$(cat /tmp/baton-chat-handler.pid) 2>/dev/null; then \
-		echo "$(GREEN)✓ Chat Handler:$(RESET) Running (PID: $$(cat /tmp/baton-chat-handler.pid))"; \
+	@if [ -f /home/hassan/work/baton/baton-chat-handler.pid ] && kill -0 $$(cat /home/hassan/work/baton/baton-chat-handler.pid) 2>/dev/null; then \
+		echo "$(GREEN)✓ Chat Handler:$(RESET) Running (PID: $$(cat /home/hassan/work/baton/baton-chat-handler.pid))"; \
 	else \
 		echo "$(RED)✗ Chat Handler:$(RESET) Stopped"; \
 	fi
@@ -188,7 +188,7 @@ build: ## Build production assets
 # Cleanup
 clean: stop ## Stop services and clean up temporary files
 	@echo "$(YELLOW)Cleaning up...$(RESET)"
-	@rm -f /tmp/baton-*.pid /tmp/baton-*.log
+	@rm -f /home/hassan/work/baton/baton-*.pid /home/hassan/work/baton/baton-*.log
 	@docker-compose down -v 2>/dev/null || true
 	@echo "$(GREEN)✓ Cleanup complete$(RESET)"
 

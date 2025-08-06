@@ -47,6 +47,7 @@ model Project {
   workspaceMappings WorkspaceMapping[]
   claudeCodePlans  ClaudeCodePlan[]
   conversations    Conversation[]
+  permissionRules  PermissionRule[]
 
   @@map("projects")
 }
@@ -318,4 +319,21 @@ model InteractivePrompt {
   @@index([status])
   @@index([timeoutAt])
   @@index([sessionId])
+}
+
+model PermissionRule {
+  id        String   @id @default(cuid())
+  tool      String
+  action    String
+  resource  String   @default("*")
+  type      String   // 'allow' or 'deny'
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@unique([tool, action, resource, projectId])
+  @@index([projectId])
+  @@index([type])
+  @@map("permission_rules")
 }

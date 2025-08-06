@@ -3,7 +3,7 @@ import { User, Bot, Copy, Check } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import type { Message, InteractivePrompt } from '../../types';
 import { Button } from '../ui/button';
-import { InteractivePrompt as InteractivePromptComponent } from './InteractivePrompt';
+import { InteractivePromptComponent } from './InteractivePrompt';
 
 interface MessageListProps {
   messages: Message[];

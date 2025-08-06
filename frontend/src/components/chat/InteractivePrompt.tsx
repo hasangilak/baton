@@ -4,7 +4,7 @@ import {
   CheckCircle2,
   Clock,
   FileText,
-  Tool,
+  Settings,
   User,
   Bot,
   Loader2
@@ -13,7 +13,7 @@ import clsx from 'clsx';
 import type { InteractivePrompt, PromptOption } from '../../types';
 import { Button } from '@/components/ui/button';
 
-interface InteractivePromptProps {
+interface InteractivePromptComponentProps {
   prompt: InteractivePrompt;
   onOptionSelect: (promptId: string, optionId: string) => void;
   isResponding?: boolean;
@@ -21,7 +21,7 @@ interface InteractivePromptProps {
 
 const promptTypeIcons = {
   permission: User,
-  tool_usage: Tool,
+  tool_usage: Settings,
   multiple_choice: FileText,
   three_option: FileText,
   file_selection: FileText,
@@ -55,7 +55,7 @@ const getOptionButtonIcon = (option: PromptOption) => {
   return null;
 };
 
-export const InteractivePrompt: React.FC<InteractivePromptProps> = ({
+export const InteractivePromptComponent: React.FC<InteractivePromptComponentProps> = ({
   prompt,
   onOptionSelect,
   isResponding = false
