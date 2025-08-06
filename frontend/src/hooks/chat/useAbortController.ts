@@ -42,10 +42,10 @@ export function useAbortController() {
       } finally {
         // Reset abort state after a short delay
         if (abortTimeoutRef.current) {
-          clearTimeout(abortTimeoutRef.current);
+          window.clearTimeout(abortTimeoutRef.current);
         }
         
-        abortTimeoutRef.current = setTimeout(() => {
+        abortTimeoutRef.current = window.setTimeout(() => {
           setIsAborting(false);
           currentRequestIdRef.current = null;
         }, 1000);

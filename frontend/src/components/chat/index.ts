@@ -1,2 +1,2 @@
 export { ChatPage } from './ChatPage';
-export { ClaudeStyleChat } from './ClaudeStyleChat';
+export { FileUploadArea } from './FileUploadArea';

@@ -22,8 +22,59 @@ import { useConversations, useChatSearch, useConversation } from '../../hooks/us
 import { useProjects } from '../../hooks/useProjects';
 import { useInteractivePrompts } from '../../hooks/useInteractivePrompts';
 import { useClaudeStreaming } from '../../hooks/useClaudeStreaming';
+import { useFileUpload } from '../../hooks/useFileUpload';
+import { FileUploadArea } from './FileUploadArea';
 import type { Conversation, Message } from '../../types';
 import { formatDistanceToNow } from 'date-fns';
+
+// Helper function to safely convert content to renderable string
+const safeRenderContent = (content: any): string => {
+  if (content === null || content === undefined) {
+    return '';
+  }
+  
+  if (typeof content === 'string') {
+    return content;
+  }
+  
+  if (typeof content === 'number' || typeof content === 'boolean') {
+    return String(content);
+  }
+  
+  // Handle arrays of content blocks (common in Claude responses)
+  if (Array.isArray(content)) {
+    return content.map(item => {
+      if (typeof item === 'string') {
+        return item;
+      }
+      if (item && typeof item === 'object') {
+        // Handle text blocks
+        if (item.type === 'text' && item.text) {
+          return item.text;
+        }
+        // Handle other structured content
+        return JSON.stringify(item, null, 2);
+      }
+      return String(item);
+    }).join('\n');
+  }
+  
+  // Handle object content
+  if (typeof content === 'object') {
+    // Handle text blocks
+    if (content.type === 'text' && content.text) {
+      return content.text;
+    }
+    // Fallback to JSON representation
+    try {
+      return JSON.stringify(content, null, 2);
+    } catch {
+      return String(content);
+    }
+  }
+  
+  return String(content);
+};
 
 export const ChatPage: React.FC = () => {
   const navigate = useNavigate();
@@ -72,6 +123,16 @@ export const ChatPage: React.FC = () => {
     }
   });
 
+  // File upload functionality
+  const fileUpload = useFileUpload({
+    maxFiles: 5,
+    maxSizeBytes: 25 * 1024 * 1024, // 25MB
+    onError: (error) => {
+      console.error('File upload error:', error);
+      // TODO: Show error toast/notification
+    }
+  });
+
   // Get conversation details including Claude session ID
   const { data: conversationDetails } = useConversation(selectedConversationId);
   
@@ -104,10 +165,20 @@ export const ChatPage: React.FC = () => {
   }, [selectedConversationId, claudeStreaming]);
 
   const handleSendMessage = async () => {
-    if (!inputValue.trim()) return;
+    if (!inputValue.trim() && fileUpload.selectedFiles.length === 0) return;
 
-    const messageToSend = inputValue;
+    // Prepare message with file context if files are selected
+    let messageToSend = inputValue;
+    if (fileUpload.selectedFiles.length > 0) {
+      const fileList = fileUpload.selectedFiles
+        .map(f => `- ${f.file.name} (${fileUpload.formatFileSize(f.file.size)}, ${f.type})`)
+        .join('\n');
+      
+      messageToSend = `${inputValue}\n\nAttached files:\n${fileList}`;
+    }
+
     setInputValue(''); // Clear input immediately for better UX
+    fileUpload.clearFiles(); // Clear files after sending
 
     if (!selectedConversationId) {
       try {
@@ -123,7 +194,7 @@ export const ChatPage: React.FC = () => {
         }
       } catch (error) {
         console.error('Failed to create conversation:', error);
-        setInputValue(messageToSend); // Restore input on error
+        setInputValue(messageToSend.split('\n\nAttached files:')[0] || messageToSend); // Restore input on error
         pendingMessageRef.current = null;
       }
     } else {
@@ -237,6 +308,13 @@ export const ChatPage: React.FC = () => {
                 {getGreeting()}
               </h1>
               
+              {/* File Upload Area */}
+              <FileUploadArea
+                files={fileUpload.selectedFiles}
+                onRemoveFile={fileUpload.removeFile}
+                formatFileSize={fileUpload.formatFileSize}
+              />
+              
               <div className="relative">
                 <textarea
                   value={inputValue}
@@ -250,8 +328,12 @@ export const ChatPage: React.FC = () => {
                 />
                 
                 <div className="absolute left-3 bottom-3 flex items-center space-x-2">
-                  <button className="p-1.5 hover:bg-[#2D2D30] rounded-lg transition-colors">
-                    <Plus className="w-4 h-4 text-[#8B8B8D]" />
+                  <button 
+                    onClick={fileUpload.openFileDialog}
+                    className="p-1.5 hover:bg-[#2D2D30] rounded-lg transition-colors"
+                    title="Attach files"
+                  >
+                    <Paperclip className="w-4 h-4 text-[#8B8B8D]" />
                   </button>
                   <button className="p-1.5 hover:bg-[#2D2D30] rounded-lg transition-colors">
                     <MoreHorizontal className="w-4 h-4 text-[#8B8B8D]" />
@@ -269,7 +351,7 @@ export const ChatPage: React.FC = () => {
                   </button>
                   <button 
                     onClick={handleSendMessage}
-                    disabled={!inputValue.trim()}
+                    disabled={(!inputValue.trim() && fileUpload.selectedFiles.length === 0)}
                     className="p-1.5 text-[#8B8B8D] hover:text-[#E5E5E5] disabled:opacity-50 transition-colors"
                   >
                     <Send className="w-4 h-4" />
@@ -336,7 +418,7 @@ export const ChatPage: React.FC = () => {
                       id: messageId,
                       conversationId: selectedConversationId || '',
                       role: chatMsg.role || 'assistant',
-                      content: chatMsg.content || '',
+                      content: safeRenderContent(chatMsg.content),
                       status: 'completed' as const,
                       createdAt: timestamp.toISOString(),
                       updatedAt: timestamp.toISOString(),
@@ -347,7 +429,7 @@ export const ChatPage: React.FC = () => {
                       id: messageId,
                       conversationId: selectedConversationId || '',
                       role: 'system' as const,
-                      content: systemMsg.message || systemMsg.content || JSON.stringify(systemMsg),
+                      content: safeRenderContent(systemMsg.message || systemMsg.content || systemMsg),
                       status: 'completed' as const,
                       createdAt: timestamp.toISOString(),
                       updatedAt: timestamp.toISOString(),
@@ -364,7 +446,7 @@ export const ChatPage: React.FC = () => {
                       id: 'streaming',
                       conversationId: selectedConversationId || '',
                       role: 'assistant',
-                      content: claudeStreaming.currentAssistantMessage.content || '',
+                      content: safeRenderContent(claudeStreaming.currentAssistantMessage.content),
                       status: 'sending',
                       createdAt: new Date().toISOString(),
                       updatedAt: new Date().toISOString(),
@@ -404,6 +486,13 @@ export const ChatPage: React.FC = () => {
             {/* Input Area */}
             <div className="border-t border-[#3E3E42] bg-[#2D2D30]">
               <div className="max-w-3xl mx-auto px-4 py-4">
+                {/* File Upload Area */}
+                <FileUploadArea
+                  files={fileUpload.selectedFiles}
+                  onRemoveFile={fileUpload.removeFile}
+                  formatFileSize={fileUpload.formatFileSize}
+                />
+                
                 <div className="relative">
                   <textarea
                     data-testid="chat-text-area-bottom"
@@ -418,14 +507,18 @@ export const ChatPage: React.FC = () => {
                   />
                   
                   <div className="absolute left-3 bottom-3 flex items-center space-x-2">
-                    <button className="p-1.5 hover:bg-[#2D2D30] rounded-lg transition-colors">
+                    <button 
+                      onClick={fileUpload.openFileDialog}
+                      className="p-1.5 hover:bg-[#2D2D30] rounded-lg transition-colors"
+                      title="Attach files"
+                    >
                       <Paperclip className="w-4 h-4 text-[#8B8B8D]" />
                     </button>
                   </div>
                   
                   <button 
                     onClick={handleSendMessage}
-                    disabled={!inputValue.trim() || claudeStreaming.isStreaming}
+                    disabled={(!inputValue.trim() && fileUpload.selectedFiles.length === 0) || claudeStreaming.isStreaming}
                     className="absolute right-3 bottom-3 p-1.5 text-[#8B8B8D] hover:text-[#E5E5E5] disabled:opacity-50 transition-colors"
                   >
                     <Send className="w-4 h-4" />
@@ -436,6 +529,16 @@ export const ChatPage: React.FC = () => {
           </div>
         )}
       </div>
+      
+      {/* Hidden File Input */}
+      <input
+        type="file"
+        ref={fileUpload.fileInputRef}
+        onChange={(e) => fileUpload.handleFileSelection(e.target.files)}
+        multiple
+        accept={fileUpload.supportedExtensions.join(',')}
+        style={{ display: 'none' }}
+      />
     </div>
   );
 };
