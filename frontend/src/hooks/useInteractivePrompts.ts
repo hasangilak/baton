@@ -31,7 +31,7 @@ export const useInteractivePrompts = ({ conversationId }: UseInteractivePromptsP
       try {
         console.log('🔄 Starting to load pending prompts...');
         setIsLoading(true);
-        const response = await fetch(`${API_BASE}/chat/conversations/${conversationId}/prompts/pending`);
+        const response = await fetch(`${API_BASE}/api/chat/conversations/${conversationId}/prompts/pending`);
         console.log('📡 Response received:', response.status, response.ok);
         if (response.ok) {
           const data = await response.json();
@@ -106,7 +106,7 @@ export const useInteractivePrompts = ({ conversationId }: UseInteractivePromptsP
   // Respond to prompt mutation
   const respondToPrompt = useMutation({
     mutationFn: async ({ promptId, optionId }: { promptId: string; optionId: string }) => {
-      const response = await fetch(`${API_BASE}/chat/prompts/${promptId}/respond`, {
+      const response = await fetch(`${API_BASE}/api/chat/prompts/${promptId}/respond`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

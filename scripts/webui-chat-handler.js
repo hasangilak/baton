@@ -149,7 +149,7 @@ class WebUIChatHandler {
           ...(allowedTools ? { allowedTools } : {}),
           ...(workingDirectory ? { cwd: workingDirectory } : {}),
           permissionMode: permissionMode || 'default',
-          maxTurns: 1,
+          maxTurns: 5,
         },
       })) {
         // Check for permission errors in assistant messages
@@ -268,7 +268,7 @@ class WebUIChatHandler {
     // Use extremely restrictive allowedTools to force permission errors
     const baseAllowedTools = allowedTools || [];
     const essentialTools = []; // NO essential tools to force permission errors
-    const effectiveAllowedTools = [...new Set([...baseAllowedTools, ...essentialTools])];
+    let effectiveAllowedTools = [...new Set([...baseAllowedTools, ...essentialTools])];
     
     console.log(`🛠️  Using effective allowedTools: ${JSON.stringify(effectiveAllowedTools)}`);
     
@@ -287,103 +287,128 @@ class WebUIChatHandler {
       let fullContent = '';
       let currentSessionId = sessionId;
 
-      // Execute Claude Code locally and stream responses back to backend via Socket.IO
-      for await (const streamResponse of this.executeClaudeCommand(
-        contextPrompt,
-        requestId,
-        sessionId,
-        effectiveAllowedTools,
-        workingDirectory,
-        permissionMode
-      )) {
+      // Restart loop - allows restarting Claude Code execution with updated permissions
+      let restartExecution = true;
+      let restartCount = 0;
+      const maxRestarts = 5; // Prevent infinite restart loops
+
+      while (restartExecution && restartCount < maxRestarts) {
+        restartExecution = false; // Will be set to true if we need to restart
+        restartCount++;
         
-        // Handle permission errors
-        if (streamResponse.type === 'permission_error') {
-          console.log(`🔐 Permission error detected, handling...`);
-          
-          const permissionResult = await this.handlePermissionError(streamResponse.data, {
-            conversationId,
-            sessionId,
-            requestId
-          });
-          
-          if (permissionResult.allowed) {
-            console.log(`✅ Permission granted, restarting with updated tools`);
-            // Add the granted tool to effective allowed tools and restart
-            const updatedAllowedTools = [...effectiveAllowedTools, permissionResult.toolName];
+        console.log(`🔄 Execution attempt ${restartCount} with tools: ${JSON.stringify(effectiveAllowedTools)}`);
+
+        try {
+          // Execute Claude Code locally and stream responses back to backend via Socket.IO
+          for await (const streamResponse of this.executeClaudeCommand(
+            contextPrompt,
+            requestId,
+            currentSessionId || sessionId, // Use captured session ID for continuity
+            effectiveAllowedTools,
+            workingDirectory,
+            permissionMode
+          )) {
             
-            // TODO: Restart the request with updated permissions
-            // For now, just continue the stream
-            continue;
-          } else {
-            console.log(`❌ Permission denied, continuing with error`);
-            // Send permission denied message to frontend
-            if (this.socket && this.socket.connected) {
+            // Handle permission errors
+            if (streamResponse.type === 'permission_error') {
+              console.log(`🔐 Permission error detected, handling...`);
+              
+              const permissionResult = await this.handlePermissionError(streamResponse.data, {
+                conversationId,
+                sessionId: currentSessionId,
+                requestId
+              });
+              
+              if (permissionResult.allowed) {
+                console.log(`✅ Permission granted for ${permissionResult.toolName}, restarting with updated tools`);
+                
+                // Add the granted tool to effective allowed tools
+                effectiveAllowedTools = [...new Set([...effectiveAllowedTools, permissionResult.toolName])];
+                console.log(`🔧 Updated allowedTools: ${JSON.stringify(effectiveAllowedTools)}`);
+                
+                // Set restart flag to break out of current stream and restart
+                restartExecution = true;
+                break; // Break out of the streaming loop
+                
+              } else {
+                console.log(`❌ Permission denied, continuing with error`);
+                // Send permission denied message to frontend
+                if (this.socket && this.socket.connected) {
+                  this.socket.emit('chat-bridge:response', {
+                    messageId,
+                    requestId,
+                    streamResponse: {
+                      type: "error",
+                      error: `Permission denied for ${permissionResult.toolName} tool`
+                    },
+                    content: `Permission denied for ${permissionResult.toolName} tool`,
+                    isComplete: true,
+                    sessionId: currentSessionId
+                  });
+                }
+                return; // Exit completely on permission denial
+              }
+            }
+            
+            // Extract content for database storage
+            if (streamResponse.type === 'claude_json' && streamResponse.data) {
+              const sdkMessage = streamResponse.data;
+              
+              // Capture session ID
+              const newSessionId = sdkMessage.sessionId || sdkMessage.session_id ||
+                                (sdkMessage.message && (sdkMessage.message.sessionId || sdkMessage.message.session_id));
+              
+              if (newSessionId && !currentSessionId) {
+                currentSessionId = newSessionId;
+                console.log(`🆔 Captured session ID: ${currentSessionId}`);
+              }
+
+              // Extract text content for database storage
+              if (sdkMessage.type === 'assistant' && sdkMessage.message) {
+                let textContent = '';
+                if (Array.isArray(sdkMessage.message.content)) {
+                  textContent = sdkMessage.message.content
+                    .filter((block) => block.type === 'text')
+                    .map((block) => block.text)
+                    .join('');
+                } else if (typeof sdkMessage.message.content === 'string') {
+                  textContent = sdkMessage.message.content;
+                }
+                
+                if (textContent && textContent !== fullContent) {
+                  fullContent = textContent;
+                }
+              } else if (sdkMessage.type === 'result' && sdkMessage.result) {
+                fullContent = sdkMessage.result;
+              }
+            }
+
+            // Send streaming response back to backend via Socket.IO (only if not restarting)
+            if (!restartExecution && this.socket && this.socket.connected) {
               this.socket.emit('chat-bridge:response', {
                 messageId,
                 requestId,
-                streamResponse: {
-                  type: "error",
-                  error: `Permission denied for ${permissionResult.toolName} tool`
-                },
-                content: `Permission denied for ${permissionResult.toolName} tool`,
-                isComplete: true,
+                streamResponse,
+                content: fullContent,
+                isComplete: streamResponse.type === 'done' || streamResponse.type === 'error' || streamResponse.type === 'aborted',
                 sessionId: currentSessionId
               });
             }
-            break;
-          }
-        }
-        
-        // Extract content for database storage
-        if (streamResponse.type === 'claude_json' && streamResponse.data) {
-          const sdkMessage = streamResponse.data;
-          
-          // Capture session ID
-          const newSessionId = sdkMessage.sessionId || sdkMessage.session_id ||
-                            (sdkMessage.message && (sdkMessage.message.sessionId || sdkMessage.message.session_id));
-          
-          if (newSessionId && !currentSessionId) {
-            currentSessionId = newSessionId;
-            console.log(`🆔 Captured session ID: ${currentSessionId}`);
-          }
-
-          // Extract text content for database storage
-          if (sdkMessage.type === 'assistant' && sdkMessage.message) {
-            let textContent = '';
-            if (Array.isArray(sdkMessage.message.content)) {
-              textContent = sdkMessage.message.content
-                .filter((block) => block.type === 'text')
-                .map((block) => block.text)
-                .join('');
-            } else if (typeof sdkMessage.message.content === 'string') {
-              textContent = sdkMessage.message.content;
-            }
             
-            if (textContent && textContent !== fullContent) {
-              fullContent = textContent;
+            // Handle completion
+            if (streamResponse.type === 'done' || streamResponse.type === 'error' || streamResponse.type === 'aborted') {
+              console.log(`✅ Claude Code execution completed for request ${requestId}`);
+              restartExecution = false; // Ensure we don't restart on completion
+              break;
             }
-          } else if (sdkMessage.type === 'result' && sdkMessage.result) {
-            fullContent = sdkMessage.result;
           }
-        }
 
-        // Send streaming response back to backend via Socket.IO
-        if (this.socket && this.socket.connected) {
-          this.socket.emit('chat-bridge:response', {
-            messageId,
-            requestId,
-            streamResponse,
-            content: fullContent,
-            isComplete: streamResponse.type === 'done' || streamResponse.type === 'error' || streamResponse.type === 'aborted',
-            sessionId: currentSessionId
-          });
-        }
-        
-        // Handle completion
-        if (streamResponse.type === 'done' || streamResponse.type === 'error' || streamResponse.type === 'aborted') {
-          console.log(`✅ Claude Code execution completed for request ${requestId}`);
-          break;
+        } catch (restartError) {
+          console.error(`❌ Error during execution attempt ${restartCount}:`, restartError);
+          if (restartCount >= maxRestarts) {
+            throw restartError; // Re-throw if max restarts exceeded
+          }
+          // Continue to next restart attempt
         }
       }
 
