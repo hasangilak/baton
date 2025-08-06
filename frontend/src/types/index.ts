@@ -380,9 +380,10 @@ export interface PromptContext {
   filePath?: string;
   projectPath?: string;
   fullMessage?: string;
+  originalContext?: string;
 }
 
-export type PromptType = 'permission' | 'tool_usage' | 'multiple_choice' | 'three_option' | 'file_selection';
+export type PromptType = 'permission' | 'tool_usage' | 'tool_permission' | 'multiple_choice' | 'three_option' | 'file_selection';
 export type PromptStatus = 'pending' | 'answered' | 'timeout' | 'auto_handled';
 
 export interface InteractivePrompt {

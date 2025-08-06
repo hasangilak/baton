@@ -22,6 +22,7 @@ interface InteractivePromptComponentProps {
 const promptTypeIcons = {
   permission: User,
   tool_usage: Settings,
+  tool_permission: Settings,
   multiple_choice: FileText,
   three_option: FileText,
   file_selection: FileText,
@@ -30,6 +31,7 @@ const promptTypeIcons = {
 const promptTypeColors = {
   permission: 'text-blue-600 bg-blue-50 border-blue-200',
   tool_usage: 'text-purple-600 bg-purple-50 border-purple-200',
+  tool_permission: 'text-orange-600 bg-orange-50 border-orange-200',
   multiple_choice: 'text-green-600 bg-green-50 border-green-200',
   three_option: 'text-green-600 bg-green-50 border-green-200',
   file_selection: 'text-yellow-600 bg-yellow-50 border-yellow-200',
@@ -81,6 +83,11 @@ export const InteractivePromptComponent: React.FC<InteractivePromptComponentProp
       return `Allow ${prompt.context.toolName} to run?`;
     }
     
+    // For tool permission prompts, show a cleaner format
+    if (prompt.type === 'tool_permission' && prompt.context?.toolName) {
+      return `Allow Claude Code to use the ${prompt.context.toolName} tool?`;
+    }
+    
     // For other prompts, show the full message but limit length
     if (message.length > 200) {
       return message.substring(0, 200) + '...';
@@ -121,13 +128,19 @@ export const InteractivePromptComponent: React.FC<InteractivePromptComponentProp
           </p>
           
           {/* Context info for tool usage */}
-          {prompt.type === 'tool_usage' && prompt.context?.toolName && (
+          {(prompt.type === 'tool_usage' || prompt.type === 'tool_permission') && prompt.context?.toolName && (
             <div className="mt-2 text-xs text-gray-600 bg-white rounded px-2 py-1 border">
               <strong>Tool:</strong> {prompt.context.toolName}
               {prompt.context.projectPath && (
                 <>
                   <br />
                   <strong>Location:</strong> {prompt.context.projectPath}
+                </>
+              )}
+              {prompt.context.originalContext && (
+                <>
+                  <br />
+                  <strong>Context:</strong> {prompt.context.originalContext}
                 </>
               )}
             </div>
@@ -158,9 +171,9 @@ export const InteractivePromptComponent: React.FC<InteractivePromptComponentProp
                 isSelected && 'ring-2 ring-blue-500 ring-offset-1',
                 option.isRecommended && 'shadow-md border-blue-300',
                 // Special styling for tool usage options
-                prompt.type === 'tool_usage' && index === 0 && 'border-green-300 hover:border-green-400',
-                prompt.type === 'tool_usage' && index === 1 && 'border-blue-300 hover:border-blue-400',
-                prompt.type === 'tool_usage' && index === 2 && 'border-red-300 hover:border-red-400'
+                (prompt.type === 'tool_usage' || prompt.type === 'tool_permission') && index === 0 && 'border-green-300 hover:border-green-400',
+                (prompt.type === 'tool_usage' || prompt.type === 'tool_permission') && index === 1 && 'border-blue-300 hover:border-blue-400',
+                (prompt.type === 'tool_usage' || prompt.type === 'tool_permission') && index === 2 && 'border-red-300 hover:border-red-400'
               )}
             >
               <div className="flex items-center space-x-2">

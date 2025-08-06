@@ -230,6 +230,7 @@ export const ChatPage: React.FC = () => {
         <button
           onClick={() => setShowSidebar(!showSidebar)}
           className="p-2 hover:bg-[#2D2D30] rounded-lg transition-colors"
+          data-testid="chat-toggle-sidebar"
         >
           <Menu className="w-5 h-5 text-gray-400" />
         </button>
@@ -241,6 +242,7 @@ export const ChatPage: React.FC = () => {
               setIsNewChat(true);
             }}
             className="p-2 hover:bg-[#2D2D30] rounded-lg transition-colors"
+            data-testid="chat-new-conversation"
           >
             <Plus className="w-5 h-5 text-gray-400" />
           </button>
@@ -255,6 +257,7 @@ export const ChatPage: React.FC = () => {
             <button
               onClick={() => setShowSidebar(false)}
               className="p-1 hover:bg-[#2D2D30] rounded transition-colors"
+              data-testid="chat-close-sidebar"
             >
               <X className="w-4 h-4 text-gray-400" />
             </button>
@@ -332,20 +335,30 @@ export const ChatPage: React.FC = () => {
                     onClick={fileUpload.openFileDialog}
                     className="p-1.5 hover:bg-[#2D2D30] rounded-lg transition-colors"
                     title="Attach files"
+                    data-testid="chat-attach-files-welcome"
                   >
                     <Paperclip className="w-4 h-4 text-[#8B8B8D]" />
                   </button>
-                  <button className="p-1.5 hover:bg-[#2D2D30] rounded-lg transition-colors">
+                  <button 
+                    className="p-1.5 hover:bg-[#2D2D30] rounded-lg transition-colors"
+                    data-testid="chat-more-options-welcome"
+                  >
                     <MoreHorizontal className="w-4 h-4 text-[#8B8B8D]" />
                   </button>
-                  <button className="p-1.5 hover:bg-[#2D2D30] rounded-lg transition-colors flex items-center space-x-1">
+                  <button 
+                    className="p-1.5 hover:bg-[#2D2D30] rounded-lg transition-colors flex items-center space-x-1"
+                    data-testid="chat-research-welcome"
+                  >
                     <Search className="w-4 h-4 text-[#8B8B8D]" />
                     <span className="text-xs text-[#8B8B8D]">Research</span>
                   </button>
                 </div>
                 
                 <div className="absolute right-3 bottom-3 flex items-center space-x-2">
-                  <button className="px-3 py-1.5 bg-[#2D2D30] hover:bg-[#252526] rounded-lg transition-colors flex items-center space-x-1">
+                  <button 
+                    className="px-3 py-1.5 bg-[#2D2D30] hover:bg-[#252526] rounded-lg transition-colors flex items-center space-x-1"
+                    data-testid="chat-model-selector-welcome"
+                  >
                     <span className="text-xs text-[#8B8B8D]">Claude Sonnet 4</span>
                     <ChevronUp className="w-3 h-3 text-[#8B8B8D]" />
                   </button>
@@ -353,6 +366,7 @@ export const ChatPage: React.FC = () => {
                     onClick={handleSendMessage}
                     disabled={(!inputValue.trim() && fileUpload.selectedFiles.length === 0)}
                     className="p-1.5 text-[#8B8B8D] hover:text-[#E5E5E5] disabled:opacity-50 transition-colors"
+                    data-testid="chat-send-welcome"
                   >
                     <Send className="w-4 h-4" />
                   </button>
@@ -361,10 +375,10 @@ export const ChatPage: React.FC = () => {
               
               {/* Action Buttons */}
               <div className="flex items-center justify-center space-x-4 mt-8">
-                <ActionButton icon={Edit3} label="Write" />
-                <ActionButton icon={BookOpen} label="Learn" />
-                <ActionButton icon={Code2} label="Code" />
-                <ActionButton icon={Sparkles} label="Life stuff" />
+                <ActionButton icon={Edit3} label="Write" testId="chat-action-write" />
+                <ActionButton icon={BookOpen} label="Learn" testId="chat-action-learn" />
+                <ActionButton icon={Code2} label="Code" testId="chat-action-code" />
+                <ActionButton icon={Sparkles} label="Life stuff" testId="chat-action-life" />
               </div>
             </div>
           </div>
@@ -396,6 +410,7 @@ export const ChatPage: React.FC = () => {
                     }}
                     className="p-1 hover:bg-[#3E3E42] rounded transition-colors"
                     title="Copy session ID"
+                    data-testid="chat-copy-session-id"
                   >
                     <Copy className="w-3 h-3 text-[#8B8B8D]" />
                   </button>
@@ -472,6 +487,7 @@ export const ChatPage: React.FC = () => {
                             onClick={() => handlePromptResponse(prompt.id, option.id)}
                             disabled={isRespondingToPrompt}
                             className="px-3 py-1 bg-[#2D2D30] hover:bg-[#252526] text-[#E5E5E5] text-sm rounded transition-colors disabled:opacity-50"
+                            data-testid={`chat-prompt-option-${option.id}`}
                           >
                             {option.label}
                           </button>
@@ -511,6 +527,7 @@ export const ChatPage: React.FC = () => {
                       onClick={fileUpload.openFileDialog}
                       className="p-1.5 hover:bg-[#2D2D30] rounded-lg transition-colors"
                       title="Attach files"
+                      data-testid="chat-attach-files-conversation"
                     >
                       <Paperclip className="w-4 h-4 text-[#8B8B8D]" />
                     </button>
@@ -520,6 +537,7 @@ export const ChatPage: React.FC = () => {
                     onClick={handleSendMessage}
                     disabled={(!inputValue.trim() && fileUpload.selectedFiles.length === 0) || claudeStreaming.isStreaming}
                     className="absolute right-3 bottom-3 p-1.5 text-[#8B8B8D] hover:text-[#E5E5E5] disabled:opacity-50 transition-colors"
+                    data-testid="chat-send-conversation"
                   >
                     <Send className="w-4 h-4" />
                   </button>
@@ -544,8 +562,11 @@ export const ChatPage: React.FC = () => {
 };
 
 // Action Button Component
-const ActionButton: React.FC<{ icon: React.ElementType; label: string }> = ({ icon: Icon, label }) => (
-  <button className="flex items-center space-x-2 px-4 py-2 border border-[#3E3E42] rounded-lg hover:bg-[#3E3E42] transition-colors">
+const ActionButton: React.FC<{ icon: React.ElementType; label: string; testId?: string }> = ({ icon: Icon, label, testId }) => (
+  <button 
+    className="flex items-center space-x-2 px-4 py-2 border border-[#3E3E42] rounded-lg hover:bg-[#3E3E42] transition-colors"
+    data-testid={testId}
+  >
     <Icon className="w-4 h-4 text-[#8B8B8D]" />
     <span className="text-sm text-[#8B8B8D]">{label}</span>
   </button>

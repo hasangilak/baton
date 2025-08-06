@@ -815,6 +815,69 @@ router.post('/prompts/continue-session', async (req: Request, res: Response) => 
 });
 
 /**
+ * POST /api/chat/prompts/tool-permission
+ * Create an interactive prompt for tool permission request
+ */
+router.post('/prompts/tool-permission', async (req: Request, res: Response) => {
+  try {
+    const { conversationId, toolName, context, sessionId } = req.body;
+    
+    if (!conversationId || !toolName) {
+      return res.status(400).json({
+        error: 'Conversation ID and tool name are required'
+      });
+    }
+    
+    // Create interactive prompt in database
+    const promptId = `tool_${toolName}_${Date.now()}`;
+    const prompt = await prisma.interactivePrompt.create({
+      data: {
+        id: promptId,
+        conversationId,
+        sessionId,
+        type: 'tool_permission',
+        title: `${toolName} Tool Permission`,
+        message: `Claude Code wants to use the ${toolName} tool: ${context || 'Modify files'}`,
+        options: [
+          { id: 'yes', label: 'Yes', value: 'yes' },
+          { id: 'no', label: 'No', value: 'no' },
+          { id: 'yes_dont_ask', label: "Yes, don't ask again", value: 'yes_dont_ask' }
+        ],
+        context: { toolName, originalContext: context },
+        timeoutAt: new Date(Date.now() + 30000),
+        status: 'pending'
+      }
+    });
+
+    // Emit interactive prompt event to frontend
+    io.emit('interactive_prompt', {
+      promptId: prompt.id,
+      conversationId,
+      type: 'tool_permission',
+      title: prompt.title,
+      message: prompt.message,
+      options: prompt.options,
+      context: prompt.context,
+      timeout: 30000
+    });
+
+    console.log(`🔧 Created tool permission prompt for ${toolName}: ${promptId}`);
+
+    return res.json({
+      success: true,
+      promptId: prompt.id,
+      prompt
+    });
+    
+  } catch (error) {
+    console.error('Error creating tool permission prompt:', error);
+    return res.status(500).json({
+      error: 'Failed to create tool permission prompt'
+    });
+  }
+});
+
+/**
  * PUT /api/chat/prompts/:promptId/timeout
  * Mark a prompt as timed out
  */

@@ -24,7 +24,107 @@ class WebUIChatHandler {
   }
 
   /**
-   * Main streaming function using AsyncGenerator pattern (following WebUI exactly)
+   * Detects permission errors in Claude Code messages (WebUI pattern)
+   * Based on SDK types: SDKAssistantMessage has message: APIAssistantMessage
+   */
+  isPermissionError(sdkMessage) {
+    if (!sdkMessage) return false;
+
+    console.log(`🔍 Full sdkMessage type: ${sdkMessage.type}`);
+    console.log(`🔍 Full sdkMessage structure:`, JSON.stringify(sdkMessage, null, 2));
+
+    // Check assistant AND user messages for permission error indicators
+    // Permission errors often come as user messages with tool_result content
+    if ((sdkMessage.type === 'assistant' || sdkMessage.type === 'user') && sdkMessage.message && sdkMessage.message.content) {
+      let content = '';
+      
+      try {
+        // Handle APIAssistantMessage.content which can be string or ContentBlock[]
+        if (typeof sdkMessage.message.content === 'string') {
+          content = sdkMessage.message.content;
+        } else if (Array.isArray(sdkMessage.message.content)) {
+          // Content is ContentBlock[] - each block can be text, tool_use, tool_result
+          content = sdkMessage.message.content.map(block => {
+            if (typeof block === 'string') return block;
+            
+            if (block && typeof block === 'object') {
+              // Handle different content block types from Anthropic SDK
+              switch (block.type) {
+                case 'text':
+                  return block.text || '';
+                case 'tool_use':
+                  return `Tool use: ${block.name || 'unknown'}`;
+                case 'tool_result':
+                  // tool_result can have content as string or ContentBlock[]
+                  if (typeof block.content === 'string') {
+                    return block.content;
+                  } else if (Array.isArray(block.content)) {
+                    return block.content.map(c => {
+                      if (typeof c === 'string') return c;
+                      if (c && typeof c === 'object') {
+                        return c.text || c.content || JSON.stringify(c);
+                      }
+                      return String(c);
+                    }).join(' ');
+                  } else if (block.content && typeof block.content === 'object') {
+                    return JSON.stringify(block.content);
+                  }
+                  return String(block.content || '');
+                default:
+                  // Handle unknown block types
+                  return block.text || block.content || JSON.stringify(block);
+              }
+            }
+            return String(block);
+          }).join(' ');
+        } else {
+          content = String(sdkMessage.message.content);
+        }
+      } catch (error) {
+        console.error(`❌ Error parsing message content:`, error);
+        content = String(sdkMessage.message.content || '');
+      }
+
+      console.log(`🔍 Extracted content (${content.length} chars): "${content.substring(0, 200)}..."`);
+
+      // Check for permission error patterns
+      const permissionPatterns = [
+        "requested permissions", 
+        "haven't granted it yet",  // Exact match from Claude Code!
+        "but you haven't granted it yet", // More specific match
+        "permission denied",
+        "not allowed to use",
+        "Don't have permission",
+        "not in the allowed tools list",
+        "tool is not available",
+        "Permission error", 
+        "access denied",
+        "Edit tool is not available",
+        "MultiEdit tool is not available", 
+        "Write tool is not available",
+        "Tool not found",
+        "is not in your allowed tools",
+        "cannot be used because",
+        "requires permission"
+      ];
+
+      const hasPermissionError = permissionPatterns.some(pattern => 
+        content.toLowerCase().includes(pattern.toLowerCase())
+      );
+
+      if (hasPermissionError) {
+        console.log(`🔐 PERMISSION ERROR DETECTED! Content contains permission patterns`);
+        return true;
+      }
+
+      return false;
+    }
+
+    return false;
+  }
+
+  /**
+   * Main streaming function using WebUI permission pattern
    */
   async* executeClaudeCommand(message, requestId, sessionId, allowedTools, workingDirectory, permissionMode) {
     let abortController;
@@ -37,7 +137,7 @@ class WebUIChatHandler {
       console.log(`🚀 Starting Claude Code stream for request ${requestId}`);
       console.log(`📡 Message: "${message.substring(0, 100)}..."`);
 
-      // Execute Claude SDK with options (following WebUI patterns exactly)
+      // Execute Claude SDK with standard options (WebUI pattern)
       for await (const sdkMessage of query({
         prompt: message,
         options: {
@@ -52,6 +152,16 @@ class WebUIChatHandler {
           maxTurns: 1,
         },
       })) {
+        // Check for permission errors in assistant messages
+        if (this.isPermissionError(sdkMessage)) {
+          console.log(`🔐 Permission error detected in message:`, sdkMessage);
+          yield {
+            type: "permission_error",
+            data: sdkMessage,
+          };
+          continue;
+        }
+
         // Yield streaming response (WebUI format)
         yield {
           type: "claude_json",
@@ -81,6 +191,72 @@ class WebUIChatHandler {
   }
 
   /**
+   * Handle permission error by creating interactive prompt (WebUI pattern)
+   */
+  async handlePermissionError(sdkMessage, context) {
+    console.log(`🔐 Processing permission error for context:`, context);
+    
+    // Extract tool information from the error message
+    const content = Array.isArray(sdkMessage.message.content) 
+      ? sdkMessage.message.content.map(c => c.text || c.content || String(c)).join(' ')
+      : String(sdkMessage.message.content);
+
+    // Try to extract tool name from the error message
+    let toolName = 'Edit'; // Default to Edit since that's what we're testing
+    if (content.includes('MultiEdit')) toolName = 'MultiEdit';
+    if (content.includes('Write')) toolName = 'Write';
+    if (content.includes('Bash')) toolName = 'Bash';
+
+    console.log(`🔐 Requesting permission for ${toolName} tool based on error message`);
+    
+    try {
+      const response = await axios.post(`${BACKEND_URL}/api/chat/prompts/tool-permission`, {
+        conversationId: context.conversationId,
+        toolName,
+        context: `${toolName} tool usage requested - ${content.substring(0, 100)}...`,
+        sessionId: context.sessionId,
+        errorMessage: content
+      });
+      
+      console.log(`📝 Created permission prompt for ${toolName}: ${response.data.promptId}`);
+      
+      // Wait for user response via Socket.IO
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          console.log(`⏰ Permission request for ${toolName} timed out`);
+          resolve({ allowed: false, response: 'timeout' });
+        }, 30000); // 30 second timeout
+        
+        const responseHandler = (data) => {
+          if (data.sessionId === context.sessionId) {
+            clearTimeout(timeout);
+            this.socket.off('session:continue', responseHandler);
+            
+            const allowed = data.response === 'yes' || data.response === 'yes_dont_ask';
+            console.log(`✅ Permission ${allowed ? 'granted' : 'denied'} for ${toolName}`);
+            
+            resolve({ 
+              allowed, 
+              response: data.response,
+              toolName: toolName 
+            });
+          }
+        };
+        
+        this.socket.on('session:continue', responseHandler);
+      });
+      
+    } catch (error) {
+      console.error(`❌ Error requesting permission for ${toolName}:`, error);
+      return { 
+        allowed: false, 
+        response: 'error',
+        error: error.message 
+      };
+    }
+  }
+
+  /**
    * Process streaming request by executing Claude Code locally
    */
   async processStreamingRequest(request) {
@@ -89,12 +265,14 @@ class WebUIChatHandler {
     console.log(`📦 Processing Claude Code request ${requestId} for conversation ${conversationId}`);
     console.log(`🔧 AllowedTools: ${JSON.stringify(allowedTools)} (length: ${allowedTools?.length || 0})`);
 
-    // Ensure Write and other essential tools are always included
-    const essentialTools = ["Write", "Edit", "MultiEdit", "Bash"];
+    // Use extremely restrictive allowedTools to force permission errors
     const baseAllowedTools = allowedTools || [];
+    const essentialTools = []; // NO essential tools to force permission errors
     const effectiveAllowedTools = [...new Set([...baseAllowedTools, ...essentialTools])];
     
     console.log(`🛠️  Using effective allowedTools: ${JSON.stringify(effectiveAllowedTools)}`);
+    
+    // No canUseTool callback - we'll detect permission errors reactively from tool_result messages
 
     try {
       // Build context prompt with project information
@@ -118,6 +296,45 @@ class WebUIChatHandler {
         workingDirectory,
         permissionMode
       )) {
+        
+        // Handle permission errors
+        if (streamResponse.type === 'permission_error') {
+          console.log(`🔐 Permission error detected, handling...`);
+          
+          const permissionResult = await this.handlePermissionError(streamResponse.data, {
+            conversationId,
+            sessionId,
+            requestId
+          });
+          
+          if (permissionResult.allowed) {
+            console.log(`✅ Permission granted, restarting with updated tools`);
+            // Add the granted tool to effective allowed tools and restart
+            const updatedAllowedTools = [...effectiveAllowedTools, permissionResult.toolName];
+            
+            // TODO: Restart the request with updated permissions
+            // For now, just continue the stream
+            continue;
+          } else {
+            console.log(`❌ Permission denied, continuing with error`);
+            // Send permission denied message to frontend
+            if (this.socket && this.socket.connected) {
+              this.socket.emit('chat-bridge:response', {
+                messageId,
+                requestId,
+                streamResponse: {
+                  type: "error",
+                  error: `Permission denied for ${permissionResult.toolName} tool`
+                },
+                content: `Permission denied for ${permissionResult.toolName} tool`,
+                isComplete: true,
+                sessionId: currentSessionId
+              });
+            }
+            break;
+          }
+        }
+        
         // Extract content for database storage
         if (streamResponse.type === 'claude_json' && streamResponse.data) {
           const sdkMessage = streamResponse.data;
