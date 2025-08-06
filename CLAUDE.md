@@ -46,8 +46,9 @@ Baton includes a complete Claude Code WebUI integration with professional chat i
 - **File Upload System**: Comprehensive file attachment support (25MB, 5 files, multiple formats)
 - **Session Management**: Persistent Claude sessions with ID tracking and token counting
 - **Safe Content Parsing**: Robust streaming content rendering with whitespace preservation
-- **Interactive Prompts**: Permission handling and tool usage confirmations
+- **Interactive Prompts**: Permission handling and tool usage confirmations  
 - **Socket.IO Bridge**: Local handler execution with backend streaming endpoints
+- **Tool Permissions**: Automatic Write/Edit/MultiEdit/Bash tool permissions for file operations
 
 ## Common Commands
 

@@ -87,6 +87,14 @@ class WebUIChatHandler {
     const { message, requestId, conversationId, messageId, sessionId, allowedTools, workingDirectory, permissionMode } = request;
 
     console.log(`📦 Processing Claude Code request ${requestId} for conversation ${conversationId}`);
+    console.log(`🔧 AllowedTools: ${JSON.stringify(allowedTools)} (length: ${allowedTools?.length || 0})`);
+
+    // Ensure Write and other essential tools are always included
+    const essentialTools = ["Write", "Edit", "MultiEdit", "Bash"];
+    const baseAllowedTools = allowedTools || [];
+    const effectiveAllowedTools = [...new Set([...baseAllowedTools, ...essentialTools])];
+    
+    console.log(`🛠️  Using effective allowedTools: ${JSON.stringify(effectiveAllowedTools)}`);
 
     try {
       // Build context prompt with project information
@@ -106,7 +114,7 @@ class WebUIChatHandler {
         contextPrompt,
         requestId,
         sessionId,
-        allowedTools,
+        effectiveAllowedTools,
         workingDirectory,
         permissionMode
       )) {

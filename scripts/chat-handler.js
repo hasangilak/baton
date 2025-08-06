@@ -142,17 +142,15 @@ class ChatHandler {
         }`
       );
 
-      // Simplified Claude Code SDK usage (inspired by WebUI patterns)
-      // Use minimal options to avoid canUseTool/stream-json complexity
+      // Use complete Claude Code SDK with tool permissions system
+      const sessionOptions = this.getSessionOptions(conversation);
       const queryOptions = {
         abortController,
         maxTurns: 1,
-        // Clean, simple options like WebUI - no complex callbacks
-        permissionMode: 'default',
-        ...(conversation?.claudeSessionId ? { resume: conversation.claudeSessionId } : {}),
+        ...sessionOptions.options,
       };
 
-      console.log('🎯 Using simplified WebUI-inspired query options (no canUseTool complexity)');
+      console.log(`🔐 Using complete Claude Code SDK with canUseTool permissions (mode: ${sessionOptions.mode})`);
 
       for await (const message of query({
         prompt: contextPrompt,
@@ -452,21 +450,26 @@ class ChatHandler {
     console.log(`🔐 canUseTool callback triggered for: ${toolName}`);
     console.log(`📋 Tool input:`, JSON.stringify(input, null, 2));
 
-    // Auto-approve safe read-only operations
+    // Auto-approve safe operations including Write tool
     const safeTools = [
       "Read",
       "Write",
       "LS",
-      "Glob",
+      "Glob", 
       "Grep",
       "WebFetch",
       "WebSearch",
+      "MultiEdit",
+      "Edit",
       "Bash(git status:*)",
       "Bash(git log:*)",
       "Bash(git diff:*)",
       "Bash(npm list:*)",
       "Bash(npm outdated:*)",
       "Bash(npm audit:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(echo:*)",
     ];
 
     const isSafeTool = safeTools.some((pattern) => {

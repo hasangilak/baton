@@ -171,7 +171,7 @@ make dev
    make handler
    
    # Or manually:
-   node scripts/chat-handler.js > /tmp/chat-handler.log 2>&1 &
+   node scripts/webui-chat-handler.js > /tmp/webui-chat-handler.log 2>&1 &
    ```
 
 2. **Start the Chat Bridge** (Optional - for WebSocket connections)
@@ -290,7 +290,7 @@ make logs-bridge
 #### Permission prompts not working?
 ```bash
 # Check if permission mode is configured
-grep -A 10 "permissionMode" scripts/chat-handler.js
+grep -A 10 "permissionMode" scripts/webui-chat-handler.js
 
 # Test file creation (should work without prompts)
 make test-claude-permissions
