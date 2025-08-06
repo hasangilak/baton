@@ -83,7 +83,9 @@ export function useChat(conversationId: string | null) {
   const queryClient = useQueryClient();
   const { error: showError } = useToast();
   const [streamingMessage, setStreamingMessage] = useState<Message | null>(null);
+  const [optimisticUserMessage, setOptimisticUserMessage] = useState<Message | null>(null);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const sendMessage = useCallback(async (
@@ -95,6 +97,19 @@ export function useChat(conversationId: string | null) {
       return;
     }
 
+    // Create optimistic user message immediately
+    const optimisticMessage: Message = {
+      id: `optimistic-${Date.now()}`,
+      conversationId,
+      role: 'user',
+      content,
+      status: 'completed',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    
+    setOptimisticUserMessage(optimisticMessage);
+    setIsWaitingForResponse(true);
     setIsStreaming(true);
     abortControllerRef.current = new AbortController();
 
@@ -134,18 +149,24 @@ export function useChat(conversationId: string | null) {
 
           if (response.isComplete) {
             setIsStreaming(false);
+            setIsWaitingForResponse(false);
             // Invalidate messages query to refetch complete message with metadata
             queryClient.invalidateQueries({ 
               queryKey: chatKeys.messages(conversationId) 
             });
-            // Clear streaming message
-            setTimeout(() => setStreamingMessage(null), 100);
+            // Clear both optimistic and streaming messages
+            setTimeout(() => {
+              setStreamingMessage(null);
+              setOptimisticUserMessage(null);
+            }, 100);
           }
         }
       );
     } catch (error) {
       setIsStreaming(false);
+      setIsWaitingForResponse(false);
       setStreamingMessage(null);
+      setOptimisticUserMessage(null);
       showError('Error', 'Failed to send message');
     }
   }, [conversationId, queryClient]);
@@ -167,7 +188,9 @@ export function useChat(conversationId: string | null) {
   return {
     sendMessage,
     streamingMessage,
+    optimisticUserMessage,
     isStreaming,
+    isWaitingForResponse,
     stopStreaming,
     uploadFile,
   };

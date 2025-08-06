@@ -48,7 +48,9 @@ export const ClaudeStyleChat: React.FC = () => {
   const {
     sendMessage,
     streamingMessage,
+    optimisticUserMessage,
     isStreaming,
+    isWaitingForResponse,
   } = useChat(selectedConversationId);
 
   // Update URL when conversation changes
@@ -259,6 +261,21 @@ export const ClaudeStyleChat: React.FC = () => {
                 {messages.map((message: Message) => (
                   <MessageBubble key={message.id} message={message} />
                 ))}
+                
+                {/* Show optimistic user message immediately */}
+                {optimisticUserMessage && (
+                  <MessageBubble 
+                    key={optimisticUserMessage.id} 
+                    message={optimisticUserMessage} 
+                  />
+                )}
+                
+                {/* Show loading state when waiting for Claude's initial response */}
+                {isWaitingForResponse && !streamingMessage && (
+                  <LoadingMessage />
+                )}
+                
+                {/* Show streaming message when Claude is responding */}
                 {streamingMessage && (
                   <MessageBubble message={streamingMessage} isStreaming />
                 )}
@@ -358,6 +375,35 @@ const MessageBubble: React.FC<{ message: Message; isStreaming?: boolean }> = ({ 
             {isStreaming && (
               <span className="inline-block ml-2 text-[#FF6B6B]">●</span>
             )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Loading Message Component for Claude Response
+const LoadingMessage: React.FC = () => {
+  return (
+    <div className="mb-6">
+      <div className="max-w-[85%]">
+        <div className="flex items-start space-x-3">
+          <div className="w-8 h-8 rounded-full flex items-center justify-center bg-[#3E3E42]">
+            <Sparkles className="w-4 h-4 text-[#FF6B6B]" />
+          </div>
+          
+          <div className="flex-1">
+            <p className="text-xs text-[#8B8B8D] mb-1">Claude</p>
+            <div className="inline-block px-4 py-2 rounded-xl bg-transparent text-[#E5E5E5]">
+              <div className="flex items-center space-x-2">
+                <div className="flex space-x-1">
+                  <div className="w-2 h-2 bg-[#FF6B6B] rounded-full animate-bounce"></div>
+                  <div className="w-2 h-2 bg-[#FF6B6B] rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                  <div className="w-2 h-2 bg-[#FF6B6B] rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                </div>
+                <span className="text-sm text-[#8B8B8D]">Claude is thinking...</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
