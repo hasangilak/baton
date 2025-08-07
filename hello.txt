@@ -1,1 +1,6 @@
-hello world - RESTART LOGIC TEST
+testing context preservation
+
+Code flows like rivers deep,
+Through branches where bugs may sleep,
+Functions dance and variables sing,
+While compilers their magic bring.

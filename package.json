@@ -1,0 +1,13 @@
+{
+  "dependencies": {
+    "@anthropic-ai/claude-code": "^1.0.69",
+    "axios": "^1.11.0",
+    "crypto": "^1.0.1",
+    "events": "^3.3.0",
+    "p-limit": "^6.2.0",
+    "playwright": "^1.54.2",
+    "puppeteer": "^24.15.0",
+    "socket.io-client": "^4.8.1",
+    "stream": "^0.0.3"
+  }
+}
