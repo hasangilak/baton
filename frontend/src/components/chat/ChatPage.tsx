@@ -16,7 +16,10 @@ import {
   Send,
   Paperclip,
   Link,
-  Copy
+  Copy,
+  Settings,
+  CheckCircle,
+  AlertCircle
 } from 'lucide-react';
 import { useConversations, useChatSearch, useConversation } from '../../hooks/useChat';
 import { useProjects } from '../../hooks/useProjects';
@@ -28,7 +31,7 @@ import type { Conversation, Message } from '../../types';
 import { formatDistanceToNow } from 'date-fns';
 
 // Helper function to safely convert content to renderable string
-const safeRenderContent = (content: any): string => {
+const safeRenderContent = (content: any, streamingMessage?: any): string => {
   if (content === null || content === undefined) {
     return '';
   }
@@ -74,6 +77,45 @@ const safeRenderContent = (content: any): string => {
   }
   
   return String(content);
+};
+
+// Helper function to extract meaningful content from different message types
+const extractMessageContent = (msg: any): string => {
+  const msgType = msg.type;
+  
+  switch (msgType) {
+    case 'system':
+      if (msg.subtype === 'init') {
+        const data = msg.data || msg;
+        const session = data.session_id;
+        const model = data.model || 'Claude';
+        const toolCount = data.tools?.length || 0;
+        return `Session initialized with ${model}\nSession ID: ${session}\nAvailable tools: ${toolCount}`;
+      }
+      return msg.message || msg.content || 'System message';
+      
+    case 'result':
+      const data = msg.data || msg;
+      const result = data.result || msg.result || '';
+      const cost = data.total_cost_usd || 0;
+      const duration = data.duration_ms || 0;
+      const usage = data.usage;
+      
+      let resultContent = `${result}`;
+      if (cost > 0 || duration > 0) {
+        resultContent += '\n\n';
+        if (duration > 0) resultContent += `Duration: ${duration}ms`;
+        if (cost > 0) resultContent += `${duration > 0 ? ', ' : ''}Cost: $${cost.toFixed(4)}`;
+        if (usage?.output_tokens) resultContent += `\nTokens: ${usage.output_tokens} output`;
+      }
+      return resultContent;
+      
+    case 'chat':
+      return safeRenderContent(msg.content);
+      
+    default:
+      return safeRenderContent(msg.message || msg.content || msg);
+  }
 };
 
 export const ChatPage: React.FC = () => {
@@ -433,7 +475,7 @@ export const ChatPage: React.FC = () => {
                       id: messageId,
                       conversationId: selectedConversationId || '',
                       role: chatMsg.role || 'assistant',
-                      content: safeRenderContent(chatMsg.content),
+                      content: extractMessageContent(msg),
                       status: 'completed' as const,
                       createdAt: timestamp.toISOString(),
                       updatedAt: timestamp.toISOString(),
@@ -444,14 +486,19 @@ export const ChatPage: React.FC = () => {
                       id: messageId,
                       conversationId: selectedConversationId || '',
                       role: 'system' as const,
-                      content: safeRenderContent(systemMsg.message || systemMsg.content || systemMsg),
+                      content: extractMessageContent(msg),
                       status: 'completed' as const,
                       createdAt: timestamp.toISOString(),
                       updatedAt: timestamp.toISOString(),
+                      // Pass the streaming message type for badge display
+                      metadata: { 
+                        streamingType: msg.type,
+                        streamingSubtype: (msg as any).subtype
+                      }
                     };
                   }
                   
-                  return <MessageBubble key={messageId} message={displayMessage} />;
+                  return <MessageBubble key={messageId} message={displayMessage} streamingMessage={msg} />;
                 })}
                 
                 {/* Show streaming message when Claude is responding */}
@@ -461,11 +508,12 @@ export const ChatPage: React.FC = () => {
                       id: 'streaming',
                       conversationId: selectedConversationId || '',
                       role: 'assistant',
-                      content: safeRenderContent(claudeStreaming.currentAssistantMessage.content),
+                      content: extractMessageContent(claudeStreaming.currentAssistantMessage),
                       status: 'sending',
                       createdAt: new Date().toISOString(),
                       updatedAt: new Date().toISOString(),
                     }} 
+                    streamingMessage={claudeStreaming.currentAssistantMessage}
                     isStreaming 
                   />
                 )}
@@ -573,9 +621,57 @@ const ActionButton: React.FC<{ icon: React.ElementType; label: string; testId?: 
 );
 
 // Message Bubble Component
-const MessageBubble: React.FC<{ message: Message; isStreaming?: boolean }> = ({ message, isStreaming }) => {
+const MessageBubble: React.FC<{ 
+  message: Message; 
+  isStreaming?: boolean; 
+  streamingMessage?: any 
+}> = ({ message, isStreaming, streamingMessage }) => {
   const isUser = message.role === 'user';
   const toolUsages = (message as any).toolUsages || (message as any).metadata?.toolUsages;
+  
+  // Get message type info for badges
+  const getMessageTypeInfo = () => {
+    if (streamingMessage) {
+      const type = streamingMessage.type;
+      const subtype = streamingMessage.subtype;
+      
+      switch (type) {
+        case 'system':
+          return { 
+            type: 'system', 
+            label: subtype === 'init' ? 'System Init' : 'System',
+            icon: Settings,
+            color: 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+          };
+        case 'result':
+          return { 
+            type: 'result', 
+            label: 'Result',
+            icon: CheckCircle,
+            color: 'bg-green-500/20 text-green-400 border-green-500/30'
+          };
+        case 'error':
+          return { 
+            type: 'error', 
+            label: 'Error',
+            icon: AlertCircle,
+            color: 'bg-red-500/20 text-red-400 border-red-500/30'
+          };
+        case 'tool_use':
+          return { 
+            type: 'tool_use', 
+            label: 'Tool',
+            icon: Code2,
+            color: 'bg-purple-500/20 text-purple-400 border-purple-500/30'
+          };
+        default:
+          return null;
+      }
+    }
+    return null;
+  };
+  
+  const typeInfo = getMessageTypeInfo();
   
   return (
     <div 
@@ -600,12 +696,22 @@ const MessageBubble: React.FC<{ message: Message; isStreaming?: boolean }> = ({ 
           </div>
           
           <div className={`flex-1 ${isUser ? 'text-right' : ''}`}>
-            <p 
-              className="text-xs text-[#8B8B8D] mb-1"
-              data-testid={`message-sender-${message.id}`}
-            >
-              {isUser ? 'You' : 'Claude'}
-            </p>
+            <div className="flex items-center justify-between mb-1">
+              <p 
+                className="text-xs text-[#8B8B8D]"
+                data-testid={`message-sender-${message.id}`}
+              >
+                {isUser ? 'You' : 'Claude'}
+              </p>
+              
+              {/* Message Type Badge */}
+              {typeInfo && !isUser && (
+                <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs border ${typeInfo.color}`}>
+                  <typeInfo.icon className="w-3 h-3 mr-1" />
+                  <span>{typeInfo.label}</span>
+                </div>
+              )}
+            </div>
             
             {/* Tool Usage Display */}
             {!isUser && toolUsages && toolUsages.length > 0 && (
