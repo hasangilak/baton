@@ -21,7 +21,7 @@ import {
   CheckCircle,
   AlertCircle
 } from 'lucide-react';
-import { useConversations, useChatSearch, useConversation } from '../../hooks/useChat';
+import { useConversations, useChatSearch, useConversation, useMessages } from '../../hooks/useChat';
 import { useProjects } from '../../hooks/useProjects';
 import { useInteractivePrompts } from '../../hooks/useInteractivePrompts';
 import { useClaudeStreaming } from '../../hooks/useClaudeStreaming';
@@ -177,6 +177,9 @@ export const ChatPage: React.FC = () => {
 
   // Get conversation details including Claude session ID
   const { data: conversationDetails } = useConversation(selectedConversationId);
+  
+  // Fetch persisted messages for the selected conversation
+  const { messages: dbMessages, isLoading: isLoadingMessages } = useMessages(selectedConversationId);
   
   // Get session ID from URL parameters for session tuning
   const urlSessionId = searchParams.get('sessionId');
@@ -463,6 +466,22 @@ export const ChatPage: React.FC = () => {
             {/* Messages */}
             <div className="flex-1 overflow-y-auto">
               <div className="max-w-3xl mx-auto px-4 py-8 h-[calc(100vh-250px)] overflow-y-auto no-scrollbar">
+                {/* Loading state for persisted messages */}
+                {isLoadingMessages && selectedConversationId && (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="text-sm text-gray-500">Loading conversation history...</div>
+                  </div>
+                )}
+                
+                {/* Display persisted messages from database */}
+                {dbMessages?.map((msg) => (
+                  <MessageBubble 
+                    key={msg.id} 
+                    message={msg}
+                  />
+                ))}
+                
+                {/* Display real-time streaming messages */}
                 {claudeStreaming.messages.map((msg, index) => {
                   // Convert WebUI streaming message to display format
                   const messageId = msg.timestamp?.toString() || `msg-${index}-${Date.now()}`;

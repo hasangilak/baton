@@ -95,11 +95,13 @@ class ClaudeCodeBridge {
               // Temporarily remove canUseTool to test if basic functionality works
             };
 
-            // Skip session resume for now to isolate issues
-            // if (sessionId && sessionId.trim() !== "") {
-            //   claudeOptions.resume = sessionId;
-            //   console.log(`✅ Resuming session: ${sessionId}`);
-            // }
+            // Resume session if provided to preserve context
+            if (sessionId && sessionId.trim() !== "") {
+              claudeOptions.resume = sessionId;
+              console.log(`✅ Resuming session: ${sessionId}`);
+            } else {
+              console.log(`🆕 Starting new session for request ${requestId}`);
+            }
 
             // Add working directory
             if (workingDirectory) {
@@ -598,7 +600,7 @@ class ClaudeCodeBridge {
   async start(): Promise<void> {
     const server = Bun.serve({
       port: this.port,
-      idleTimeout: 180000, // 3 minutes timeout instead of default 10 seconds
+      idleTimeout: 180, // 3 minutes timeout in seconds (max 255)
       async fetch(request) {
         const url = new URL(request.url);
         
