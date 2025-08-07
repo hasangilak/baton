@@ -21,7 +21,18 @@ export function useStreamParser() {
           return;
         }
 
-        const data: StreamResponse = JSON.parse(line);
+        // Handle Server-Sent Events format from bridge
+        let jsonData: string = line;
+        if (line.startsWith('data: ')) {
+          jsonData = line.substring(6); // Remove 'data: ' prefix
+        }
+
+        // Skip if it's just SSE keep-alive or empty data
+        if (!jsonData.trim()) {
+          return;
+        }
+
+        const data: StreamResponse = JSON.parse(jsonData);
 
         if (isClaudeJsonResponse(data) && (data as any).data) {
           // Process Claude SDK message

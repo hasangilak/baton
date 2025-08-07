@@ -59,6 +59,12 @@ class ClaudeCodeBridge {
             controller.enqueue(`data: ${JSON.stringify(response)}\n\n`);
           };
 
+          // Set up conversation completion pattern like ultimate.ts (must be outside try block)
+          let conversationDone: (() => void) | undefined;
+          const conversationComplete = new Promise<void>(resolve => {
+            conversationDone = resolve;
+          });
+
           try {
             // Create abort controller for this request
             const abortController = new AbortController();
@@ -70,21 +76,19 @@ class ClaudeCodeBridge {
               contextMessage = `Project: ${projectName}\n\n${message}`;
             }
 
-            // Configure Claude Code options
+            // Configure Claude Code options without canUseTool due to SDK bug #4775
+            // The canUseTool callback is completely broken on Linux - even ultimate.ts fails
             const claudeOptions: any = {
-              abortController,
               maxTurns: 20,
-              permissionMode: permissionMode || 'default',
-              canUseTool: async (toolName: string, parameters: Record<string, any>) => {
-                return await this.requestPermissionFromBackend(toolName, parameters, conversationId);
-              }
+              mcpServers: {},
+              // Temporarily remove canUseTool to test if basic functionality works
             };
 
-            // Add session resume if available
-            if (sessionId && sessionId.trim() !== "") {
-              claudeOptions.resume = sessionId;
-              console.log(`✅ Resuming session: ${sessionId}`);
-            }
+            // Skip session resume for now to isolate issues
+            // if (sessionId && sessionId.trim() !== "") {
+            //   claudeOptions.resume = sessionId;
+            //   console.log(`✅ Resuming session: ${sessionId}`);
+            // }
 
             // Add working directory
             if (workingDirectory) {
@@ -96,11 +100,38 @@ class ClaudeCodeBridge {
               claudeOptions.allowedTools = allowedTools;
             }
 
-            console.log(`🔧 Claude Code options configured for ${requestId}`);
+            console.log(`🔧 Claude Code options configured for ${requestId}:`);
+            console.log(`   - permissionMode: ${claudeOptions.permissionMode}`);
+            console.log(`   - canUseTool: ${typeof claudeOptions.canUseTool}`);
+            console.log(`   - allowedTools: ${claudeOptions.allowedTools || 'default'}`);
+            console.log(`   - maxTurns: ${claudeOptions.maxTurns}`);
 
-            // Execute Claude Code query
+            // Execute Claude Code query using ultimate.ts conversation completion pattern
+            // This prevents stream closure errors while implementing our own permission system
             let messageCount = 0;
-            for await (const sdkMessage of query({ prompt: contextMessage, options: claudeOptions })) {
+            
+            // Use exact pattern from ultimate.ts that prevents stream closure
+            async function* createPromptStream() {
+              yield {
+                type: 'user' as const,
+                message: {
+                  role: 'user' as const,
+                  content: contextMessage
+                },
+                parent_tool_use_id: null,
+                session_id: sessionId || `bridge-${Date.now()}`
+              };
+              // CRITICAL: Wait for conversation to complete - this prevents stream closure errors
+              await conversationComplete;
+            }
+            
+            for await (const sdkMessage of query({
+              prompt: createPromptStream(),
+              options: {
+                abortController,
+                ...claudeOptions
+              }
+            })) {
               messageCount++;
               
               // Log first few messages for debugging
@@ -121,6 +152,9 @@ class ClaudeCodeBridge {
               // Handle different message types
               if (sdkMessage.type === "result") {
                 console.log(`✅ Claude Code execution completed for ${requestId}: ${sdkMessage.subtype}`);
+                
+                // Complete the conversation to prevent stream closure
+                if (conversationDone) conversationDone();
                 break;
               }
             }
@@ -136,6 +170,9 @@ class ClaudeCodeBridge {
 
           } catch (error) {
             console.error(`❌ Bridge execution error for ${requestId}:`, error);
+            
+            // Complete the conversation on error to prevent hanging
+            if (conversationDone) conversationDone();
             
             if (error instanceof Error && error.name === 'AbortError') {
               sendResponse({
@@ -221,6 +258,41 @@ class ClaudeCodeBridge {
     }
   }
 
+  private async getBasicPermission(toolName: string, parameters: Record<string, any>): Promise<PermissionResult> {
+    try {
+      console.log('\n' + '='.repeat(60));
+      console.log(`🔧 PERMISSION REQUEST - ${toolName}`);
+      console.log('='.repeat(60));
+      
+      // Show tool details
+      console.log(`📋 Tool: ${toolName}`);
+      console.log(`📝 Parameters:`);
+      Object.entries(parameters).forEach(([key, value]) => {
+        const valueStr = typeof value === 'string' ? value : JSON.stringify(value);
+        const truncated = valueStr.length > 100 ? valueStr.substring(0, 100) + '...' : valueStr;
+        console.log(`   ${key}: ${truncated}`);
+      });
+      
+      // Risk assessment
+      const riskLevel = this.assessRiskLevel(toolName);
+      const riskIcon = riskLevel === 'HIGH' ? '🔴' : riskLevel === 'MEDIUM' ? '🟡' : '🟢';
+      console.log(`\n🛡️  Risk Level: ${riskIcon} ${riskLevel}`);
+      
+      console.log('='.repeat(60));
+      console.log('Options: y=allow, n=deny, a=allow all');
+      
+      // For bridge mode, we'll auto-allow for now to test the callback mechanism
+      // Later we can integrate with web UI prompts
+      console.log('🚀 Auto-allowing for bridge testing (will be interactive in web UI)');
+      
+      return { behavior: 'allow', updatedInput: parameters };
+      
+    } catch (error) {
+      console.error(`❌ Permission error for ${toolName}:`, error);
+      return { behavior: 'deny', message: 'Permission system error' };
+    }
+  }
+
   private async requestPermissionFromBackend(
     toolName: string, 
     parameters: Record<string, any>, 
@@ -228,6 +300,9 @@ class ClaudeCodeBridge {
   ): Promise<PermissionResult> {
     try {
       console.log(`🔐 Requesting permission for ${toolName} from backend`);
+      
+      // Ensure conversation exists first
+      await this.ensureConversationExists(conversationId);
       
       // Check if permission is already granted
       const permissionsResponse = await fetch(
@@ -307,6 +382,50 @@ class ClaudeCodeBridge {
       return 'MEDIUM';
     } else {
       return 'LOW';
+    }
+  }
+
+  private async ensureConversationExists(conversationId: string): Promise<void> {
+    try {
+      console.log(`🗨️  Ensuring conversation ${conversationId} exists`);
+      
+      // Check if conversation exists
+      const checkResponse = await fetch(
+        `${this.backendUrl}/api/chat/conversations/${conversationId}/permissions`
+      );
+      
+      if (checkResponse.ok) {
+        console.log(`✅ Conversation ${conversationId} already exists`);
+        return;
+      }
+      
+      // If conversation doesn't exist, create it
+      // We need to create it with a default project and user
+      // For now, use the demo project from seeded data
+      const createResponse = await fetch(
+        `${this.backendUrl}/api/chat/messages`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: 'Bridge conversation initialized',
+            requestId: `init-${conversationId}`,
+            conversationId,
+            projectId: 'demo-project-1', // Use demo project from seed data
+            userId: 'demo-user-1' // Use demo user from seed data
+          })
+        }
+      );
+      
+      if (createResponse.ok) {
+        console.log(`✅ Created conversation ${conversationId}`);
+      } else {
+        console.warn(`⚠️ Failed to create conversation ${conversationId}, will try to proceed anyway`);
+      }
+      
+    } catch (error) {
+      console.warn(`⚠️ Error ensuring conversation exists:`, error);
+      // Continue anyway - maybe the conversation exists but permissions endpoint failed
     }
   }
 

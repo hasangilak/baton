@@ -7,6 +7,7 @@ import multer from 'multer';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { handleStreamingChat, handleAbortRequest } from '../handlers/streaming-chat';
+import axios from 'axios';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -1454,7 +1455,7 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
 
     try {
       // Forward request to bridge service
-      const bridgeUrl = process.env.BRIDGE_URL || 'http://localhost:8080';
+      const bridgeUrl = process.env.BRIDGE_URL || 'http://192.168.2.39:8080';
       const bridgeRequest = {
         message: content,
         requestId,
@@ -1468,7 +1469,6 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
 
       console.log(`🌉 Forwarding request ${requestId} to bridge at ${bridgeUrl}`);
       
-      const axios = require('axios');
       const response = await axios.post(`${bridgeUrl}/execute`, bridgeRequest, {
         responseType: 'stream',
         timeout: 0 // No timeout for streaming
@@ -1626,8 +1626,7 @@ router.post('/messages/abort-bridge/:requestId', async (req: Request, res: Respo
     }
 
     // Forward abort request to bridge service
-    const bridgeUrl = process.env.BRIDGE_URL || 'http://localhost:8080';
-    const axios = require('axios');
+    const bridgeUrl = process.env.BRIDGE_URL || 'http://192.168.2.39:8080';
     
     try {
       await axios.post(`${bridgeUrl}/abort/${requestId}`, {}, { timeout: 5000 });
