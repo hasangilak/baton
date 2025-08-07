@@ -393,8 +393,8 @@ class ClaudeCodeBridge {
       const conservativeDecision = riskLevel === 'LOW' ? 'allow' : 'deny';
       return { 
         behavior: conservativeDecision as 'allow' | 'deny',
-        message: conservativeDecision === 'deny' ? 'Permission system error' : undefined,
-        updatedInput: conservativeDecision === 'allow' ? parameters : undefined
+        message: conservativeDecision === 'deny' ? 'Permission system error' : 'I dont have access',
+        updatedInput: parameters
       };
     }
   }
