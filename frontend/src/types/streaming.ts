@@ -56,6 +56,7 @@ export interface SystemMessage {
   message: string;
   timestamp: number;
   data?: any;
+  id?: string;
 }
 
 export interface ToolMessage {
@@ -72,12 +73,14 @@ export interface ToolResultMessage {
   tool_use_id: string;
   is_error?: boolean;
   timestamp: number;
+  id?: string;
 }
 
 export interface AbortMessage {
   type: "abort";
   message: string;
   timestamp: number;
+  id?: string;
 }
 
 // Union type for all message types

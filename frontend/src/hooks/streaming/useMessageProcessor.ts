@@ -6,6 +6,7 @@
  */
 
 import { useCallback } from 'react';
+import { generateMessageId } from '../../utils/id';
 import type { 
   SDKMessage, 
   StreamingContext, 
@@ -30,12 +31,13 @@ export function useMessageProcessor() {
       let messageToUpdate = context.currentAssistantMessage;
 
       if (!messageToUpdate) {
-        // Create new assistant message
+        // Create new assistant message with stable unique ID
         messageToUpdate = {
           type: "chat",
           role: "assistant",
           content: "",
           timestamp: Date.now(),
+          id: generateMessageId(),
         };
         context.setCurrentAssistantMessage(messageToUpdate);
         context.addMessage(messageToUpdate);
@@ -117,8 +119,11 @@ export function useMessageProcessor() {
   const handleResultMessage = useCallback(
     (sdkMessage: SDKMessage, context: StreamingContext) => {
       if (sdkMessage.result) {
-        // Update the current assistant message with final result
-        handleAssistantTextMessage({ text: sdkMessage.result }, context);
+        // Only apply final result text if we did NOT already stream assistant chunks.
+        // If a streaming assistant message exists, its content is already up-to-date.
+        if (!context.currentAssistantMessage) {
+          handleAssistantTextMessage({ text: sdkMessage.result }, context);
+        }
       }
       
       // Add result system message

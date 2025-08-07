@@ -7,7 +7,7 @@
 
 import { useState, useCallback } from 'react';
 import type { AllMessage, ChatStateOptions } from '../../types/streaming';
-import { generateId } from '../../utils/id';
+import { generateId, generateMessageId } from '../../utils/id';
 
 // Default system message
 const DEFAULT_MESSAGES: AllMessage[] = [
@@ -35,17 +35,21 @@ export function useChatState(options: ChatStateOptions = {}) {
   // Message manipulation functions
   const addMessage = useCallback((msg: AllMessage) => {
     setMessages((prev) => {
+      // Ensure message has a stable id for React keys
+      const withId: AllMessage = (msg as any).id ? msg : ({ ...(msg as any), id: generateMessageId() } as AllMessage);
+
       // Avoid duplicate messages by checking timestamp and content
       const isDuplicate = prev.some(existing => 
-        existing.timestamp === msg.timestamp && 
-        JSON.stringify(existing) === JSON.stringify(msg)
+        (existing as any).id && (withId as any).id ? (existing as any).id === (withId as any).id : (
+          existing.timestamp === withId.timestamp && JSON.stringify(existing) === JSON.stringify(withId)
+        )
       );
       
       if (isDuplicate) {
         return prev;
       }
       
-      return [...prev, msg];
+      return [...prev, withId];
     });
   }, []);
 

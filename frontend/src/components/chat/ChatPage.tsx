@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { parseMixedContent, type MixedSegment } from '../../utils/mixedContent';
+import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   Plus, 
@@ -30,6 +31,7 @@ import { FileUploadArea } from './FileUploadArea';
 import { InteractivePromptComponent } from './InteractivePrompt';
 import type { Conversation, Message } from '../../types';
 import { formatDistanceToNow } from 'date-fns';
+import { generateMessageId } from '../../utils/id';
 
 // Helper function to safely convert content to renderable string
 const safeRenderContent = (content: any, _streamingMessage?: any): string => {
@@ -78,6 +80,43 @@ const safeRenderContent = (content: any, _streamingMessage?: any): string => {
   }
   
   return String(content);
+};
+
+// Simple code block renderer for fenced code segments
+const CodeBlock: React.FC<{ lang?: string; value: string }> = ({ lang, value }) => {
+  return (
+    <div className="rounded-xl border border-[#2a2a2a] bg-[#141414] overflow-hidden">
+      <div className="px-3 py-1.5 text-xs text-[#9aa0a6] border-b border-[#2a2a2a] flex items-center gap-2">
+        <span className="inline-block w-2 h-2 rounded-full bg-[#6b7280]" />
+        <span>{lang || 'code'}</span>
+      </div>
+      <pre className="m-0 p-3 text-sm whitespace-pre-wrap text-[#E5E5E5]">
+        <code>{value}</code>
+      </pre>
+    </div>
+  );
+};
+
+// Specialized renderer for arrays of links: [{title, url}]
+const LinksCard: React.FC<{ items: Array<{ title?: string; url?: string }> }> = ({ items }) => {
+  return (
+    <div className="rounded-xl border border-[#2a2a2a] bg-[#0e0e0e] p-3 space-y-2">
+      <div className="text-xs uppercase tracking-wide text-[#9aa0a6]">Links</div>
+      <ul className="space-y-1 list-disc pl-5">
+        {items.map((it, i) => (
+          <li key={i} className="text-sm">
+            {it.url ? (
+              <a href={it.url} target="_blank" rel="noreferrer" className="text-[#7dd3fc] hover:underline">
+                {it.title || it.url}
+              </a>
+            ) : (
+              <span className="text-[#E5E5E5]">{it.title || 'Untitled'}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 };
 
 // Helper function to extract meaningful content from different message types
@@ -201,6 +240,7 @@ export const ChatPage: React.FC = () => {
   }, [selectedConversationId, conversationDetails?.claudeSessionId, claudeStreaming.currentSessionId, navigate]);
 
   const pendingMessageRef = useRef<string | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Effect to send pending message when conversation is created
   useEffect(() => {
@@ -263,6 +303,27 @@ export const ChatPage: React.FC = () => {
     if (hour >= 17 && hour < 22) return 'Good evening';
     return 'Hello, night owl';
   };
+
+  // Smooth auto-scroll to latest messages
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    // Use requestAnimationFrame to ensure DOM is painted before scrolling
+    requestAnimationFrame(() => {
+      try {
+        el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+      } catch {
+        // Fallback for older browsers
+        el.scrollTop = el.scrollHeight;
+      }
+    });
+  }, [
+    dbMessages?.length,
+    claudeStreaming.messages.length,
+    !!claudeStreaming.currentAssistantMessage,
+    claudeStreaming.isStreaming,
+    pendingPrompts.length,
+  ]);
 
   // Display conversations with search results
   const displayConversations = searchQuery.length > 2 && isSearching
@@ -466,7 +527,7 @@ export const ChatPage: React.FC = () => {
             
             {/* Messages */}
             <div className="flex-1 overflow-y-auto">
-              <div className="max-w-3xl mx-auto px-4 py-8 h-[calc(100vh-250px)] overflow-y-auto no-scrollbar">
+              <div ref={scrollContainerRef} className="max-w-3xl mx-auto px-4 py-8 h-[calc(100vh-250px)] overflow-y-auto no-scrollbar">
                 {/* Loading state for persisted messages */}
                 {isLoadingMessages && selectedConversationId && (
                   <div className="flex items-center justify-center py-8">
@@ -477,7 +538,7 @@ export const ChatPage: React.FC = () => {
                 {/* Display persisted messages from database */}
                 {dbMessages?.map((msg) => (
                   <MessageBubble 
-                    key={msg.id} 
+                    key={msg.id}
                     message={msg}
                   />
                 ))}
@@ -485,7 +546,7 @@ export const ChatPage: React.FC = () => {
                 {/* Display real-time streaming messages */}
                 {claudeStreaming.messages.map((msg, index) => {
                   // Convert WebUI streaming message to display format
-                  const messageId = msg.timestamp?.toString() || `msg-${index}-${Date.now()}`;
+                  const messageId = (msg as any).id || msg.timestamp?.toString() || `msg-${index}-${generateMessageId()}`;
                   const timestamp = msg.timestamp ? new Date(msg.timestamp) : new Date();
                   
                   let displayMessage: Message;
@@ -551,6 +612,9 @@ export const ChatPage: React.FC = () => {
                     isResponding={isRespondingToPrompt}
                   />
                 ))}
+
+                {/* End of message list */}
+                <div style={{ height: 1 }} />
               </div>
             </div>
             
@@ -626,6 +690,88 @@ const ActionButton: React.FC<{ icon: React.ElementType; label: string; testId?: 
     <span className="text-sm text-[#8B8B8D]">{label}</span>
   </button>
 );
+
+// Pretty JSON viewer with collapsible details
+const PrettyJson: React.FC<{ data: any; collapsedLabel?: string }> = ({ data, collapsedLabel = 'View details' }) => {
+  const json = (() => {
+    try {
+      return JSON.stringify(data, null, 2);
+    } catch {
+      return String(data);
+    }
+  })();
+  return (
+    <details className="bg-[#2A2A2D] border border-[#3E3E42] rounded-lg overflow-hidden">
+      <summary className="cursor-pointer px-3 py-2 text-sm text-[#CFCFD1] hover:bg-[#333336]">
+        {collapsedLabel}
+      </summary>
+      <pre className="m-0 p-3 text-xs leading-5 text-[#CFCFD1] overflow-auto">
+        {json}
+      </pre>
+    </details>
+  );
+};
+
+// Mixed content parsing moved to utils/mixedContent.ts using remark AST + JSON5
+
+// Tool Action Card to show tool calls/results in a readable format
+const ToolActionCard: React.FC<{
+  name?: string;
+  args?: any;
+  result?: any;
+  isError?: boolean;
+  status?: 'pending' | 'running' | 'done' | 'error';
+}> = ({ name, args, result, isError, status }) => {
+  const statusStyles: Record<string, string> = {
+    pending: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30',
+    running: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
+    done: 'bg-green-500/20 text-green-300 border-green-500/30',
+    error: 'bg-red-500/20 text-red-300 border-red-500/30',
+  };
+  const badge = isError ? 'error' : (status || 'done');
+  return (
+    <div className="border border-[#3E3E42] rounded-xl bg-[#1F1F22]">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-[#3E3E42]">
+        <div className="flex items-center space-x-2">
+          <Code2 className="w-4 h-4 text-[#CFCFD1]" />
+          <span className="text-sm text-[#E5E5E5]">{name || 'Tool Action'}</span>
+        </div>
+        <span className={`text-2xs px-2 py-0.5 rounded-full border ${statusStyles[badge] || ''}`}>
+          {badge.toUpperCase()}
+        </span>
+      </div>
+      <div className="p-3 space-y-3">
+        {typeof args !== 'undefined' && (
+          <div>
+            <div className="text-xs text-[#8B8B8D] mb-1">Arguments</div>
+            <PrettyJson data={args} collapsedLabel="Show arguments" />
+          </div>
+        )}
+        {typeof result !== 'undefined' && (
+          <div>
+            <div className="text-xs text-[#8B8B8D] mb-1">Result</div>
+            {(() => {
+              // If result is a string and looks like JSON, parse/pretty print
+              if (typeof result === 'string') {
+                try {
+                  const parsed = JSON.parse(result);
+                  return <PrettyJson data={parsed} collapsedLabel="Show result JSON" />;
+                } catch {
+                  // Show plain text (code-like block for multiline)
+                  return (
+                    <pre className="m-0 p-3 text-xs leading-5 text-[#CFCFD1] bg-[#2A2A2D] border border-[#3E3E42] rounded-lg overflow-auto whitespace-pre-wrap">{result}</pre>
+                  );
+                }
+              }
+              // Non-string result (object/array)
+              return <PrettyJson data={result} collapsedLabel="Show result" />;
+            })()}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 // Message Bubble Component
 const MessageBubble: React.FC<{ 
@@ -740,17 +886,107 @@ const MessageBubble: React.FC<{
               </div>
             )}
             
-            <div 
-              className={`inline-block px-4 py-2 rounded-xl ${
-                isUser 
-                  ? 'bg-[#3E3E42] text-[#E5E5E5]' 
-                  : 'bg-transparent text-[#E5E5E5]'
-              }`}
-              data-testid={`message-content-${message.id}`}
-              data-message-content={message.content}
-            >
-              <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-            </div>
+            {/* Content / Tool usage formatting */}
+            {(() => {
+              if (!isUser) {
+                // 1) Streaming tool invocation (tool_use)
+                if (streamingMessage?.type === 'tool_use') {
+                  // Try to extract name/input from anthropic-style content blocks
+                  const contentBlocks = streamingMessage?.message?.content;
+                  let tu = Array.isArray(contentBlocks) ? contentBlocks.find((c: any) => c?.type === 'tool_use') : undefined;
+                  // Some backends might send different shapes
+                  const name = tu?.name || streamingMessage?.name || 'Tool';
+                  const args = tu?.input ?? streamingMessage?.input ?? streamingMessage?.args ?? streamingMessage?.parameters;
+                  // As a fallback, show entire message payload in details
+                  if (!tu && !args) {
+                    return (
+                      <div className="space-y-2">
+                        <ToolActionCard name={name} status={isStreaming ? 'running' : 'done'} />
+                        <PrettyJson data={streamingMessage} collapsedLabel="Show raw tool_use payload" />
+                      </div>
+                    );
+                  }
+                  return <ToolActionCard name={name} args={args} status={isStreaming ? 'running' : 'done'} />;
+                }
+
+                // 2) Streaming tool result (tool_result)
+                if (streamingMessage?.type === 'tool_result') {
+                  const isErr = Boolean(streamingMessage?.is_error);
+                  const content = streamingMessage?.content;
+                  // try JSON parse, else plain text
+                  if (typeof content === 'string') {
+                    try {
+                      const parsed = JSON.parse(content);
+                      const toolName = parsed?.tool || parsed?.name || parsed?.tool_name;
+                      const result = parsed?.result ?? parsed?.output ?? parsed?.data ?? parsed;
+                      return <ToolActionCard name={toolName} result={result} isError={isErr} status={isErr ? 'error' : 'done'} />;
+                    } catch {
+                      return <ToolActionCard result={content} isError={isErr} status={isErr ? 'error' : 'done'} />;
+                    }
+                  }
+                  return <ToolActionCard result={content} isError={isErr} status={isErr ? 'error' : 'done'} />;
+                }
+
+                // 3) Persisted assistant message that may contain tool-like JSON
+                if (typeof message.content === 'string') {
+                  try {
+                    // First, split mixed content into segments
+                    const segments: MixedSegment[] = parseMixedContent(message.content);
+                    // If there's any json segment that looks tool-shaped, render rich cards interleaved with text
+                    return (
+                      <div className="space-y-2 text-left">
+                        {segments.map((seg, idx) => {
+                          if (seg.type === 'text') {
+                            if (!seg.value.trim()) return null;
+                            return (
+                              <div key={idx} className="inline-block px-4 py-2 rounded-xl bg-transparent text-[#E5E5E5]">
+                                <p className="text-sm whitespace-pre-wrap">{seg.value}</p>
+                              </div>
+                            );
+                          }
+                          if (seg.type === 'code') {
+                            return <CodeBlock key={idx} lang={seg.lang} value={seg.value} />;
+                          }
+                          // seg.type === 'json'
+                          const parsed = seg.value as any;
+                          // 1) Tool-shaped payloads -> ToolActionCard
+                          const toolName = parsed?.tool || parsed?.name || parsed?.tool_name;
+                          const args = parsed?.args || parsed?.input || parsed?.parameters;
+                          const result = parsed?.result ?? parsed?.output ?? parsed?.data;
+                          const isError = Boolean(parsed?.is_error || parsed?.error);
+                          if (toolName || args || typeof result !== 'undefined') {
+                            return (
+                              <ToolActionCard key={idx} name={toolName} args={args} result={result ?? parsed} isError={isError} status={isError ? 'error' : 'done'} />
+                            );
+                          }
+                          // 2) Array of links [{title, url}] -> LinksCard
+                          if (Array.isArray(parsed) && parsed.length && parsed.every((it: any) => typeof it === 'object' && (typeof it.title === 'string' || typeof it.url === 'string'))) {
+                            return <LinksCard key={idx} items={parsed} />;
+                          }
+                          // 3) Fallback JSON viewer
+                          return <PrettyJson key={idx} data={parsed} collapsedLabel="Show details" />;
+                        })}
+                      </div>
+                    );
+                  } catch {
+                    // fallthrough to normal text
+                  }
+                }
+              }
+              return (
+                <div 
+                  className={`inline-block px-4 py-2 rounded-xl ${
+                    isUser 
+                      ? 'bg-[#3E3E42] text-[#E5E5E5]' 
+                      : 'bg-transparent text-[#E5E5E5]'
+                  }`}
+                  data-testid={`message-content-${message.id}`}
+                  data-message-content={message.content}
+                >
+                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                </div>
+              );
+            })()}
             {isStreaming && (
               <span 
                 className="inline-block ml-2 text-[#FF6B6B]"
