@@ -668,7 +668,7 @@ class UltimateClaudeSDK {
         maxTurns: options.maxTurns || 8,
         mcpServers: options.mcpServers || {},
         canUseTool: async (toolName: string, parameters: Record<string, any>) => {
-          console.log('////////////////////////////\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\//////// hello')
+          console.log("HassanHassanHassanHassanHassanHassanHassanHassanHassanHassanHassanHassanHassanHassanHassanHassanHassanHassanHassanHassanHassanHassanHassanHassanHassanHassanHassanHassan")
           if (!toolsUsed.includes(toolName)) {
             toolsUsed.push(toolName);
           }

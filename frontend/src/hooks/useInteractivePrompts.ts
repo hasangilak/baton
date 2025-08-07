@@ -36,8 +36,8 @@ export const useInteractivePrompts = ({ conversationId, enableAnalytics = false 
   const [error, setError] = useState<string | null>(null);
 
   // Enhanced analytics state
-  const [livePermissionStatus, setLivePermissionStatus] = useState<any>(null);
-  const [realtimeAnalytics, setRealtimeAnalytics] = useState<any>(null);
+  const [livePermissionStatus] = useState<string>('');
+  const [realtimeAnalytics, setRealtimeAnalytics] = useState<Record<string, unknown>>({});
 
   // Load existing pending prompts on mount (like successful implementations)
   useEffect(() => {
@@ -134,12 +134,6 @@ export const useInteractivePrompts = ({ conversationId, enableAnalytics = false 
         }
       };
 
-      console.log('✨ Enhanced prompt with analytics:', {
-        riskLevel: prompt.riskLevel,
-        usageCount: prompt.context?.usageCount,
-        recommendedAction: prompt.usageStatistics?.recommendedAction
-      });
-
       // Add to pending prompts (replacing any existing with same ID)
       setPendingPrompts(prev => {
         const filtered = prev.filter(p => p.id !== prompt.id);
@@ -157,7 +151,7 @@ export const useInteractivePrompts = ({ conversationId, enableAnalytics = false 
     };
 
     // New analytics event handlers
-    const handlePermissionAnalytics = (data: any) => {
+    const handlePermissionAnalytics = (data: Record<string, unknown>) => {
       console.log('📊 Permission analytics update:', data);
       setRealtimeAnalytics(prev => ({
         ...prev,
@@ -196,7 +190,7 @@ export const useInteractivePrompts = ({ conversationId, enableAnalytics = false 
   const { data: analyticsData } = useQuery({
     queryKey: ['permission-analytics', conversationId],
     queryFn: async (): Promise<PermissionAnalytics> => {
-      const response = await fetch(`${API_BASE}/chat/analytics/permissions?conversationId=${conversationId}&timeframe=24h`);
+      const response = await fetch(`${API_BASE}/api/chat/analytics/permissions?conversationId=${conversationId}&timeframe=24h`);
       if (!response.ok) {
         throw new Error('Failed to fetch permission analytics');
       }
@@ -210,7 +204,7 @@ export const useInteractivePrompts = ({ conversationId, enableAnalytics = false 
   const { data: liveStatus } = useQuery({
     queryKey: ['live-permission-status', conversationId],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE}/chat/conversations/${conversationId}/permissions/live`);
+      const response = await fetch(`${API_BASE}/api/chat/conversations/${conversationId}/permissions/live`);
       if (!response.ok) {
         throw new Error('Failed to fetch live permission status');
       }
@@ -226,7 +220,7 @@ export const useInteractivePrompts = ({ conversationId, enableAnalytics = false 
     if (!conversationId) return;
     
     try {
-      await fetch(`${API_BASE}/chat/analytics/track-event`, {
+      await fetch(`${API_BASE}/api/chat/analytics/track-event`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -256,7 +250,7 @@ export const useInteractivePrompts = ({ conversationId, enableAnalytics = false 
     }) => {
       const responseTime = startTime ? Date.now() - startTime : 0;
       
-      const response = await fetch(`${API_BASE}/chat/prompts/${promptId}/respond`, {
+      const response = await fetch(`${API_BASE}/api/chat/prompts/${promptId}/respond`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
