@@ -55,8 +55,19 @@ class ClaudeCodeBridge {
       // Create readable stream for Server-Sent Events
       const stream = new ReadableStream({
         start: async (controller) => {
+          let streamClosed = false;
+          
           const sendResponse = (response: StreamResponse) => {
-            controller.enqueue(`data: ${JSON.stringify(response)}\n\n`);
+            if (streamClosed || controller.desiredSize === null) {
+              console.log(`⚠️  Stream already closed, cannot send response for ${requestId}`);
+              return;
+            }
+            try {
+              controller.enqueue(`data: ${JSON.stringify(response)}\n\n`);
+            } catch (error) {
+              console.log(`⚠️  Error sending to stream for ${requestId}:`, error);
+              streamClosed = true;
+            }
           };
 
           // Set up conversation completion pattern like ultimate.ts (must be outside try block)
@@ -139,6 +150,94 @@ class ClaudeCodeBridge {
                 console.log(`📨 Message ${messageCount} type: ${sdkMessage.type || "unknown"} for ${requestId}`);
               }
 
+              // PERMISSION INTERCEPTION: Check for dangerous tool usage before streaming
+              if (sdkMessage.type === "assistant" && sdkMessage.message?.content) {
+                const content = sdkMessage.message.content;
+                
+                // Check if this message contains tool usage
+                if (Array.isArray(content)) {
+                  for (const contentItem of content) {
+                    if (contentItem.type === "tool_use") {
+                      const toolName = contentItem.name;
+                      const toolParams = contentItem.input || {};
+                      const riskLevel = this.assessRiskLevel(toolName);
+                      
+                      // Only require permission for dangerous tools
+                      if (riskLevel === 'HIGH') {
+                        console.log(`🛡️  Dangerous tool detected: ${toolName} - requesting permission`);
+                        
+                        try {
+                          // Request permission from backend with timeout handling
+                          const permissionResult = await this.requestPermissionFromBackend(
+                            toolName,
+                            toolParams,
+                            conversationId
+                          );
+                          
+                          if (permissionResult.behavior === 'deny') {
+                            console.log(`🚫 Tool ${toolName} denied by user`);
+                            
+                            // Send denial response instead of tool usage
+                            const denialResponse: StreamResponse = {
+                              type: "claude_json",
+                              data: {
+                                type: "assistant",
+                                message: {
+                                  role: "assistant",
+                                  content: [{
+                                    type: "text",
+                                    text: `I cannot use the ${toolName} tool because permission was denied. ${permissionResult.message || ''}`
+                                  }]
+                                }
+                              },
+                              requestId,
+                              timestamp: Date.now()
+                            };
+                            
+                            sendResponse(denialResponse);
+                            
+                            // Send completion and finish
+                            sendResponse({
+                              type: "done",
+                              requestId,
+                              timestamp: Date.now()
+                            });
+                            
+                            // Complete the conversation
+                            if (conversationDone) conversationDone();
+                            return;
+                          }
+                          
+                          console.log(`✅ Tool ${toolName} approved by user`);
+                        } catch (permissionError) {
+                          console.error(`❌ Permission request failed for ${toolName}:`, permissionError);
+                          
+                          // Send error response and continue
+                          const errorResponse: StreamResponse = {
+                            type: "claude_json",
+                            data: {
+                              type: "assistant",
+                              message: {
+                                role: "assistant",
+                                content: [{
+                                  type: "text",
+                                  text: `Permission request failed for ${toolName}. Proceeding with default behavior.`
+                                }]
+                              }
+                            },
+                            requestId,
+                            timestamp: Date.now()
+                          };
+                          
+                          sendResponse(errorResponse);
+                          // Continue processing normally
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+
               // Send stream response
               const streamResponse: StreamResponse = {
                 type: "claude_json",
@@ -191,7 +290,14 @@ class ClaudeCodeBridge {
           } finally {
             // Clean up
             this.activeRequests.delete(requestId);
-            controller.close();
+            if (!streamClosed && controller.desiredSize !== null) {
+              try {
+                controller.close();
+              } catch (error) {
+                console.log(`⚠️  Error closing controller for ${requestId}:`, error);
+              }
+            }
+            streamClosed = true;
           }
         }
       });
@@ -281,11 +387,10 @@ class ClaudeCodeBridge {
       console.log('='.repeat(60));
       console.log('Options: y=allow, n=deny, a=allow all');
       
-      // For bridge mode, we'll auto-allow for now to test the callback mechanism
-      // Later we can integrate with web UI prompts
-      console.log('🚀 Auto-allowing for bridge testing (will be interactive in web UI)');
+      // This function should not be called anymore since we use requestPermissionFromBackend
+      console.warn('⚠️  getBasicPermission called - should use requestPermissionFromBackend instead');
       
-      return { behavior: 'allow', updatedInput: parameters };
+      return { behavior: 'deny', message: 'Use interactive permission system instead' };
       
     } catch (error) {
       console.error(`❌ Permission error for ${toolName}:`, error);
@@ -429,41 +534,71 @@ class ClaudeCodeBridge {
     }
   }
 
-  private async waitForPermissionResponse(promptId: string, timeoutMs: number = 60000): Promise<any> {
+  private async waitForPermissionResponse(promptId: string, timeoutMs: number = 120000): Promise<any> {
     const startTime = Date.now();
-    const pollInterval = 1000; // Poll every second
+    const pollInterval = 500; // Poll every 500ms for faster response
+    let consecutiveErrors = 0;
+    const maxConsecutiveErrors = 10;
+    
+    console.log(`⏳ Waiting for user response to prompt ${promptId} (timeout: ${timeoutMs}ms)`);
     
     while (Date.now() - startTime < timeoutMs) {
       try {
-        const response = await fetch(`${this.backendUrl}/api/chat/prompts/${promptId}`);
+        const response = await fetch(`${this.backendUrl}/api/chat/prompts/${promptId}`, {
+          timeout: 5000, // 5 second timeout per request
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        });
         
         if (response.ok) {
           const data = await response.json();
           const prompt = data.prompt;
+          
           if (prompt && prompt.status === 'answered') {
+            console.log(`✅ Received response for prompt ${promptId}: ${prompt.selectedOption}`);
             const options = prompt.options as any[];
             const selectedOption = options.find((o: any) => o.id === prompt.selectedOption);
             return selectedOption || { value: 'deny' };
           }
+          
+          // Reset error count on successful request
+          consecutiveErrors = 0;
+        } else if (response.status === 404) {
+          console.warn(`❓ Prompt ${promptId} not found, may have been removed`);
+          return { value: 'deny' };
+        } else {
+          consecutiveErrors++;
+          console.warn(`⚠️  HTTP ${response.status} for prompt ${promptId} (errors: ${consecutiveErrors})`);
         }
         
         // Wait before next poll
         await new Promise(resolve => setTimeout(resolve, pollInterval));
         
       } catch (error) {
-        console.log(`⏳ Polling for response to ${promptId}...`);
+        consecutiveErrors++;
+        
+        if (consecutiveErrors <= 3) {
+          console.log(`⏳ Polling for response to ${promptId}... (${Math.floor((Date.now() - startTime) / 1000)}s)`);
+        } else if (consecutiveErrors >= maxConsecutiveErrors) {
+          console.error(`❌ Too many consecutive errors (${consecutiveErrors}) for prompt ${promptId}, giving up`);
+          return { value: 'deny' };
+        }
+        
         await new Promise(resolve => setTimeout(resolve, pollInterval));
       }
     }
     
     // Timeout - default to deny
-    console.warn(`⏰ Permission request ${promptId} timed out`);
+    console.warn(`⏰ Permission request ${promptId} timed out after ${timeoutMs}ms`);
     return { value: 'deny' };
   }
 
   async start(): Promise<void> {
     const server = Bun.serve({
       port: this.port,
+      idleTimeout: 180000, // 3 minutes timeout instead of default 10 seconds
       async fetch(request) {
         const url = new URL(request.url);
         
