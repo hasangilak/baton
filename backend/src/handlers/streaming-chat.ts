@@ -7,7 +7,7 @@
 
 import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
-import { StreamResponse, StreamingContext, SDKMessage, AbortError } from '../types/streaming';
+import { StreamResponse, StreamingContext, AbortError } from '../types/streaming';
 import { logger } from '../utils/logger';
 
 // Shared abort controller management

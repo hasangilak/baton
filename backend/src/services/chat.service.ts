@@ -224,7 +224,7 @@ export class ChatService extends EventEmitter {
 
     if (error) {
       await this.handleError(messageId, error);
-      return { conversationId };
+      return conversationId ? { conversationId } : {};
     }
 
     // Emit streaming update with tool usage
@@ -257,7 +257,7 @@ export class ChatService extends EventEmitter {
       await this.extractAndSaveCodeBlocks(messageId, content);
     }
     
-    return { conversationId };
+    return conversationId ? { conversationId } : {};
   }
 
   /**

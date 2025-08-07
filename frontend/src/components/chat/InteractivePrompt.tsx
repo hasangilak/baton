@@ -97,7 +97,7 @@ export const InteractivePromptComponent: React.FC<InteractivePromptComponentProp
   };
 
   return (
-    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 my-3">
+    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 my-3" data-testid="permission-prompt-container">
       {/* Header */}
       <div className="flex items-start space-x-3 mb-3">
         <div className={clsx(
@@ -166,6 +166,13 @@ export const InteractivePromptComponent: React.FC<InteractivePromptComponentProp
               size="sm"
               onClick={() => handleOptionClick(option.id)}
               disabled={isResponding || selectedOption !== null}
+              data-testid={`permission-option-${option.id}`}
+              data-testid-semantic={
+                option.value === 'allow_once' || option.label?.toLowerCase().includes('once') ? 'permission-allow-once' :
+                option.value === 'allow_always' || option.label?.toLowerCase().includes('always') || option.label?.toLowerCase().includes("don't ask") ? 'permission-allow-always' :
+                option.value === 'deny' || option.label?.toLowerCase().includes('deny') || option.label?.toLowerCase().includes('no') ? 'permission-deny' :
+                `permission-option-${option.id}`
+              }
               className={clsx(
                 'w-full justify-start text-left h-auto py-2 px-3',
                 isSelected && 'ring-2 ring-blue-500 ring-offset-1',

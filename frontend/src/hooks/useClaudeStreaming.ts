@@ -10,7 +10,7 @@ import { useChatState } from './chat/useChatState';
 import { useAbortController } from './chat/useAbortController';
 import { useStreamParser } from './streaming/useStreamParser';
 import { usePermissions } from './chat/usePermissions';
-import { useWebSocket } from './useWebSocket';
+// import { useWebSocket } from './useWebSocket'; // Unused for now
 import type { 
   ChatMessage, 
   StreamingContext, 
@@ -38,7 +38,7 @@ export function useClaudeStreaming(options: ClaudeStreamingOptions = {}) {
   const abortController = useAbortController();
   const { processStreamLine } = useStreamParser();
   const { allowedTools, permissionRequest, showPermissionRequest } = usePermissions();
-  const webSocket = useWebSocket();
+  // const webSocket = useWebSocket(); // Unused for now
 
   // Current streaming state (following WebUI guide)
   const [currentAssistantMessage, setCurrentAssistantMessage] = useState<ChatMessage | null>(null);

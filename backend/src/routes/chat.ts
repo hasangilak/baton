@@ -659,6 +659,66 @@ router.get('/conversations/:conversationId/prompts/pending', async (req: Request
 });
 
 /**
+ * POST /api/chat/conversations/:conversationId/prompts
+ * Create an interactive prompt
+ */
+router.post('/conversations/:conversationId/prompts', async (req: Request, res: Response) => {
+  try {
+    const conversationId = req.params.conversationId;
+    const { type, title, message, options, context } = req.body;
+
+    if (!conversationId || !type || !message || !options) {
+      return res.status(400).json({
+        error: 'Conversation ID, type, message, and options are required',
+      });
+    }
+
+    // Generate unique prompt ID
+    const promptId = `${type}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+    // Create interactive prompt in database
+    const prompt = await prisma.interactivePrompt.create({
+      data: {
+        id: promptId,
+        conversationId,
+        type,
+        title: title || `${type} prompt`,
+        message,
+        options,
+        context: context || {},
+        timeoutAt: new Date(Date.now() + 30000), // 30 second timeout
+        status: 'pending'
+      }
+    });
+
+    // Emit interactive prompt event to frontend via WebSocket
+    io.emit('interactive_prompt', {
+      promptId: prompt.id,
+      conversationId,
+      type: prompt.type,
+      title: prompt.title,
+      message: prompt.message,
+      options: prompt.options,
+      context: prompt.context,
+      timeout: 30000
+    });
+
+    console.log(`🔧 Created interactive prompt: ${promptId} (${type})`);
+
+    return res.json({
+      success: true,
+      prompt
+    });
+
+  } catch (error) {
+    console.error('Error creating interactive prompt:', error);
+    return res.status(500).json({
+      error: 'Failed to create interactive prompt',
+    });
+  }
+});
+
+/**
  * POST /api/chat/prompts/:promptId/respond
  * Respond to an interactive prompt
  */
@@ -690,10 +750,18 @@ router.post('/prompts/:promptId/respond', async (req: Request, res: Response) =>
       }
     });
 
-    // Emit response via WebSocket
-    io.emit('prompt:response', {
+    // Find the selected option details
+    const options = prompt.options as any[];
+    const selectedOptionData = options.find((o: any) => o.id === selectedOption);
+
+    // Emit response via WebSocket with complete response data
+    io.emit('permission:response', {
       promptId,
-      selectedOption,
+      response: {
+        id: selectedOption,
+        label: selectedOptionData?.label || selectedOption,
+        value: selectedOptionData?.value || selectedOption
+      },
       timestamp: Date.now()
     });
 

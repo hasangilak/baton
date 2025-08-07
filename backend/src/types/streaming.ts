@@ -7,9 +7,10 @@
 
 // Core streaming response interface
 export interface StreamResponse {
-  type: "claude_json" | "error" | "done" | "aborted";
+  type: "claude_json" | "error" | "done" | "aborted" | "delegated";
   data?: unknown; // SDKMessage object for claude_json type
   error?: string;
+  requestId?: string; // For delegated responses
   messageId?: string; // Frontend reference for message updates
 }
 
