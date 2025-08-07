@@ -838,7 +838,7 @@ router.post('/prompts/:promptId/acknowledge', async (req: Request, res: Response
  * GET /api/chat/delivery-stats
  * Get prompt delivery statistics
  */
-router.get('/delivery-stats', async (req: Request, res: Response) => {
+router.get('/delivery-stats', async (_req: Request, res: Response) => {
   try {
     const stats = getPromptDeliveryService().getDeliveryStats();
     
@@ -991,7 +991,7 @@ router.post('/prompts/:promptId/respond', async (req: Request, res: Response) =>
         respondedAt: new Date(responseTime),
         autoHandler: 'user_selection',
         metadata: {
-          ...originalPrompt.metadata,
+          ...(originalPrompt.metadata as object || {}),
           responseAnalytics: {
             responseTimeMs,
             selectedOptionId: selectedOption,
@@ -1015,14 +1015,14 @@ router.post('/prompts/:promptId/respond', async (req: Request, res: Response) =>
       value: selectedOptionData?.value || selectedOption,
       timestamp: responseTime,
       responseTimeMs,
-      riskLevel: originalPrompt.context?.riskLevel,
-      toolName: originalPrompt.context?.toolName,
+      riskLevel: (originalPrompt.context as any)?.riskLevel,
+      toolName: (originalPrompt.context as any)?.toolName,
       conversationId: originalPrompt.conversationId
     };
 
     // Handle permission persistence based on response
-    if (originalPrompt.type === 'tool_permission' && originalPrompt.context?.toolName) {
-      const toolName = originalPrompt.context.toolName as string;
+    if (originalPrompt.type === 'tool_permission' && (originalPrompt.context as any)?.toolName) {
+      const toolName = (originalPrompt.context as any).toolName as string;
       const conversationId = originalPrompt.conversationId;
       
       try {
@@ -1065,7 +1065,7 @@ router.post('/prompts/:promptId/respond', async (req: Request, res: Response) =>
       analytics: {
         responseTime: responseTimeMs,
         promptType: originalPrompt.type,
-        riskLevel: originalPrompt.context?.riskLevel
+        riskLevel: (originalPrompt.context as any)?.riskLevel
       }
     };
 
@@ -1076,10 +1076,10 @@ router.post('/prompts/:promptId/respond', async (req: Request, res: Response) =>
     if (originalPrompt.conversation?.projectId) {
       ioInstance?.to(`project-${originalPrompt.conversation.projectId}`).emit('permission_analytics', {
         conversationId: originalPrompt.conversationId,
-        toolName: originalPrompt.context?.toolName,
+        toolName: (originalPrompt.context as any)?.toolName,
         decision: selectedOptionData?.value,
         responseTime: responseTimeMs,
-        riskLevel: originalPrompt.context?.riskLevel,
+        riskLevel: (originalPrompt.context as any)?.riskLevel,
         timestamp: responseTime
       });
     }
@@ -1089,7 +1089,7 @@ router.post('/prompts/:promptId/respond', async (req: Request, res: Response) =>
       totalResponses: await prisma.interactivePrompt.count({ where: { status: 'answered' }}),
       averageResponseTime: responseTimeMs, // Could be computed properly with aggregation
       decision: selectedOptionData?.value,
-      riskLevel: originalPrompt.context?.riskLevel
+      riskLevel: (originalPrompt.context as any)?.riskLevel
     });
 
     console.log(`📝 Enhanced response: ${promptId} → ${selectedOption} (${responseTimeMs}ms)`);
@@ -1795,13 +1795,13 @@ router.post('/messages/abort-bridge/:requestId', async (req: Request, res: Respo
       await axios.post(`${bridgeUrl}/abort/${requestId}`, {}, { timeout: 5000 });
       console.log(`⏹️ Abort request sent to bridge for ${requestId}`);
       
-      res.json({
+      return res.json({
         success: true,
         message: 'Abort request sent to bridge'
       });
     } catch (bridgeError) {
       console.error(`❌ Failed to abort bridge request ${requestId}:`, bridgeError);
-      res.status(500).json({
+      return res.status(500).json({
         error: 'Failed to abort bridge request',
         details: bridgeError instanceof Error ? bridgeError.message : String(bridgeError)
       });
@@ -1809,7 +1809,7 @@ router.post('/messages/abort-bridge/:requestId', async (req: Request, res: Respo
 
   } catch (error) {
     console.error('❌ Abort bridge request error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       error: 'Failed to process abort request',
     });
   }
@@ -1985,13 +1985,13 @@ router.get('/analytics/permissions', async (req: Request, res: Response) => {
       }
 
       // Tool tracking
-      const toolName = prompt.context?.toolName as string;
+      const toolName = (prompt.context as any)?.toolName as string;
       if (toolName) {
         analytics.toolsRequested[toolName] = (analytics.toolsRequested[toolName] || 0) + 1;
       }
 
       // Risk level tracking
-      const riskLevel = prompt.context?.riskLevel as string || 'UNKNOWN';
+      const riskLevel = (prompt.context as any)?.riskLevel as string || 'UNKNOWN';
       analytics.riskLevelDistribution[riskLevel] = (analytics.riskLevelDistribution[riskLevel] || 0) + 1;
 
       // Conversation activity
@@ -2014,9 +2014,11 @@ router.get('/analytics/permissions', async (req: Request, res: Response) => {
       topTools,
       summary: {
         totalRequests: analytics.totalPrompts,
-        mostCommonDecision: Object.keys(analytics.responsesByDecision).reduce((a, b) => 
-          analytics.responsesByDecision[a] > analytics.responsesByDecision[b] ? a : b, 'unknown'
-        ),
+        mostCommonDecision: Object.keys(analytics.responsesByDecision).length > 0
+          ? Object.keys(analytics.responsesByDecision).reduce((a, b) => 
+              (analytics.responsesByDecision[a] || 0) > (analytics.responsesByDecision[b] || 0) ? a : b
+            )
+          : 'unknown',
         averageResponseSeconds: Math.round(analytics.averageResponseTime / 1000),
         mostRequestedTool: topTools[0]?.tool || 'none'
       }
@@ -2133,7 +2135,7 @@ router.get('/conversations/:conversationId/permissions/live', async (req: Reques
       })),
       recentActivity: recentPrompts.map(p => ({
         promptId: p.id,
-        toolName: p.context?.toolName,
+        toolName: (p.context as any)?.toolName,
         status: p.status,
         selectedOption: p.selectedOption,
         createdAt: p.createdAt,
