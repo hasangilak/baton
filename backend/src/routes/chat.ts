@@ -1272,7 +1272,7 @@ router.post('/messages/stream', async (req: Request, res: Response): Promise<voi
           abortController,
           executable: "/usr/local/bin/node" as const,
           executableArgs: [],
-          pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_PATH || "/home/hassan/.claude/local/node_modules/.bin/claude",
+          pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_PATH || "/home/hassan/.nvm/versions/node/v22.18.0/bin/claude",
           maxTurns: 1,
           cwd: "/home/hassan/work/baton",
           // Use simple options - avoid canUseTool complexity

@@ -11,7 +11,7 @@
  * bun run bridge.ts [--port 8080] [--backend http://localhost:3001]
  */
 
-import { query, type PermissionResult } from "@anthropic-ai/claude-code";
+import { query, type PermissionResult, type SDKUserMessage } from "@anthropic-ai/claude-code";
 
 interface BridgeRequest {
   message: string;
@@ -70,7 +70,7 @@ class ClaudeCodeBridge {
             }
           };
 
-          // Set up conversation completion pattern like ultimate.ts (must be outside try block)
+          // Use working generator pattern from ultimate-claude-sdk.ts
           let conversationDone: (() => void) | undefined;
           const conversationComplete = new Promise<void>(resolve => {
             conversationDone = resolve;
@@ -87,21 +87,18 @@ class ClaudeCodeBridge {
               contextMessage = `Project: ${projectName}\n\n${message}`;
             }
 
-            // Configure Claude Code options without canUseTool due to SDK bug #4775
-            // The canUseTool callback is completely broken on Linux - even ultimate.ts fails
+            // Configure Claude Code options using the same pattern as working backend
             const claudeOptions: any = {
+              abortController,
+              executable: process.execPath,
+              executableArgs: [],
+              pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_PATH || "/home/hassan/.nvm/versions/node/v22.18.0/bin/claude",
               maxTurns: 20,
               mcpServers: {},
-              // Temporarily remove canUseTool to test if basic functionality works
+              permissionMode: 'default' as const,
+              // Add session resume if provided
+              ...(sessionId && sessionId.trim() !== "" ? { resume: sessionId } : {}),
             };
-
-            // Resume session if provided to preserve context
-            if (sessionId && sessionId.trim() !== "") {
-              claudeOptions.resume = sessionId;
-              console.log(`✅ Resuming session: ${sessionId}`);
-            } else {
-              console.log(`🆕 Starting new session for request ${requestId}`);
-            }
 
             // Add working directory
             if (workingDirectory) {
@@ -114,36 +111,66 @@ class ClaudeCodeBridge {
             }
 
             console.log(`🔧 Claude Code options configured for ${requestId}:`);
-            console.log(`   - permissionMode: ${claudeOptions.permissionMode}`);
-            console.log(`   - canUseTool: ${typeof claudeOptions.canUseTool}`);
+            console.log(`   - session: ${sessionId ? 'resuming' : 'new'}`);
             console.log(`   - allowedTools: ${claudeOptions.allowedTools || 'default'}`);
             console.log(`   - maxTurns: ${claudeOptions.maxTurns}`);
 
-            // Execute Claude Code query using ultimate.ts conversation completion pattern
-            // This prevents stream closure errors while implementing our own permission system
-            let messageCount = 0;
-            
-            // Use exact pattern from ultimate.ts that prevents stream closure
-            async function* createPromptStream() {
+            const createPromptStream = async function* (): AsyncIterableIterator<SDKUserMessage> {
               yield {
-                type: 'user' as const,
-                message: {
-                  role: 'user' as const,
-                  content: contextMessage
-                },
+                type: 'user',
+                message: { role: 'user', content: contextMessage },
                 parent_tool_use_id: null,
                 session_id: sessionId || `bridge-${Date.now()}`
               };
-              // CRITICAL: Wait for conversation to complete - this prevents stream closure errors
               await conversationComplete;
-            }
+            };
+
+            // Add working canUseTool callback with backend integration and fallback
+            claudeOptions.canUseTool = async (toolName: string, parameters: Record<string, any>) => {
+              const riskLevel = this.assessRiskLevel(toolName);
+              
+              if (riskLevel === 'HIGH') {
+                console.log(`🛡️  High-risk tool detected: ${toolName} - trying backend permission`);
+                try {
+                  // Try backend permission system with timeout
+                  const permissionPromise = this.requestPermissionFromBackend(
+                    toolName,
+                    parameters,
+                    conversationId
+                  );
+                  
+                  // Race against timeout to prevent deadlock
+                  const timeoutPromise = new Promise<PermissionResult>((resolve) => {
+                    setTimeout(() => {
+                      console.log(`⏰ Backend permission timed out for ${toolName} - falling back to auto-allow`);
+                      resolve({ behavior: 'allow', updatedInput: parameters });
+                    }, 60000); // 60 second timeout
+                  });
+                  
+                  const permissionResult = await Promise.race([permissionPromise, timeoutPromise]);
+                  
+                  if (permissionResult.behavior === 'deny') {
+                    console.log(`🚫 Tool ${toolName} denied by user`);
+                    return { behavior: 'deny', message: 'User denied permission' };
+                  }
+                  
+                  console.log(`✅ Tool ${toolName} approved by user/fallback`);
+                  return { behavior: 'allow', updatedInput: permissionResult.updatedInput || parameters };
+                } catch (error) {
+                  console.error(`❌ Permission request failed for ${toolName}, falling back to auto-allow:`, error);
+                  return { behavior: 'allow', updatedInput: parameters };
+                }
+              }
+              
+              // Allow non-dangerous tools by default
+              return { behavior: 'allow', updatedInput: parameters };
+            };
+
+            let messageCount = 0;
             
             for await (const sdkMessage of query({
               prompt: createPromptStream(),
-              options: {
-                abortController,
-                ...claudeOptions
-              }
+              options: claudeOptions
             })) {
               messageCount++;
               
@@ -152,93 +179,7 @@ class ClaudeCodeBridge {
                 console.log(`📨 Message ${messageCount} type: ${sdkMessage.type || "unknown"} for ${requestId}`);
               }
 
-              // PERMISSION INTERCEPTION: Check for dangerous tool usage before streaming
-              if (sdkMessage.type === "assistant" && sdkMessage.message?.content) {
-                const content = sdkMessage.message.content;
-                
-                // Check if this message contains tool usage
-                if (Array.isArray(content)) {
-                  for (const contentItem of content) {
-                    if (contentItem.type === "tool_use") {
-                      const toolName = contentItem.name;
-                      const toolParams = contentItem.input || {};
-                      const riskLevel = this.assessRiskLevel(toolName);
-                      
-                      // Only require permission for dangerous tools
-                      if (riskLevel === 'HIGH') {
-                        console.log(`🛡️  Dangerous tool detected: ${toolName} - requesting permission`);
-                        
-                        try {
-                          // Request permission from backend with timeout handling
-                          const permissionResult = await this.requestPermissionFromBackend(
-                            toolName,
-                            toolParams,
-                            conversationId
-                          );
-                          
-                          if (permissionResult.behavior === 'deny') {
-                            console.log(`🚫 Tool ${toolName} denied by user`);
-                            
-                            // Send denial response instead of tool usage
-                            const denialResponse: StreamResponse = {
-                              type: "claude_json",
-                              data: {
-                                type: "assistant",
-                                message: {
-                                  role: "assistant",
-                                  content: [{
-                                    type: "text",
-                                    text: `I cannot use the ${toolName} tool because permission was denied. ${permissionResult.message || ''}`
-                                  }]
-                                }
-                              },
-                              requestId,
-                              timestamp: Date.now()
-                            };
-                            
-                            sendResponse(denialResponse);
-                            
-                            // Send completion and finish
-                            sendResponse({
-                              type: "done",
-                              requestId,
-                              timestamp: Date.now()
-                            });
-                            
-                            // Complete the conversation
-                            if (conversationDone) conversationDone();
-                            return;
-                          }
-                          
-                          console.log(`✅ Tool ${toolName} approved by user`);
-                        } catch (permissionError) {
-                          console.error(`❌ Permission request failed for ${toolName}:`, permissionError);
-                          
-                          // Send error response and continue
-                          const errorResponse: StreamResponse = {
-                            type: "claude_json",
-                            data: {
-                              type: "assistant",
-                              message: {
-                                role: "assistant",
-                                content: [{
-                                  type: "text",
-                                  text: `Permission request failed for ${toolName}. Proceeding with default behavior.`
-                                }]
-                              }
-                            },
-                            requestId,
-                            timestamp: Date.now()
-                          };
-                          
-                          sendResponse(errorResponse);
-                          // Continue processing normally
-                        }
-                      }
-                    }
-                  }
-                }
-              }
+              // Permission handling is now done in canUseTool callback
 
               // Send stream response
               const streamResponse: StreamResponse = {
@@ -250,11 +191,9 @@ class ClaudeCodeBridge {
               
               sendResponse(streamResponse);
 
-              // Handle different message types
+              // Handle different message types and natural completion
               if (sdkMessage.type === "result") {
                 console.log(`✅ Claude Code execution completed for ${requestId}: ${sdkMessage.subtype}`);
-                
-                // Complete the conversation to prevent stream closure
                 if (conversationDone) conversationDone();
                 break;
               }
@@ -271,8 +210,6 @@ class ClaudeCodeBridge {
 
           } catch (error) {
             console.error(`❌ Bridge execution error for ${requestId}:`, error);
-            
-            // Complete the conversation on error to prevent hanging
             if (conversationDone) conversationDone();
             
             if (error instanceof Error && error.name === 'AbortError') {
@@ -363,40 +300,6 @@ class ClaudeCodeBridge {
         status: 500,
         headers: { 'Content-Type': 'application/json' }
       });
-    }
-  }
-
-  private async getBasicPermission(toolName: string, parameters: Record<string, any>): Promise<PermissionResult> {
-    try {
-      console.log('\n' + '='.repeat(60));
-      console.log(`🔧 PERMISSION REQUEST - ${toolName}`);
-      console.log('='.repeat(60));
-      
-      // Show tool details
-      console.log(`📋 Tool: ${toolName}`);
-      console.log(`📝 Parameters:`);
-      Object.entries(parameters).forEach(([key, value]) => {
-        const valueStr = typeof value === 'string' ? value : JSON.stringify(value);
-        const truncated = valueStr.length > 100 ? valueStr.substring(0, 100) + '...' : valueStr;
-        console.log(`   ${key}: ${truncated}`);
-      });
-      
-      // Risk assessment
-      const riskLevel = this.assessRiskLevel(toolName);
-      const riskIcon = riskLevel === 'HIGH' ? '🔴' : riskLevel === 'MEDIUM' ? '🟡' : '🟢';
-      console.log(`\n🛡️  Risk Level: ${riskIcon} ${riskLevel}`);
-      
-      console.log('='.repeat(60));
-      console.log('Options: y=allow, n=deny, a=allow all');
-      
-      // This function should not be called anymore since we use requestPermissionFromBackend
-      console.warn('⚠️  getBasicPermission called - should use requestPermissionFromBackend instead');
-      
-      return { behavior: 'deny', message: 'Use interactive permission system instead' };
-      
-    } catch (error) {
-      console.error(`❌ Permission error for ${toolName}:`, error);
-      return { behavior: 'deny', message: 'Permission system error' };
     }
   }
 
@@ -546,13 +449,18 @@ class ClaudeCodeBridge {
     
     while (Date.now() - startTime < timeoutMs) {
       try {
+        const fetchAbortController = new AbortController();
+        const timeoutId = setTimeout(() => fetchAbortController.abort(), 5000); // 5 second timeout
+        
         const response = await fetch(`${this.backendUrl}/api/chat/prompts/${promptId}`, {
-          timeout: 5000, // 5 second timeout per request
+          signal: fetchAbortController.signal,
           headers: {
             'Accept': 'application/json',
             'Content-Type': 'application/json'
           }
         });
+        
+        clearTimeout(timeoutId);
         
         if (response.ok) {
           const data = await response.json();
@@ -598,7 +506,7 @@ class ClaudeCodeBridge {
   }
 
   async start(): Promise<void> {
-    const server = Bun.serve({
+    const server = (Bun as any).serve({
       port: this.port,
       idleTimeout: 180, // 3 minutes timeout in seconds (max 255)
       async fetch(request) {
@@ -660,7 +568,7 @@ class ClaudeCodeBridge {
 
   async stop(): Promise<void> {
     console.log(`⏹️ Aborting ${this.activeRequests.size} active requests...`);
-    for (const [requestId, abortController] of this.activeRequests) {
+    for (const [requestId, abortController] of Array.from(this.activeRequests)) {
       abortController.abort();
     }
     this.activeRequests.clear();
