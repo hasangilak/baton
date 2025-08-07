@@ -641,7 +641,7 @@ class UltimateClaudeSDK {
       contextStrategy = await this.sessionManager.askContextStrategy();
     }
 
-    // GITHUB ISSUE #4775 FIX: Removed conversationDone since we're not using blocking pattern
+    let conversationDone: (() => void) | undefined;
     const startTime = Date.now();
     const toolsUsed: string[] = [];
     
@@ -649,8 +649,10 @@ class UltimateClaudeSDK {
       const messages: SDKMessage[] = [];
       const abortController = new AbortController();
 
-      // GITHUB ISSUE #4775 FIX: Non-blocking stream pattern
-      // Do NOT block the stream - this allows canUseTool callbacks to work properly
+      const conversationComplete = new Promise<void>(resolve => {
+        conversationDone = resolve;
+      });
+
       async function* createPromptStream(): AsyncIterableIterator<SDKUserMessage> {
         yield {
           type: 'user',
@@ -658,7 +660,7 @@ class UltimateClaudeSDK {
           parent_tool_use_id: null,
           session_id: options.sessionId || `ultimate-${Date.now()}`
         };
-        // CRITICAL: No await here - let the stream complete naturally
+        await conversationComplete;
       }
 
       // Configure ultimate SDK options
@@ -666,6 +668,7 @@ class UltimateClaudeSDK {
         maxTurns: options.maxTurns || 8,
         mcpServers: options.mcpServers || {},
         canUseTool: async (toolName: string, parameters: Record<string, any>) => {
+          console.log('////////////////////////////\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\//////// hello')
           if (!toolsUsed.includes(toolName)) {
             toolsUsed.push(toolName);
           }
@@ -734,7 +737,7 @@ class UltimateClaudeSDK {
           const duration = Date.now() - startTime;
           finalCost = message.total_cost_usd;
           
-          // GITHUB ISSUE #4775 FIX: No need to call conversationDone() anymore
+          if (conversationDone) conversationDone();
           
           // Save comprehensive session data
           if (finalSessionId && message.subtype === 'success') {
@@ -795,7 +798,7 @@ class UltimateClaudeSDK {
       throw new Error('Query completed without result');
       
     } catch (error) {
-      // GITHUB ISSUE #4775 FIX: No need to call conversationDone() anymore
+      if (conversationDone) conversationDone();
       
       console.error('\n💥 ULTIMATE QUERY FAILED:', error);
       return {

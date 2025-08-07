@@ -143,7 +143,7 @@ router.post('/todos', async (req, res) => {
           update: {
             content: todo.content,
             status: todo.status,
-            priority: todo.priority,
+            priority: todo.priority || 'medium',
             orderIndex: i,
             updatedAt: new Date()
           },
@@ -151,7 +151,7 @@ router.post('/todos', async (req, res) => {
             id: todo.id,
             content: todo.content,
             status: todo.status,
-            priority: todo.priority,
+            priority: todo.priority || 'medium',
             projectId,
             orderIndex: i,
             createdBy: 'claude'
