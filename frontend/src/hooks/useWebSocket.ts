@@ -314,21 +314,136 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
       });
     });
 
-    // Interactive prompt events
+    // Enhanced interactive prompt events with analytics
     socket.on('interactive_prompt', (data) => {
-      console.log('🔔 Interactive prompt received:', data);
+      console.log('🔔 Enhanced interactive prompt received:', data);
+      console.log('📊 Analytics data:', {
+        riskLevel: data.riskLevel,
+        usageStatistics: data.usageStatistics,
+        timestamp: data.timestamp
+      });
+      
       // Invalidate queries to refetch pending prompts for the specific conversation
       queryClient.invalidateQueries({
         queryKey: ['interactivePrompts', 'pending', data.conversationId]
       });
+
+      // Invalidate analytics queries for real-time updates
+      if (data.conversationId) {
+        queryClient.invalidateQueries({
+          queryKey: ['permission-analytics', data.conversationId]
+        });
+        queryClient.invalidateQueries({
+          queryKey: ['live-permission-status', data.conversationId]
+        });
+      }
     });
 
-    socket.on('prompt:response', (data) => {
-      console.log('📝 Prompt response received:', data);
+    socket.on('permission:response', (data) => {
+      console.log('📝 Enhanced prompt response received:', data);
+      console.log('📊 Response analytics:', {
+        responseTime: data.analytics?.responseTime,
+        riskLevel: data.analytics?.riskLevel
+      });
+      
       // Find which conversation this prompt belongs to and invalidate queries
       queryClient.invalidateQueries({
         queryKey: ['interactivePrompts', 'pending']
       });
+
+      // Update analytics caches
+      if (data.response?.conversationId) {
+        queryClient.invalidateQueries({
+          queryKey: ['permission-analytics', data.response.conversationId]
+        });
+        queryClient.invalidateQueries({
+          queryKey: ['live-permission-status', data.response.conversationId]
+        });
+      }
+    });
+
+    // New analytics event handlers
+    socket.on('permission_request', (data) => {
+      console.log('🔐 Permission request notification:', data);
+      
+      // Emit custom event for toast notifications or dashboard updates
+      const customEvent = new CustomEvent('baton:permission-request', {
+        detail: {
+          conversationId: data.conversationId,
+          toolName: data.toolName,
+          riskLevel: data.riskLevel,
+          timestamp: data.timestamp
+        }
+      });
+      window.dispatchEvent(customEvent);
+    });
+
+    socket.on('permission_analytics', (data) => {
+      console.log('📊 Permission analytics update:', data);
+      
+      // Emit custom event for dashboard components
+      const customEvent = new CustomEvent('baton:analytics-update', {
+        detail: {
+          conversationId: data.conversationId,
+          toolName: data.toolName,
+          decision: data.decision,
+          responseTime: data.responseTime,
+          riskLevel: data.riskLevel,
+          timestamp: data.timestamp
+        }
+      });
+      window.dispatchEvent(customEvent);
+
+      // Update relevant queries
+      if (data.conversationId) {
+        queryClient.invalidateQueries({
+          queryKey: ['permission-analytics', data.conversationId]
+        });
+        queryClient.invalidateQueries({
+          queryKey: ['live-permission-status', data.conversationId]
+        });
+      }
+    });
+
+    socket.on('permission_statistics', (data) => {
+      console.log('📈 Global permission statistics update:', data);
+      
+      // Emit custom event for global dashboard components
+      const customEvent = new CustomEvent('baton:global-statistics', {
+        detail: {
+          totalResponses: data.totalResponses,
+          averageResponseTime: data.averageResponseTime,
+          decision: data.decision,
+          riskLevel: data.riskLevel
+        }
+      });
+      window.dispatchEvent(customEvent);
+
+      // Invalidate global analytics queries
+      queryClient.invalidateQueries({
+        queryKey: ['permission-analytics']
+      });
+    });
+
+    socket.on('analytics_event', (data) => {
+      console.log('📋 Analytics event received:', data);
+      
+      // Handle different types of analytics events
+      switch (data.eventType) {
+        case 'prompt_received':
+        case 'prompt_responded':
+        case 'prompt_completed':
+        case 'prompt_failed':
+          // Update conversation-specific analytics
+          if (data.conversationId) {
+            queryClient.invalidateQueries({
+              queryKey: ['live-permission-status', data.conversationId]
+            });
+          }
+          break;
+        default:
+          console.log('Unknown analytics event type:', data.eventType);
+      }
     });
 
     socket.on('prompt:timeout', (data) => {
@@ -337,6 +452,16 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
       queryClient.invalidateQueries({
         queryKey: ['interactivePrompts', 'pending']
       });
+
+      // Emit custom event for timeout notifications
+      const customEvent = new CustomEvent('baton:prompt-timeout', {
+        detail: {
+          promptId: data.promptId,
+          conversationId: data.conversationId,
+          timestamp: Date.now()
+        }
+      });
+      window.dispatchEvent(customEvent);
     });
 
     // Chat events

@@ -660,12 +660,12 @@ router.get('/conversations/:conversationId/prompts/pending', async (req: Request
 
 /**
  * POST /api/chat/conversations/:conversationId/prompts
- * Create an interactive prompt
+ * Create an enhanced interactive prompt with analytics
  */
 router.post('/conversations/:conversationId/prompts', async (req: Request, res: Response) => {
   try {
     const conversationId = req.params.conversationId;
-    const { type, title, message, options, context } = req.body;
+    const { type, title, message, options, context, metadata } = req.body;
 
     if (!conversationId || !type || !message || !options) {
       return res.status(400).json({
@@ -673,10 +673,23 @@ router.post('/conversations/:conversationId/prompts', async (req: Request, res: 
       });
     }
 
-    // Generate unique prompt ID
-    const promptId = `${type}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    // Generate unique prompt ID with better format
+    const promptId = `${type}_${conversationId.slice(-8)}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
-    // Create interactive prompt in database
+    // Enhanced context with risk analysis and statistics
+    const enhancedContext = {
+      ...context,
+      toolName: context?.toolName,
+      riskLevel: context?.riskLevel || 'MEDIUM',
+      parameters: context?.parameters,
+      usageCount: context?.usageCount || 0,
+      requestTime: new Date().toISOString(),
+      conversationId,
+      userAgent: req.headers['user-agent'],
+      ...metadata
+    };
+
+    // Create interactive prompt in database with enhanced data
     const prompt = await prisma.interactivePrompt.create({
       data: {
         id: promptId,
@@ -685,47 +698,95 @@ router.post('/conversations/:conversationId/prompts', async (req: Request, res: 
         title: title || `${type} prompt`,
         message,
         options,
-        context: context || {},
+        context: enhancedContext,
         timeoutAt: new Date(Date.now() + 30000), // 30 second timeout
-        status: 'pending'
+        status: 'pending',
+        metadata: {
+          createdByHandler: 'webui-chat-handler-enhanced',
+          riskAnalysis: {
+            level: context?.riskLevel || 'MEDIUM',
+            toolType: type,
+            parametersCount: context?.parameters ? Object.keys(JSON.parse(context.parameters)).length : 0
+          },
+          analytics: {
+            requestedAt: Date.now(),
+            conversationContext: conversationId,
+            userSession: req.headers['x-session-id'] || 'unknown'
+          }
+        }
       }
     });
 
-    // Emit interactive prompt event to frontend via WebSocket
-    io.emit('interactive_prompt', {
+    // Enhanced WebSocket event with rich context
+    const socketEvent = {
       promptId: prompt.id,
       conversationId,
       type: prompt.type,
       title: prompt.title,
       message: prompt.message,
       options: prompt.options,
-      context: prompt.context,
-      timeout: 30000
-    });
+      context: enhancedContext,
+      timeout: 30000,
+      riskLevel: context?.riskLevel || 'MEDIUM',
+      toolName: context?.toolName,
+      usageStatistics: {
+        previousUsage: context?.usageCount || 0,
+        riskAssessment: context?.riskLevel || 'MEDIUM',
+        recommendedAction: context?.riskLevel === 'LOW' ? 'auto_allow' : 'user_review'
+      },
+      timestamp: Date.now()
+    };
 
-    console.log(`🔧 Created interactive prompt: ${promptId} (${type})`);
+    // Emit to specific conversation room for better targeting
+    io.to(`conversation-${conversationId}`).emit('interactive_prompt', socketEvent);
+    
+    // Also emit to project room for broader awareness
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { projectId: true }
+    });
+    
+    if (conversation?.projectId) {
+      io.to(`project-${conversation.projectId}`).emit('permission_request', {
+        conversationId,
+        promptId: prompt.id,
+        toolName: context?.toolName,
+        riskLevel: context?.riskLevel,
+        timestamp: Date.now()
+      });
+    }
+
+    console.log(`🔧 Enhanced prompt created: ${promptId} (${type}) Risk: ${context?.riskLevel || 'MEDIUM'}`);
+    console.log(`📡 WebSocket events emitted to conversation-${conversationId} and project-${conversation?.projectId}`);
 
     return res.json({
       success: true,
-      prompt
+      prompt,
+      socketEvent,
+      analytics: {
+        promptId,
+        riskLevel: context?.riskLevel,
+        targetRooms: [`conversation-${conversationId}`, `project-${conversation?.projectId}`]
+      }
     });
 
   } catch (error) {
-    console.error('Error creating interactive prompt:', error);
+    console.error('Error creating enhanced interactive prompt:', error);
     return res.status(500).json({
       error: 'Failed to create interactive prompt',
+      details: error instanceof Error ? error.message : String(error)
     });
   }
 });
 
 /**
  * POST /api/chat/prompts/:promptId/respond
- * Respond to an interactive prompt
+ * Enhanced prompt response with analytics and permission tracking
  */
 router.post('/prompts/:promptId/respond', async (req: Request, res: Response) => {
   try {
     const promptId = req.params.promptId;
-    const { selectedOption } = req.body;
+    const { selectedOption, metadata } = req.body;
 
     if (!promptId) {
       return res.status(400).json({
@@ -739,14 +800,43 @@ router.post('/prompts/:promptId/respond', async (req: Request, res: Response) =>
       });
     }
 
-    // Update the prompt
+    const responseTime = Date.now();
+
+    // Get the original prompt for context
+    const originalPrompt = await prisma.interactivePrompt.findUnique({
+      where: { id: promptId },
+      include: { conversation: true }
+    });
+
+    if (!originalPrompt) {
+      return res.status(404).json({
+        error: 'Prompt not found',
+      });
+    }
+
+    // Calculate response time
+    const promptCreatedTime = originalPrompt.createdAt.getTime();
+    const responseTimeMs = responseTime - promptCreatedTime;
+
+    // Update the prompt with enhanced analytics
     const prompt = await prisma.interactivePrompt.update({
       where: { id: promptId },
       data: {
         status: 'answered',
         selectedOption,
-        respondedAt: new Date(),
-        autoHandler: 'user_selection'
+        respondedAt: new Date(responseTime),
+        autoHandler: 'user_selection',
+        metadata: {
+          ...originalPrompt.metadata,
+          responseAnalytics: {
+            responseTimeMs,
+            selectedOptionId: selectedOption,
+            userAgent: req.headers['user-agent'],
+            ipAddress: req.ip,
+            sessionId: req.headers['x-session-id'] || 'unknown',
+            ...metadata
+          }
+        }
       }
     });
 
@@ -754,57 +844,137 @@ router.post('/prompts/:promptId/respond', async (req: Request, res: Response) =>
     const options = prompt.options as any[];
     const selectedOptionData = options.find((o: any) => o.id === selectedOption);
 
-    // Emit response via WebSocket with complete response data
-    io.emit('permission:response', {
+    // Enhanced response object with full context
+    const enhancedResponse = {
+      id: selectedOption,
+      label: selectedOptionData?.label || selectedOption,
+      value: selectedOptionData?.value || selectedOption,
+      timestamp: responseTime,
+      responseTimeMs,
+      riskLevel: originalPrompt.context?.riskLevel,
+      toolName: originalPrompt.context?.toolName,
+      conversationId: originalPrompt.conversationId
+    };
+
+    // Handle permission persistence based on response
+    if (originalPrompt.type === 'tool_permission' && originalPrompt.context?.toolName) {
+      const toolName = originalPrompt.context.toolName as string;
+      const conversationId = originalPrompt.conversationId;
+      
+      try {
+        if (selectedOptionData?.value === 'allow_always') {
+          await ConversationPermissionsService.grantPermission(
+            conversationId,
+            toolName,
+            'user',
+            undefined // No expiration for "always allow"
+          );
+          console.log(`💾 Granted permanent permission for ${toolName} in conversation ${conversationId}`);
+        } else if (selectedOptionData?.value === 'allow_all') {
+          // Store temporary session-wide permission (1 hour expiration)
+          const oneHourFromNow = new Date(Date.now() + 60 * 60 * 1000);
+          await ConversationPermissionsService.grantPermission(
+            conversationId,
+            'ALL_TOOLS_SESSION',
+            'user',
+            oneHourFromNow
+          );
+          console.log(`🕐 Granted session-wide permissions for conversation ${conversationId}`);
+        } else if (selectedOptionData?.value === 'deny') {
+          await ConversationPermissionsService.denyPermission(
+            conversationId,
+            toolName,
+            'user'
+          );
+          console.log(`🚫 Denied permission for ${toolName} in conversation ${conversationId}`);
+        }
+      } catch (permissionError) {
+        console.error('Error managing permission:', permissionError);
+      }
+    }
+
+    // Enhanced WebSocket events with comprehensive data
+    const primaryEvent = {
       promptId,
-      response: {
-        id: selectedOption,
-        label: selectedOptionData?.label || selectedOption,
-        value: selectedOptionData?.value || selectedOption
-      },
-      timestamp: Date.now()
+      response: enhancedResponse,
+      timestamp: responseTime,
+      analytics: {
+        responseTime: responseTimeMs,
+        promptType: originalPrompt.type,
+        riskLevel: originalPrompt.context?.riskLevel
+      }
+    };
+
+    // Emit to conversation room
+    io.to(`conversation-${originalPrompt.conversationId}`).emit('permission:response', primaryEvent);
+
+    // Emit analytics event to project room
+    if (originalPrompt.conversation?.projectId) {
+      io.to(`project-${originalPrompt.conversation.projectId}`).emit('permission_analytics', {
+        conversationId: originalPrompt.conversationId,
+        toolName: originalPrompt.context?.toolName,
+        decision: selectedOptionData?.value,
+        responseTime: responseTimeMs,
+        riskLevel: originalPrompt.context?.riskLevel,
+        timestamp: responseTime
+      });
+    }
+
+    // Global analytics for dashboard
+    io.emit('permission_statistics', {
+      totalResponses: await prisma.interactivePrompt.count({ where: { status: 'answered' }}),
+      averageResponseTime: responseTimeMs, // Could be computed properly with aggregation
+      decision: selectedOptionData?.value,
+      riskLevel: originalPrompt.context?.riskLevel
     });
 
-    console.log(`📝 User responded to prompt ${promptId} with option ${selectedOption}`);
+    console.log(`📝 Enhanced response: ${promptId} → ${selectedOption} (${responseTimeMs}ms)`);
 
-    // If the prompt has a session ID, trigger session continuation
+    // Handle session continuation if needed
     if (prompt.sessionId) {
-      console.log(`🔄 Triggering session continuation for ${prompt.sessionId}`);
-      
-      // Map the selected option to the appropriate response
-      const options = prompt.options as any[];
-      const option = options.find((o: any) => o.id === selectedOption);
-      let response = 'yes'; // Default
-      
-      if (option) {
-        if (option.value === 'no' || option.label.toLowerCase().includes('no')) {
-          response = 'no';
-        } else if (option.value === 'yes_dont_ask' || option.label.toLowerCase().includes("don't ask")) {
-          response = 'yes and don\'t ask again';
-        }
-      }
-      
-      // Emit session continuation event
+      const sessionResponse = mapOptionToSessionResponse(selectedOptionData);
       io.emit('session:continue', {
         sessionId: prompt.sessionId,
-        response: response,
-        timestamp: Date.now()
+        response: sessionResponse,
+        timestamp: responseTime
       });
-      
-      console.log(`📡 Session continuation event emitted for ${prompt.sessionId} with response: ${response}`);
+      console.log(`🔄 Session ${prompt.sessionId} continued with: ${sessionResponse}`);
     }
 
     return res.json({
       success: true,
       prompt,
+      response: enhancedResponse,
+      analytics: {
+        responseTime: responseTimeMs,
+        permissionStored: selectedOptionData?.value === 'allow_always',
+        eventsEmitted: [
+          `conversation-${originalPrompt.conversationId}`,
+          `project-${originalPrompt.conversation?.projectId}`,
+          'global'
+        ]
+      }
     });
   } catch (error) {
-    console.error('Error responding to prompt:', error);
+    console.error('Error processing enhanced prompt response:', error);
     return res.status(500).json({
-      error: 'Failed to respond to prompt',
+      error: 'Failed to process prompt response',
+      details: error instanceof Error ? error.message : String(error)
     });
   }
+
 });
+
+// Helper function for session response mapping
+function mapOptionToSessionResponse(option: any): string {
+  if (!option) return 'yes';
+  
+  if (option.value === 'deny' || option.value === 'no') return 'no';
+  if (option.value === 'allow_always' || option.label?.toLowerCase().includes("don't ask")) {
+    return 'yes and don\'t ask again';
+  }
+  return 'yes';
+}
 
 /**
  * POST /api/chat/prompts/notify
@@ -1277,6 +1447,260 @@ router.delete('/conversations/:conversationId/permissions/:toolName', async (req
     console.error('Error revoking conversation permission:', error);
     return res.status(500).json({
       error: 'Failed to revoke conversation permission',
+    });
+  }
+});
+
+/**
+ * GET /api/chat/analytics/permissions
+ * Get comprehensive permission analytics
+ */
+router.get('/analytics/permissions', async (req: Request, res: Response) => {
+  try {
+    const { conversationId, projectId, timeframe = '24h' } = req.query;
+
+    // Calculate time range
+    const now = new Date();
+    let since: Date;
+    switch (timeframe) {
+      case '1h': since = new Date(now.getTime() - 60 * 60 * 1000); break;
+      case '24h': since = new Date(now.getTime() - 24 * 60 * 60 * 1000); break;
+      case '7d': since = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000); break;
+      default: since = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    }
+
+    const whereClause: any = {
+      createdAt: { gte: since }
+    };
+
+    if (conversationId) {
+      whereClause.conversationId = conversationId as string;
+    } else if (projectId) {
+      whereClause.conversation = {
+        projectId: projectId as string
+      };
+    }
+
+    // Get permission prompts with analytics
+    const prompts = await prisma.interactivePrompt.findMany({
+      where: {
+        ...whereClause,
+        type: 'tool_permission',
+        status: { not: 'pending' }
+      },
+      include: {
+        conversation: {
+          select: { projectId: true, title: true }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    // Calculate analytics
+    const analytics = {
+      totalPrompts: prompts.length,
+      responsesByDecision: {} as Record<string, number>,
+      averageResponseTime: 0,
+      toolsRequested: {} as Record<string, number>,
+      riskLevelDistribution: {} as Record<string, number>,
+      conversationActivity: {} as Record<string, number>,
+      timelineBuckets: [] as any[]
+    };
+
+    let totalResponseTime = 0;
+    let responsesWithTime = 0;
+
+    prompts.forEach(prompt => {
+      // Decision tracking
+      if (prompt.selectedOption) {
+        const options = prompt.options as any[];
+        const selectedOption = options.find((o: any) => o.id === prompt.selectedOption);
+        const decision = selectedOption?.value || 'unknown';
+        analytics.responsesByDecision[decision] = (analytics.responsesByDecision[decision] || 0) + 1;
+      }
+
+      // Response time tracking
+      if (prompt.respondedAt) {
+        const responseTime = prompt.respondedAt.getTime() - prompt.createdAt.getTime();
+        totalResponseTime += responseTime;
+        responsesWithTime++;
+      }
+
+      // Tool tracking
+      const toolName = prompt.context?.toolName as string;
+      if (toolName) {
+        analytics.toolsRequested[toolName] = (analytics.toolsRequested[toolName] || 0) + 1;
+      }
+
+      // Risk level tracking
+      const riskLevel = prompt.context?.riskLevel as string || 'UNKNOWN';
+      analytics.riskLevelDistribution[riskLevel] = (analytics.riskLevelDistribution[riskLevel] || 0) + 1;
+
+      // Conversation activity
+      analytics.conversationActivity[prompt.conversationId] = (analytics.conversationActivity[prompt.conversationId] || 0) + 1;
+    });
+
+    analytics.averageResponseTime = responsesWithTime > 0 ? totalResponseTime / responsesWithTime : 0;
+
+    // Top 5 most requested tools
+    const topTools = Object.entries(analytics.toolsRequested)
+      .sort(([,a], [,b]) => (b as number) - (a as number))
+      .slice(0, 5)
+      .map(([tool, count]) => ({ tool, count }));
+
+    return res.json({
+      success: true,
+      timeframe: timeframe as string,
+      since: since.toISOString(),
+      analytics,
+      topTools,
+      summary: {
+        totalRequests: analytics.totalPrompts,
+        mostCommonDecision: Object.keys(analytics.responsesByDecision).reduce((a, b) => 
+          analytics.responsesByDecision[a] > analytics.responsesByDecision[b] ? a : b, 'unknown'
+        ),
+        averageResponseSeconds: Math.round(analytics.averageResponseTime / 1000),
+        mostRequestedTool: topTools[0]?.tool || 'none'
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching permission analytics:', error);
+    return res.status(500).json({
+      error: 'Failed to fetch permission analytics',
+      details: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+/**
+ * POST /api/chat/analytics/track-event
+ * Track custom permission events for analytics
+ */
+router.post('/analytics/track-event', async (req: Request, res: Response) => {
+  try {
+    const { eventType, conversationId, toolName, metadata } = req.body;
+
+    if (!eventType || !conversationId) {
+      return res.status(400).json({
+        error: 'Event type and conversation ID are required'
+      });
+    }
+
+    // Create analytics event (could be stored in a separate analytics table)
+    const event = {
+      id: `analytics_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+      eventType,
+      conversationId,
+      toolName: toolName || null,
+      timestamp: new Date(),
+      metadata: {
+        ...metadata,
+        userAgent: req.headers['user-agent'],
+        ip: req.ip,
+        source: 'webui-chat-handler-enhanced'
+      }
+    };
+
+    // For now, emit as WebSocket event for real-time analytics
+    io.emit('analytics_event', event);
+
+    console.log(`📊 Analytics event tracked: ${eventType} for ${toolName || 'general'}`);
+
+    return res.json({
+      success: true,
+      event,
+      message: 'Analytics event tracked successfully'
+    });
+
+  } catch (error) {
+    console.error('Error tracking analytics event:', error);
+    return res.status(500).json({
+      error: 'Failed to track analytics event',
+      details: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+/**
+ * GET /api/chat/conversations/:conversationId/permissions/live
+ * Get live permission status with caching
+ */
+router.get('/conversations/:conversationId/permissions/live', async (req: Request, res: Response) => {
+  try {
+    const conversationId = req.params.conversationId;
+
+    if (!conversationId) {
+      return res.status(400).json({
+        error: 'Conversation ID is required',
+      });
+    }
+
+    // Get all permissions with expiry check
+    const permissions = await ConversationPermissionsService.getConversationPermissions(conversationId);
+    const activePermissions = await ConversationPermissionsService.getGrantedPermissions(conversationId);
+
+    // Get recent permission requests (last 1 hour)
+    const recentPrompts = await prisma.interactivePrompt.findMany({
+      where: {
+        conversationId,
+        type: 'tool_permission',
+        createdAt: { gte: new Date(Date.now() - 60 * 60 * 1000) }
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 10
+    });
+
+    // Calculate permission statistics for this conversation
+    const stats = {
+      totalPermissions: permissions.length,
+      activePermissions: activePermissions.length,
+      expiredPermissions: permissions.filter(p => 
+        p.expiresAt && p.expiresAt < new Date()
+      ).length,
+      recentRequests: recentPrompts.length,
+      pendingRequests: recentPrompts.filter(p => p.status === 'pending').length
+    };
+
+    const liveStatus = {
+      conversationId,
+      activePermissions,
+      allPermissions: permissions.map(p => ({
+        toolName: p.toolName,
+        status: p.status,
+        grantedAt: p.grantedAt,
+        grantedBy: p.grantedBy,
+        expiresAt: p.expiresAt,
+        isExpired: p.expiresAt ? p.expiresAt < new Date() : false
+      })),
+      recentActivity: recentPrompts.map(p => ({
+        promptId: p.id,
+        toolName: p.context?.toolName,
+        status: p.status,
+        selectedOption: p.selectedOption,
+        createdAt: p.createdAt,
+        respondedAt: p.respondedAt,
+        responseTime: p.respondedAt ? p.respondedAt.getTime() - p.createdAt.getTime() : null
+      })),
+      statistics: stats,
+      timestamp: Date.now()
+    };
+
+    return res.json({
+      success: true,
+      liveStatus,
+      cacheInfo: {
+        generatedAt: new Date().toISOString(),
+        ttl: 300, // 5 minutes cache recommendation
+        conversationId
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching live permission status:', error);
+    return res.status(500).json({
+      error: 'Failed to fetch live permission status',
+      details: error instanceof Error ? error.message : String(error)
     });
   }
 });

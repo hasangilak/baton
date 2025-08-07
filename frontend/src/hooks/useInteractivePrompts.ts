@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import { useWebSocket } from './useWebSocket';
 import type { InteractivePrompt } from '../types';
 
@@ -7,9 +7,25 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 interface UseInteractivePromptsProps {
   conversationId: string | null;
+  enableAnalytics?: boolean;
 }
 
-export const useInteractivePrompts = ({ conversationId }: UseInteractivePromptsProps) => {
+interface PermissionAnalytics {
+  totalPrompts: number;
+  responsesByDecision: Record<string, number>;
+  averageResponseTime: number;
+  toolsRequested: Record<string, number>;
+  riskLevelDistribution: Record<string, number>;
+  topTools: Array<{ tool: string; count: number }>;
+  summary: {
+    totalRequests: number;
+    mostCommonDecision: string;
+    averageResponseSeconds: number;
+    mostRequestedTool: string;
+  };
+}
+
+export const useInteractivePrompts = ({ conversationId, enableAnalytics = false }: UseInteractivePromptsProps) => {
   const queryClient = useQueryClient();
   const { socket } = useWebSocket(); // Use shared WebSocket connection
   const [isRespondingToPrompt, setIsRespondingToPrompt] = useState(false);
@@ -18,6 +34,10 @@ export const useInteractivePrompts = ({ conversationId }: UseInteractivePromptsP
   const [pendingPrompts, setPendingPrompts] = useState<InteractivePrompt[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Enhanced analytics state
+  const [livePermissionStatus, setLivePermissionStatus] = useState<any>(null);
+  const [realtimeAnalytics, setRealtimeAnalytics] = useState<any>(null);
 
   // Load existing pending prompts on mount (like successful implementations)
   useEffect(() => {
@@ -55,12 +75,12 @@ export const useInteractivePrompts = ({ conversationId }: UseInteractivePromptsP
     loadPendingPrompts();
   }, [conversationId]);
 
-  // Listen for real-time prompt events via WebSocket
+  // Enhanced WebSocket listeners with analytics
   useEffect(() => {
     if (!socket) return;
 
     const handleInteractivePrompt = (data: any) => {
-      console.log('🔔 Received real-time interactive prompt:', data);
+      console.log('🔔 Received enhanced interactive prompt:', data);
       console.log('🔍 Current conversation ID:', conversationId);
       console.log('🔍 Prompt conversation ID:', data.conversationId);
       
@@ -70,8 +90,13 @@ export const useInteractivePrompts = ({ conversationId }: UseInteractivePromptsP
         return;
       }
 
-      // Create prompt object matching our InteractivePrompt type
-      const prompt: InteractivePrompt = {
+      // Create enhanced prompt object with analytics data
+      const prompt: InteractivePrompt & { 
+        usageStatistics?: any; 
+        timestamp?: number;
+        riskLevel?: string;
+        analytics?: any; 
+      } = {
         id: data.promptId,
         conversationId: data.conversationId,
         sessionId: data.sessionId,
@@ -79,46 +104,191 @@ export const useInteractivePrompts = ({ conversationId }: UseInteractivePromptsP
         title: data.title,
         message: data.message,
         options: data.options,
-        context: data.context,
+        context: {
+          ...data.context,
+          // Enhanced context from backend
+          riskLevel: data.riskLevel,
+          toolName: data.toolName,
+          usageCount: data.context?.usageCount || 0,
+          parameters: data.context?.parameters,
+          requestTime: data.context?.requestTime,
+          userAgent: data.context?.userAgent
+        },
         status: 'pending',
         selectedOption: undefined,
         autoHandler: undefined,
-        timeoutAt: new Date(Date.now() + (data.timeout || 300000)).toISOString(), // 5 minutes default
+        timeoutAt: new Date(Date.now() + (data.timeout || 30000)).toISOString(),
         createdAt: new Date().toISOString(),
-        respondedAt: undefined
+        respondedAt: undefined,
+        
+        // Enhanced analytics data
+        usageStatistics: data.usageStatistics,
+        timestamp: data.timestamp,
+        riskLevel: data.riskLevel,
+        analytics: {
+          promptCreatedAt: data.timestamp,
+          riskLevel: data.riskLevel,
+          toolName: data.toolName,
+          usageCount: data.context?.usageCount || 0,
+          recommendedAction: data.usageStatistics?.recommendedAction
+        }
       };
+
+      console.log('✨ Enhanced prompt with analytics:', {
+        riskLevel: prompt.riskLevel,
+        usageCount: prompt.context?.usageCount,
+        recommendedAction: prompt.usageStatistics?.recommendedAction
+      });
 
       // Add to pending prompts (replacing any existing with same ID)
       setPendingPrompts(prev => {
         const filtered = prev.filter(p => p.id !== prompt.id);
         return [...filtered, prompt];
       });
+
+      // Track analytics event
+      if (enableAnalytics) {
+        trackAnalyticsEvent('prompt_received', {
+          toolName: data.toolName,
+          riskLevel: data.riskLevel,
+          conversationId: data.conversationId
+        });
+      }
     };
 
-    // Listen for real-time prompt events
+    // New analytics event handlers
+    const handlePermissionAnalytics = (data: any) => {
+      console.log('📊 Permission analytics update:', data);
+      setRealtimeAnalytics(prev => ({
+        ...prev,
+        ...data,
+        lastUpdated: Date.now()
+      }));
+    };
+
+    const handlePermissionRequest = (data: any) => {
+      console.log('🔐 Permission request notification:', data);
+      // Could show toast notification for project-level awareness
+    };
+
+    const handleAnalyticsEvent = (data: any) => {
+      console.log('📈 Analytics event:', data);
+      // Update real-time analytics dashboard
+    };
+
+    // Enhanced event listeners
     socket.on('interactive_prompt', handleInteractivePrompt);
+    socket.on('permission_analytics', handlePermissionAnalytics);
+    socket.on('permission_request', handlePermissionRequest);
+    socket.on('analytics_event', handleAnalyticsEvent);
+    socket.on('permission_statistics', handleAnalyticsEvent);
 
     return () => {
       socket.off('interactive_prompt', handleInteractivePrompt);
+      socket.off('permission_analytics', handlePermissionAnalytics);
+      socket.off('permission_request', handlePermissionRequest);
+      socket.off('analytics_event', handleAnalyticsEvent);
+      socket.off('permission_statistics', handleAnalyticsEvent);
     };
-  }, [socket, conversationId]);
+  }, [socket, conversationId, enableAnalytics]);
 
-  // Respond to prompt mutation
-  const respondToPrompt = useMutation({
-    mutationFn: async ({ promptId, optionId }: { promptId: string; optionId: string }) => {
-      const response = await fetch(`${API_BASE}/api/chat/prompts/${promptId}/respond`, {
+  // Analytics API queries
+  const { data: analyticsData } = useQuery({
+    queryKey: ['permission-analytics', conversationId],
+    queryFn: async (): Promise<PermissionAnalytics> => {
+      const response = await fetch(`${API_BASE}/chat/analytics/permissions?conversationId=${conversationId}&timeframe=24h`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch permission analytics');
+      }
+      const data = await response.json();
+      return data.analytics;
+    },
+    enabled: enableAnalytics && !!conversationId,
+    refetchInterval: 60000, // Refetch every minute
+  });
+
+  const { data: liveStatus } = useQuery({
+    queryKey: ['live-permission-status', conversationId],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE}/chat/conversations/${conversationId}/permissions/live`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch live permission status');
+      }
+      const data = await response.json();
+      return data.liveStatus;
+    },
+    enabled: enableAnalytics && !!conversationId,
+    refetchInterval: 30000, // Refetch every 30 seconds
+  });
+
+  // Analytics tracking function
+  const trackAnalyticsEvent = useCallback(async (eventType: string, metadata: any) => {
+    if (!conversationId) return;
+    
+    try {
+      await fetch(`${API_BASE}/chat/analytics/track-event`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ selectedOption: optionId }),
+        body: JSON.stringify({
+          eventType,
+          conversationId,
+          toolName: metadata.toolName,
+          metadata: {
+            ...metadata,
+            timestamp: Date.now(),
+            source: 'frontend'
+          }
+        }),
+      });
+    } catch (error) {
+      console.error('Failed to track analytics event:', error);
+    }
+  }, [conversationId]);
+
+  // Enhanced respond to prompt mutation with analytics
+  const respondToPrompt = useMutation({
+    mutationFn: async ({ promptId, optionId, startTime }: { 
+      promptId: string; 
+      optionId: string;
+      startTime?: number;
+    }) => {
+      const responseTime = startTime ? Date.now() - startTime : 0;
+      
+      const response = await fetch(`${API_BASE}/chat/prompts/${promptId}/respond`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          selectedOption: optionId,
+          metadata: {
+            responseTime,
+            source: 'frontend',
+            timestamp: Date.now()
+          }
+        }),
       });
 
       if (!response.ok) {
         throw new Error('Failed to respond to prompt');
       }
 
-      return response.json();
+      const result = await response.json();
+      
+      // Track response analytics
+      if (enableAnalytics && result.response) {
+        trackAnalyticsEvent('prompt_responded', {
+          promptId,
+          selectedOption: optionId,
+          responseTime,
+          riskLevel: result.response.riskLevel,
+          toolName: result.response.toolName
+        });
+      }
+
+      return result;
     },
     onMutate: () => {
       setIsRespondingToPrompt(true);
@@ -144,23 +314,68 @@ export const useInteractivePrompts = ({ conversationId }: UseInteractivePromptsP
   // already handles 'interactive_prompt', 'prompt:response', and 'prompt:timeout' events
 
   const handlePromptResponse = useCallback(async (promptId: string, optionId: string) => {
+    const startTime = Date.now();
+    
     try {
+      // Get the prompt for analytics before removing it
+      const prompt = pendingPrompts.find(p => p.id === promptId);
+      
       // Immediately remove from pending prompts (optimistic update)
       setPendingPrompts(prev => prev.filter(p => p.id !== promptId));
       
-      await respondToPrompt.mutateAsync({ promptId, optionId });
+      await respondToPrompt.mutateAsync({ promptId, optionId, startTime });
+      
+      // Track successful response
+      if (enableAnalytics && prompt) {
+        trackAnalyticsEvent('prompt_completed', {
+          promptId,
+          selectedOption: optionId,
+          responseTime: Date.now() - startTime,
+          riskLevel: (prompt as any).riskLevel,
+          toolName: (prompt.context as any)?.toolName,
+          success: true
+        });
+      }
     } catch (error) {
       console.error('Failed to respond to prompt:', error);
-      // On error, we could add the prompt back, but for now just log the error
+      
+      // Track failed response
+      if (enableAnalytics) {
+        trackAnalyticsEvent('prompt_failed', {
+          promptId,
+          selectedOption: optionId,
+          responseTime: Date.now() - startTime,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          success: false
+        });
+      }
     }
-  }, [respondToPrompt]);
+  }, [respondToPrompt, pendingPrompts, enableAnalytics, trackAnalyticsEvent]);
 
   return {
+    // Core functionality
     pendingPrompts: pendingPrompts as InteractivePrompt[],
     isLoading,
     error,
     isRespondingToPrompt,
     handlePromptResponse,
     socket,
+    
+    // Enhanced analytics
+    analyticsData,
+    liveStatus,
+    livePermissionStatus,
+    realtimeAnalytics,
+    trackAnalyticsEvent,
+    
+    // Computed analytics
+    permissionSummary: analyticsData ? {
+      totalRequests: analyticsData.summary.totalRequests,
+      averageResponseTime: analyticsData.summary.averageResponseSeconds,
+      mostCommonDecision: analyticsData.summary.mostCommonDecision,
+      riskDistribution: analyticsData.riskLevelDistribution,
+      topTools: analyticsData.topTools.slice(0, 3),
+      recentActivity: liveStatus?.recentActivity?.slice(0, 5) || []
+    } : null,
   };
 };

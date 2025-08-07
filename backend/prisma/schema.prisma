@@ -333,6 +333,7 @@ model InteractivePrompt {
   timeoutAt        DateTime  @default(dbgenerated("NOW() + INTERVAL '30 seconds'"))
   createdAt        DateTime  @default(now())
   respondedAt      DateTime?
+  metadata         Json?     // Enhanced analytics and metadata for permission tracking
 
   // Relations
   conversation     Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)

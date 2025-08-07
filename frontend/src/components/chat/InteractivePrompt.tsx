@@ -7,7 +7,13 @@ import {
   Settings,
   User,
   Bot,
-  Loader2
+  Loader2,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  BarChart3,
+  Timer,
+  Zap
 } from 'lucide-react';
 import clsx from 'clsx';
 import type { InteractivePrompt, PromptOption } from '../../types';
@@ -35,6 +41,20 @@ const promptTypeColors = {
   multiple_choice: 'text-green-600 bg-green-50 border-green-200',
   three_option: 'text-green-600 bg-green-50 border-green-200',
   file_selection: 'text-yellow-600 bg-yellow-50 border-yellow-200',
+};
+
+const riskLevelColors = {
+  LOW: 'text-green-600 bg-green-50 border-green-200',
+  MEDIUM: 'text-yellow-600 bg-yellow-50 border-yellow-200', 
+  HIGH: 'text-orange-600 bg-orange-50 border-orange-200',
+  CRITICAL: 'text-red-600 bg-red-50 border-red-200',
+};
+
+const riskLevelIcons = {
+  LOW: ShieldCheck,
+  MEDIUM: Shield,
+  HIGH: ShieldAlert,
+  CRITICAL: AlertCircle,
 };
 
 const getOptionButtonVariant = (option: PromptOption) => {
@@ -96,9 +116,25 @@ export const InteractivePromptComponent: React.FC<InteractivePromptComponentProp
     return message;
   };
 
+  // Extract enhanced context data
+  const riskLevel = (prompt.context as any)?.riskLevel || 'MEDIUM';
+  const toolName = (prompt.context as any)?.toolName;
+  const usageCount = (prompt.context as any)?.usageCount || 0;
+  const usageStatistics = (prompt as any).usageStatistics;
+  const timestamp = (prompt as any).timestamp;
+  
+  const RiskIcon = riskLevelIcons[riskLevel as keyof typeof riskLevelIcons] || Shield;
+  const riskColors = riskLevelColors[riskLevel as keyof typeof riskLevelColors] || riskLevelColors.MEDIUM;
+
+  // Dynamic background based on risk level
+  const containerBg = riskLevel === 'CRITICAL' ? 'bg-red-50 border-red-200' :
+                      riskLevel === 'HIGH' ? 'bg-orange-50 border-orange-200' :
+                      riskLevel === 'MEDIUM' ? 'bg-yellow-50 border-yellow-200' :
+                      'bg-green-50 border-green-200';
+
   return (
-    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 my-3" data-testid="permission-prompt-container">
-      {/* Header */}
+    <div className={clsx("rounded-lg p-4 my-3", containerBg)} data-testid="permission-prompt-container">
+      {/* Enhanced Header with Risk Analysis */}
       <div className="flex items-start space-x-3 mb-3">
         <div className={clsx(
           'flex items-center justify-center w-8 h-8 rounded-lg border',
@@ -108,7 +144,7 @@ export const InteractivePromptComponent: React.FC<InteractivePromptComponentProp
         </div>
         
         <div className="flex-1 min-w-0">
-          <div className="flex items-center space-x-2 mb-1">
+          <div className="flex items-center space-x-2 mb-2">
             <Bot className="w-4 h-4 text-gray-500" />
             <span className="text-sm font-medium text-gray-700">
               Claude Code needs your permission
@@ -122,34 +158,106 @@ export const InteractivePromptComponent: React.FC<InteractivePromptComponentProp
               </span>
             )}
           </div>
+
+          {/* Risk Level Indicator */}
+          <div className="flex items-center space-x-2 mb-2">
+            <div className={clsx(
+              'flex items-center space-x-1 px-2 py-1 rounded-md text-xs font-medium border',
+              riskColors
+            )}>
+              <RiskIcon className="w-3 h-3" />
+              <span>{riskLevel} RISK</span>
+            </div>
+            
+            {/* Usage Statistics */}
+            {usageCount > 0 && (
+              <div className="flex items-center space-x-1 px-2 py-1 rounded-md text-xs bg-gray-100 border border-gray-200">
+                <BarChart3 className="w-3 h-3 text-gray-500" />
+                <span className="text-gray-600">Used {usageCount} times</span>
+              </div>
+            )}
+
+            {/* Recommended Action Badge */}
+            {usageStatistics?.recommendedAction && (
+              <div className={clsx(
+                'flex items-center space-x-1 px-2 py-1 rounded-md text-xs border',
+                usageStatistics.recommendedAction === 'auto_allow' 
+                  ? 'bg-green-100 border-green-200 text-green-700'
+                  : 'bg-yellow-100 border-yellow-200 text-yellow-700'
+              )}>
+                <Zap className="w-3 h-3" />
+                <span>
+                  {usageStatistics.recommendedAction === 'auto_allow' ? 'Low Risk' : 'Review Needed'}
+                </span>
+              </div>
+            )}
+          </div>
           
           <p className="text-sm text-gray-800 leading-relaxed">
             {formatPromptMessage(prompt.message)}
           </p>
           
-          {/* Context info for tool usage */}
-          {(prompt.type === 'tool_usage' || prompt.type === 'tool_permission') && prompt.context?.toolName && (
-            <div className="mt-2 text-xs text-gray-600 bg-white rounded px-2 py-1 border">
-              <strong>Tool:</strong> {prompt.context.toolName}
-              {prompt.context.projectPath && (
-                <>
-                  <br />
-                  <strong>Location:</strong> {prompt.context.projectPath}
-                </>
+          {/* Enhanced Context Info */}
+          {(prompt.type === 'tool_usage' || prompt.type === 'tool_permission') && toolName && (
+            <div className="mt-3 text-xs text-gray-700 bg-white rounded-lg px-3 py-2 border shadow-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="flex items-center space-x-2">
+                  <Settings className="w-3 h-3 text-gray-400" />
+                  <span><strong>Tool:</strong> {toolName}</span>
+                </div>
+                
+                {usageCount > 0 && (
+                  <div className="flex items-center space-x-2">
+                    <BarChart3 className="w-3 h-3 text-gray-400" />
+                    <span><strong>Usage:</strong> {usageCount} times</span>
+                  </div>
+                )}
+              </div>
+
+              {(prompt.context as any)?.projectPath && (
+                <div className="mt-1 flex items-center space-x-2">
+                  <FileText className="w-3 h-3 text-gray-400" />
+                  <span><strong>Location:</strong> {(prompt.context as any).projectPath}</span>
+                </div>
               )}
-              {prompt.context.originalContext && (
-                <>
-                  <br />
-                  <strong>Context:</strong> {prompt.context.originalContext}
-                </>
+
+              {(prompt.context as any)?.parameters && (
+                <div className="mt-2 p-2 bg-gray-50 rounded border text-xs font-mono">
+                  <div className="text-gray-500 mb-1">Parameters:</div>
+                  <div className="text-gray-700 max-h-20 overflow-y-auto">
+                    {(prompt.context as any).parameters.length > 200 
+                      ? (prompt.context as any).parameters.substring(0, 200) + '...'
+                      : (prompt.context as any).parameters
+                    }
+                  </div>
+                </div>
+              )}
+
+              {(prompt.context as any)?.originalContext && (
+                <div className="mt-2 flex items-start space-x-2">
+                  <AlertCircle className="w-3 h-3 text-gray-400 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <strong>Context:</strong> {(prompt.context as any).originalContext}
+                  </div>
+                </div>
               )}
             </div>
           )}
         </div>
         
-        <div className="text-xs text-gray-500 flex items-center space-x-1">
-          <Clock className="w-3 h-3" />
-          <span>30s timeout</span>
+        <div className="text-xs text-gray-500 space-y-1">
+          <div className="flex items-center space-x-1">
+            <Clock className="w-3 h-3" />
+            <span>30s timeout</span>
+          </div>
+          {timestamp && (
+            <div className="flex items-center space-x-1">
+              <Timer className="w-3 h-3" />
+              <span>
+                {new Date(timestamp).toLocaleTimeString()}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 

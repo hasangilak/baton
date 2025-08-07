@@ -532,7 +532,7 @@ class EnhancedPermissionSystem {
     logger.logToolExecution(toolName, riskLevel, parameters, null);
     
     // Check if tool is in safe list
-    const safeTools = ["Read", "LS", "Glob", "Grep", "WebFetch", "WebSearch", "TodoRead"];
+    const safeTools = ["Read", "LS", "Glob", "Grep", "WebFetch", "WebSearch", "TodoRead", "TodoWrite", "ExitPlanMode"];
     if (safeTools.includes(toolName)) {
       logger.log('✅ PERMISSION AUTO-GRANTED', `Safe tool: ${toolName}`, { riskLevel });
       const result = { behavior: 'allow', updatedInput: parameters };
