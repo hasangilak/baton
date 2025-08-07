@@ -8,9 +8,13 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { handleStreamingChat, handleAbortRequest } from '../handlers/streaming-chat';
 import axios from 'axios';
+import { PromptDeliveryService } from '../utils/promptDelivery';
 
 const router = Router();
 const prisma = new PrismaClient();
+
+// Initialize the robust prompt delivery service
+const promptDeliveryService = new PromptDeliveryService(prisma, io);
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -661,7 +665,7 @@ router.get('/conversations/:conversationId/prompts/pending', async (req: Request
 
 /**
  * POST /api/chat/conversations/:conversationId/prompts
- * Create an enhanced interactive prompt with analytics
+ * Create interactive prompt using robust multi-channel delivery system
  */
 router.post('/conversations/:conversationId/prompts', async (req: Request, res: Response) => {
   try {
@@ -690,9 +694,55 @@ router.post('/conversations/:conversationId/prompts', async (req: Request, res: 
       ...metadata
     };
 
-    // Create interactive prompt in database with enhanced data
-    const prompt = await prisma.interactivePrompt.create({
-      data: {
+    // Enhanced metadata for the delivery service
+    const enhancedMetadata = {
+      createdByHandler: 'webui-chat-handler-enhanced',
+      riskAnalysis: {
+        level: context?.riskLevel || 'MEDIUM',
+        toolType: type,
+        parametersCount: context?.parameters ? Object.keys(JSON.parse(context.parameters || '{}')).length : 0
+      },
+      analytics: {
+        requestedAt: Date.now(),
+        conversationContext: conversationId,
+        userSession: req.headers['x-session-id'] || 'unknown'
+      },
+      usageStatistics: {
+        previousUsage: context?.usageCount || 0,
+        riskAssessment: context?.riskLevel || 'MEDIUM',
+        recommendedAction: context?.riskLevel === 'LOW' ? 'auto_allow' : 'user_review'
+      }
+    };
+
+    // Use the robust multi-channel delivery service
+    console.log(`🔧 Creating robust prompt delivery for: ${promptId} (${type}) Risk: ${context?.riskLevel || 'MEDIUM'}`);
+    
+    const deliveryResult = await promptDeliveryService.deliverPrompt({
+      id: promptId,
+      conversationId,
+      type,
+      title: title || `${type} prompt`,
+      message,
+      options,
+      context: enhancedContext,
+      metadata: enhancedMetadata
+    });
+
+    if (!deliveryResult.success) {
+      console.error(`❌ Prompt delivery failed for ${promptId}:`, deliveryResult.error);
+      return res.status(500).json({
+        error: 'Failed to deliver interactive prompt',
+        details: deliveryResult.error,
+        attempts: deliveryResult.attempts,
+        deliveryChannels: deliveryResult.deliveryChannels
+      });
+    }
+
+    console.log(`✅ Prompt ${promptId} successfully delivered via: ${deliveryResult.deliveryChannels.join(', ')}`);
+
+    return res.json({
+      success: true,
+      prompt: {
         id: promptId,
         conversationId,
         type,
@@ -700,81 +750,176 @@ router.post('/conversations/:conversationId/prompts', async (req: Request, res: 
         message,
         options,
         context: enhancedContext,
-        timeoutAt: new Date(Date.now() + 30000), // 30 second timeout
-        status: 'pending',
-        metadata: {
-          createdByHandler: 'webui-chat-handler-enhanced',
-          riskAnalysis: {
-            level: context?.riskLevel || 'MEDIUM',
-            toolType: type,
-            parametersCount: context?.parameters ? Object.keys(JSON.parse(context.parameters)).length : 0
-          },
-          analytics: {
-            requestedAt: Date.now(),
-            conversationContext: conversationId,
-            userSession: req.headers['x-session-id'] || 'unknown'
-          }
-        }
-      }
-    });
-
-    // Enhanced WebSocket event with rich context
-    const socketEvent = {
-      promptId: prompt.id,
-      conversationId,
-      type: prompt.type,
-      title: prompt.title,
-      message: prompt.message,
-      options: prompt.options,
-      context: enhancedContext,
-      timeout: 30000,
-      riskLevel: context?.riskLevel || 'MEDIUM',
-      toolName: context?.toolName,
-      usageStatistics: {
-        previousUsage: context?.usageCount || 0,
-        riskAssessment: context?.riskLevel || 'MEDIUM',
-        recommendedAction: context?.riskLevel === 'LOW' ? 'auto_allow' : 'user_review'
+        status: 'pending'
       },
-      timestamp: Date.now()
-    };
-
-    // Emit to specific conversation room for better targeting
-    io.to(`conversation-${conversationId}`).emit('interactive_prompt', socketEvent);
-    
-    // Also emit to project room for broader awareness
-    const conversation = await prisma.conversation.findUnique({
-      where: { id: conversationId },
-      select: { projectId: true }
-    });
-    
-    if (conversation?.projectId) {
-      io.to(`project-${conversation.projectId}`).emit('permission_request', {
-        conversationId,
-        promptId: prompt.id,
-        toolName: context?.toolName,
-        riskLevel: context?.riskLevel,
-        timestamp: Date.now()
-      });
-    }
-
-    console.log(`🔧 Enhanced prompt created: ${promptId} (${type}) Risk: ${context?.riskLevel || 'MEDIUM'}`);
-    console.log(`📡 WebSocket events emitted to conversation-${conversationId} and project-${conversation?.projectId}`);
-
-    return res.json({
-      success: true,
-      prompt,
-      socketEvent,
+      delivery: {
+        success: deliveryResult.success,
+        channels: deliveryResult.deliveryChannels,
+        attempts: deliveryResult.attempts,
+        createdAt: deliveryResult.createdAt
+      },
       analytics: {
         promptId,
-        riskLevel: context?.riskLevel,
-        targetRooms: [`conversation-${conversationId}`, `project-${conversation?.projectId}`]
+        riskLevel: context?.riskLevel || 'MEDIUM',
+        deliveryChannels: deliveryResult.deliveryChannels,
+        deliveryTime: Date.now()
       }
     });
 
   } catch (error) {
-    console.error('Error creating enhanced interactive prompt:', error);
+    console.error('Error in robust prompt creation:', error);
     return res.status(500).json({
       error: 'Failed to create interactive prompt',
+      details: error instanceof Error ? error.message : String(error),
+      promptDeliveryService: 'error'
+    });
+  }
+});
+
+/**
+ * POST /api/chat/prompts/:promptId/acknowledge
+ * Handle frontend acknowledgment of prompt delivery
+ */
+router.post('/prompts/:promptId/acknowledge', async (req: Request, res: Response) => {
+  try {
+    const promptId = req.params.promptId;
+    const { clientInfo, timestamp } = req.body;
+
+    if (!promptId) {
+      return res.status(400).json({
+        error: 'Prompt ID is required',
+      });
+    }
+
+    // Track acknowledgment in the delivery service
+    promptDeliveryService.acknowledgePrompt(promptId, {
+      ...clientInfo,
+      acknowledgedAt: timestamp || Date.now(),
+      userAgent: req.headers['user-agent'],
+      ip: req.ip
+    });
+
+    console.log(`✅ Prompt ${promptId} acknowledged by frontend`);
+
+    return res.json({
+      success: true,
+      promptId,
+      acknowledgedAt: Date.now()
+    });
+
+  } catch (error) {
+    console.error('Error acknowledging prompt:', error);
+    return res.status(500).json({
+      error: 'Failed to acknowledge prompt',
+      details: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+/**
+ * GET /api/chat/delivery-stats
+ * Get prompt delivery statistics
+ */
+router.get('/delivery-stats', async (req: Request, res: Response) => {
+  try {
+    const stats = promptDeliveryService.getDeliveryStats();
+    
+    return res.json({
+      success: true,
+      stats,
+      timestamp: Date.now()
+    });
+
+  } catch (error) {
+    console.error('Error getting delivery stats:', error);
+    return res.status(500).json({
+      error: 'Failed to get delivery stats',
+      details: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+/**
+ * POST /api/chat/prompts/:promptId/escalate
+ * Handle progressive timeout escalation notifications from bridge
+ */
+router.post('/prompts/:promptId/escalate', async (req: Request, res: Response) => {
+  try {
+    const promptId = req.params.promptId;
+    const { stage, toolName, riskLevel, escalationType, timestamp } = req.body;
+
+    if (!promptId || !stage || !toolName) {
+      return res.status(400).json({
+        error: 'Prompt ID, stage, and toolName are required',
+      });
+    }
+
+    console.log(`📢 Escalation received for prompt ${promptId}: Stage ${stage} - ${escalationType} (${toolName})`);
+
+    // Update prompt with escalation metadata
+    const updatedPrompt = await prisma.interactivePrompt.update({
+      where: { id: promptId },
+      data: {
+        metadata: {
+          escalationStage: stage,
+          escalationType,
+          toolName,
+          riskLevel,
+          escalatedAt: timestamp || Date.now(),
+          progressiveTimeout: true
+        }
+      }
+    }).catch(error => {
+      console.warn(`⚠️ Failed to update prompt escalation metadata:`, error);
+      return null;
+    });
+
+    // Emit escalated notification to frontend
+    const escalationEvent = {
+      promptId,
+      stage,
+      toolName,
+      riskLevel,
+      escalationType,
+      message: `${escalationType.toUpperCase()}: Permission still needed for ${toolName}`,
+      timestamp: timestamp || Date.now(),
+      urgencyLevel: stage
+    };
+
+    // Send to specific conversation
+    if (updatedPrompt) {
+      io.to(`conversation-${updatedPrompt.conversationId}`).emit('permission_escalation', escalationEvent);
+      
+      // Also send to project room for broader awareness
+      const conversation = await prisma.conversation.findUnique({
+        where: { id: updatedPrompt.conversationId },
+        select: { projectId: true }
+      });
+      
+      if (conversation?.projectId) {
+        io.to(`project-${conversation.projectId}`).emit('permission_escalation_project', escalationEvent);
+      }
+    } else {
+      // Fallback broadcast if we can't find the conversation
+      io.emit('permission_escalation_global', escalationEvent);
+    }
+
+    return res.json({
+      success: true,
+      promptId,
+      escalation: {
+        stage,
+        escalationType,
+        toolName,
+        riskLevel,
+        timestamp: timestamp || Date.now()
+      }
+    });
+
+  } catch (error) {
+    console.error('Error handling permission escalation:', error);
+    return res.status(500).json({
+      error: 'Failed to handle escalation',
       details: error instanceof Error ? error.message : String(error)
     });
   }
@@ -2001,3 +2146,4 @@ router.get('/conversations/:conversationId/permissions/live', async (req: Reques
 });
 
 export default router;
+export { promptDeliveryService };

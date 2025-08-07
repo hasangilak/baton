@@ -143,6 +143,53 @@ io.on('connection', (socket) => {
     socket.leave(`project-${projectId}`);
     console.log(`Socket ${socket.id} left project ${projectId}`);
   });
+
+  // Conversation room management for prompt targeting
+  socket.on('join-conversation', (conversationId: string) => {
+    socket.join(`conversation-${conversationId}`);
+    console.log(`Socket ${socket.id} joined conversation ${conversationId}`);
+  });
+  
+  socket.on('leave-conversation', (conversationId: string) => {
+    socket.leave(`conversation-${conversationId}`);
+    console.log(`Socket ${socket.id} left conversation ${conversationId}`);
+  });
+
+  // Handle prompt acknowledgments from frontend
+  socket.on('prompt_received_confirmation', (data: any) => {
+    const { promptId, deliveryId, conversationId, timestamp, clientInfo } = data;
+    
+    console.log(`✅ Received prompt acknowledgment from ${socket.id}:`, {
+      promptId,
+      deliveryId,
+      conversationId,
+      clientInfo: clientInfo?.userAgent ? clientInfo.userAgent.substring(0, 50) + '...' : 'unknown'
+    });
+    
+    // Forward acknowledgment to prompt delivery service
+    try {
+      const { promptDeliveryService } = require('./routes/chat');
+      if (promptDeliveryService && promptDeliveryService.acknowledgePrompt) {
+        promptDeliveryService.acknowledgePrompt(promptId, {
+          ...clientInfo,
+          socketId: socket.id,
+          deliveryId,
+          method: 'websocket',
+          timestamp
+        });
+      }
+    } catch (error) {
+      console.warn('⚠️ Failed to forward acknowledgment to delivery service:', error);
+    }
+    
+    // Send confirmation back to client
+    socket.emit('acknowledgment_confirmed', { 
+      promptId, 
+      deliveryId, 
+      confirmed: true, 
+      timestamp: Date.now() 
+    });
+  });
   
   // Chat bridge support
   socket.on('chat-bridge:connect', () => {

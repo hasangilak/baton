@@ -125,44 +125,45 @@ class ClaudeCodeBridge {
               await conversationComplete;
             };
 
-            // Add working canUseTool callback with backend integration and fallback
+            // Add working canUseTool callback with progressive timeout strategy
             claudeOptions.canUseTool = async (toolName: string, parameters: Record<string, any>) => {
               const riskLevel = this.assessRiskLevel(toolName);
               
-              if (riskLevel === 'HIGH') {
-                console.log(`🛡️  High-risk tool detected: ${toolName} - trying backend permission`);
+              if (riskLevel === 'HIGH' || riskLevel === 'MEDIUM') {
+                console.log(`🛡️  ${riskLevel}-risk tool detected: ${toolName} - requesting permission with progressive timeout`);
                 try {
-                  // Try backend permission system with timeout
-                  const permissionPromise = this.requestPermissionFromBackend(
+                  const permissionResult = await this.requestPermissionWithProgressiveTimeout(
                     toolName,
                     parameters,
-                    conversationId
+                    conversationId,
+                    riskLevel
                   );
-                  
-                  // Race against timeout to prevent deadlock
-                  const timeoutPromise = new Promise<PermissionResult>((resolve) => {
-                    setTimeout(() => {
-                      console.log(`⏰ Backend permission timed out for ${toolName} - falling back to auto-allow`);
-                      resolve({ behavior: 'allow', updatedInput: parameters });
-                    }, 60000); // 60 second timeout
-                  });
-                  
-                  const permissionResult = await Promise.race([permissionPromise, timeoutPromise]);
                   
                   if (permissionResult.behavior === 'deny') {
                     console.log(`🚫 Tool ${toolName} denied by user`);
                     return { behavior: 'deny', message: 'User denied permission' };
                   }
                   
-                  console.log(`✅ Tool ${toolName} approved by user/fallback`);
+                  console.log(`✅ Tool ${toolName} approved: ${permissionResult.behavior}`);
                   return { behavior: 'allow', updatedInput: permissionResult.updatedInput || parameters };
+                  
                 } catch (error) {
-                  console.error(`❌ Permission request failed for ${toolName}, falling back to auto-allow:`, error);
-                  return { behavior: 'allow', updatedInput: parameters };
+                  console.error(`❌ Permission request failed for ${toolName}:`, error);
+                  
+                  // Conservative fallback - deny risky tools if permission system fails
+                  const fallbackBehavior = riskLevel === 'HIGH' ? 'deny' : 'allow';
+                  console.log(`🔄 Fallback decision for ${toolName}: ${fallbackBehavior}`);
+                  
+                  if (fallbackBehavior === 'deny') {
+                    return { behavior: 'deny', message: 'Permission system error - denied for security' };
+                  } else {
+                    return { behavior: 'allow', updatedInput: parameters };
+                  }
                 }
               }
               
-              // Allow non-dangerous tools by default
+              // Allow low-risk tools by default
+              console.log(`✅ Auto-allowing ${riskLevel}-risk tool: ${toolName}`);
               return { behavior: 'allow', updatedInput: parameters };
             };
 
@@ -303,13 +304,14 @@ class ClaudeCodeBridge {
     }
   }
 
-  private async requestPermissionFromBackend(
+  private async requestPermissionWithProgressiveTimeout(
     toolName: string, 
     parameters: Record<string, any>, 
-    conversationId: string
+    conversationId: string,
+    riskLevel: string
   ): Promise<PermissionResult> {
     try {
-      console.log(`🔐 Requesting permission for ${toolName} from backend`);
+      console.log(`🔐 Requesting permission for ${toolName} (${riskLevel} risk) with progressive timeout`);
       
       // Ensure conversation exists first
       await this.ensureConversationExists(conversationId);
@@ -346,7 +348,9 @@ class ClaudeCodeBridge {
             context: {
               toolName,
               parameters: JSON.stringify(parameters),
-              riskLevel: this.assessRiskLevel(toolName)
+              riskLevel,
+              usageCount: 0,
+              progressiveTimeout: true
             }
           })
         }
@@ -361,25 +365,52 @@ class ClaudeCodeBridge {
         throw new Error('Failed to create permission prompt');
       }
 
-      // Wait for user response (polling approach)
+      // Use progressive timeout strategy
       const promptId = promptData.prompt.id;
-      console.log(`⏳ Waiting for user response to prompt ${promptId}`);
+      console.log(`🔄 Starting progressive timeout for prompt ${promptId}`);
       
-      const response = await this.waitForPermissionResponse(promptId);
+      const response = await this.waitForPermissionResponseProgressive(promptId, toolName, riskLevel);
       
       if (response.value === 'deny') {
         console.log(`❌ User denied permission for ${toolName}`);
         return { behavior: 'deny', message: 'User denied permission' };
-      } else {
-        console.log(`✅ User granted permission for ${toolName}`);
+      } else if (response.value === 'allow_once' || response.value === 'allow_always') {
+        console.log(`✅ User granted permission for ${toolName}: ${response.value}`);
         return { behavior: 'allow', updatedInput: parameters };
+      } else {
+        // Fallback decision from progressive timeout
+        const fallbackDecision = this.getFinalTimeoutDecision(toolName, riskLevel);
+        if (fallbackDecision === 'allow_once') {
+          return { behavior: 'allow', updatedInput: parameters };
+        } else {
+          return { behavior: 'deny', message: 'Progressive timeout exhausted' };
+        }
       }
       
     } catch (error) {
-      console.error(`❌ Permission request failed for ${toolName}:`, error);
-      // Default to deny for security
-      return { behavior: 'deny', message: 'Permission request failed' };
+      console.error(`❌ Progressive permission request failed for ${toolName}:`, error);
+      // Default decision based on risk level
+      const conservativeDecision = riskLevel === 'LOW' ? 'allow' : 'deny';
+      return { 
+        behavior: conservativeDecision as 'allow' | 'deny',
+        message: conservativeDecision === 'deny' ? 'Permission system error' : undefined,
+        updatedInput: conservativeDecision === 'allow' ? parameters : undefined
+      };
     }
+  }
+
+  private async requestPermissionFromBackend(
+    toolName: string, 
+    parameters: Record<string, any>, 
+    conversationId: string
+  ): Promise<PermissionResult> {
+    // Legacy method - redirect to progressive timeout
+    return this.requestPermissionWithProgressiveTimeout(
+      toolName, 
+      parameters, 
+      conversationId, 
+      this.assessRiskLevel(toolName)
+    );
   }
 
   private assessRiskLevel(toolName: string): string {
@@ -439,13 +470,54 @@ class ClaudeCodeBridge {
     }
   }
 
-  private async waitForPermissionResponse(promptId: string, timeoutMs: number = 120000): Promise<any> {
+  private async waitForPermissionResponseProgressive(
+    promptId: string, 
+    toolName: string, 
+    riskLevel: string
+  ): Promise<any> {
+    // Progressive timeout strategy: 30s → 60s → 120s (total: 3.5 minutes)
+    const timeoutStages = [
+      { duration: 30000, description: 'Initial response window' },
+      { duration: 60000, description: 'Extended wait with notification' },  
+      { duration: 120000, description: 'Final escalation period' }
+    ];
+    
+    console.log(`🔄 Starting progressive timeout for ${toolName} (${riskLevel} risk) - Total timeout: 3.5 minutes`);
+    
+    for (let stage = 0; stage < timeoutStages.length; stage++) {
+      const { duration, description } = timeoutStages[stage];
+      const stageNumber = stage + 1;
+      
+      console.log(`⏱️  Stage ${stageNumber}/3: ${description} (${duration / 1000}s)`);
+      
+      try {
+        const result = await this.waitForPermissionResponse(promptId, duration);
+        
+        if (result.value !== 'timeout') {
+          console.log(`✅ Permission received in stage ${stageNumber} for ${toolName}: ${result.value}`);
+          return result;
+        }
+        
+        // Stage timed out, escalate notification
+        await this.escalatePermissionNotification(promptId, toolName, riskLevel, stageNumber);
+        
+      } catch (error) {
+        console.error(`❌ Error in stage ${stageNumber} for ${promptId}:`, error);
+      }
+    }
+    
+    // All stages exhausted - final decision based on risk level
+    const finalDecision = this.getFinalTimeoutDecision(toolName, riskLevel);
+    console.warn(`⏰ Progressive timeout exhausted for ${toolName}. Final decision: ${finalDecision}`);
+    
+    return { value: finalDecision };
+  }
+
+  private async waitForPermissionResponse(promptId: string, timeoutMs: number): Promise<any> {
     const startTime = Date.now();
     const pollInterval = 500; // Poll every 500ms for faster response
     let consecutiveErrors = 0;
     const maxConsecutiveErrors = 10;
-    
-    console.log(`⏳ Waiting for user response to prompt ${promptId} (timeout: ${timeoutMs}ms)`);
     
     while (Date.now() - startTime < timeoutMs) {
       try {
@@ -500,9 +572,55 @@ class ClaudeCodeBridge {
       }
     }
     
-    // Timeout - default to deny
-    console.warn(`⏰ Permission request ${promptId} timed out after ${timeoutMs}ms`);
-    return { value: 'deny' };
+    // Stage timeout
+    return { value: 'timeout' };
+  }
+
+  private async escalatePermissionNotification(
+    promptId: string, 
+    toolName: string, 
+    riskLevel: string, 
+    stage: number
+  ): Promise<void> {
+    try {
+      console.log(`📢 Escalating notification for ${promptId} - Stage ${stage}`);
+      
+      // Send escalation notification to backend
+      await fetch(`${this.backendUrl}/api/chat/prompts/${promptId}/escalate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stage,
+          toolName,
+          riskLevel,
+          escalationType: stage === 1 ? 'reminder' : stage === 2 ? 'urgent' : 'critical',
+          timestamp: Date.now()
+        })
+      }).catch(error => {
+        console.warn(`⚠️  Failed to send escalation notification:`, error);
+      });
+      
+      // Log escalation locally
+      const escalationTypes = ['', '🔔 Reminder', '🚨 Urgent', '🚩 Critical'];
+      console.log(`${escalationTypes[stage]} Permission still needed for ${toolName} (${riskLevel} risk)`);
+      
+    } catch (error) {
+      console.warn(`⚠️  Error escalating notification:`, error);
+    }
+  }
+
+  private getFinalTimeoutDecision(toolName: string, riskLevel: string): string {
+    // Conservative approach - only auto-allow for very safe operations
+    const safeTools = ['Read', 'LS', 'Glob', 'Grep'];
+    const lowRiskAutoAllow = riskLevel === 'LOW' && safeTools.includes(toolName);
+    
+    if (lowRiskAutoAllow) {
+      console.log(`✅ Auto-allowing ${toolName} due to LOW risk after timeout`);
+      return 'allow_once';
+    } else {
+      console.log(`🚫 Denying ${toolName} (${riskLevel} risk) after progressive timeout`);
+      return 'deny';
+    }
   }
 
   async start(): Promise<void> {

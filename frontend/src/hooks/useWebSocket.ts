@@ -526,6 +526,20 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
     }
   }, []);
 
+  const joinConversation = useCallback((conversationId: string) => {
+    if (socketRef.current?.connected) {
+      socketRef.current.emit('join-conversation', conversationId);
+      console.log('💬 Joined conversation room:', conversationId);
+    }
+  }, []);
+
+  const leaveConversation = useCallback((conversationId: string) => {
+    if (socketRef.current?.connected) {
+      socketRef.current.emit('leave-conversation', conversationId);
+      console.log('💬 Left conversation room:', conversationId);
+    }
+  }, []);
+
   const emit = useCallback((event: string, data: any) => {
     if (socketRef.current?.connected) {
       socketRef.current.emit(event, data);
@@ -621,6 +635,8 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
     disconnect,
     joinProject,
     leaveProject,
+    joinConversation,
+    leaveConversation,
     emit,
     on,
     off,

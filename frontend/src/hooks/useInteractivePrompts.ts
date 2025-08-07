@@ -27,7 +27,7 @@ interface PermissionAnalytics {
 
 export const useInteractivePrompts = ({ conversationId, enableAnalytics = false }: UseInteractivePromptsProps) => {
   const queryClient = useQueryClient();
-  const { socket } = useWebSocket(); // Use shared WebSocket connection
+  const { socket, joinConversation, leaveConversation } = useWebSocket(); // Use shared WebSocket connection
   const [isRespondingToPrompt, setIsRespondingToPrompt] = useState(false);
   
   // Real-time prompt state (like successful implementations)
@@ -38,6 +38,19 @@ export const useInteractivePrompts = ({ conversationId, enableAnalytics = false 
   // Enhanced analytics state
   const [livePermissionStatus] = useState<string>('');
   const [realtimeAnalytics, setRealtimeAnalytics] = useState<Record<string, unknown>>({});
+
+  // Auto-join conversation room for targeted prompt delivery
+  useEffect(() => {
+    if (!conversationId || !socket) return;
+
+    console.log('💬 Joining conversation room for prompts:', conversationId);
+    joinConversation(conversationId);
+
+    return () => {
+      console.log('💬 Leaving conversation room:', conversationId);
+      leaveConversation(conversationId);
+    };
+  }, [conversationId, socket, joinConversation, leaveConversation]);
 
   // Load existing pending prompts on mount (like successful implementations)
   useEffect(() => {
@@ -140,12 +153,36 @@ export const useInteractivePrompts = ({ conversationId, enableAnalytics = false 
         return [...filtered, prompt];
       });
 
+      // Send acknowledgment if required
+      if (data.requiresAck && socket) {
+        const acknowledgment = {
+          promptId: data.promptId,
+          deliveryId: data.deliveryId,
+          conversationId: data.conversationId,
+          timestamp: Date.now(),
+          clientInfo: {
+            userAgent: navigator.userAgent,
+            screenResolution: `${window.screen.width}x${window.screen.height}`,
+            windowSize: `${window.innerWidth}x${window.innerHeight}`,
+            online: navigator.onLine,
+            language: navigator.language
+          }
+        };
+        
+        console.log('📨 Sending prompt acknowledgment:', acknowledgment);
+        socket.emit('prompt_received_confirmation', acknowledgment);
+        
+        // Also send via HTTP as backup
+        sendPromptAcknowledgmentHTTP(data.promptId, acknowledgment.clientInfo);
+      }
+
       // Track analytics event
       if (enableAnalytics) {
         trackAnalyticsEvent('prompt_received', {
           toolName: data.toolName,
           riskLevel: data.riskLevel,
-          conversationId: data.conversationId
+          conversationId: data.conversationId,
+          acknowledged: !!data.requiresAck
         });
       }
     };
@@ -240,6 +277,26 @@ export const useInteractivePrompts = ({ conversationId, enableAnalytics = false 
       console.error('Failed to track analytics event:', error);
     }
   }, [conversationId]);
+
+  // HTTP acknowledgment as backup to WebSocket
+  const sendPromptAcknowledgmentHTTP = useCallback(async (promptId: string, clientInfo: any) => {
+    try {
+      await fetch(`${API_BASE}/chat/prompts/${promptId}/acknowledge`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          clientInfo,
+          timestamp: Date.now(),
+          acknowledgmentMethod: 'http_backup'
+        }),
+      });
+      console.log('✅ HTTP acknowledgment sent for prompt:', promptId);
+    } catch (error) {
+      console.error('❌ Failed to send HTTP acknowledgment:', error);
+    }
+  }, []);
 
   // Enhanced respond to prompt mutation with analytics
   const respondToPrompt = useMutation({
