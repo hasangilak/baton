@@ -8,7 +8,6 @@ import {
   TrendingUp,
   AlertTriangle,
   CheckCircle2,
-  XCircle,
   Activity,
   Eye,
   Timer,

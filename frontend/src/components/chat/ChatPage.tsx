@@ -27,11 +27,12 @@ import { useInteractivePrompts } from '../../hooks/useInteractivePrompts';
 import { useClaudeStreaming } from '../../hooks/useClaudeStreaming';
 import { useFileUpload } from '../../hooks/useFileUpload';
 import { FileUploadArea } from './FileUploadArea';
+import { InteractivePromptComponent } from './InteractivePrompt';
 import type { Conversation, Message } from '../../types';
 import { formatDistanceToNow } from 'date-fns';
 
 // Helper function to safely convert content to renderable string
-const safeRenderContent = (content: any, streamingMessage?: any): string => {
+const safeRenderContent = (content: any, _streamingMessage?: any): string => {
   if (content === null || content === undefined) {
     return '';
   }
@@ -500,7 +501,6 @@ export const ChatPage: React.FC = () => {
                       updatedAt: timestamp.toISOString(),
                     };
                   } else {
-                    const systemMsg = msg as any;
                     displayMessage = {
                       id: messageId,
                       conversationId: selectedConversationId || '',
@@ -544,24 +544,12 @@ export const ChatPage: React.FC = () => {
 
                 {/* Interactive Prompts */}
                 {pendingPrompts.map(prompt => (
-                  <div key={prompt.id} className="mb-6">
-                    <div className="max-w-[85%] bg-[#3E3E42] rounded-xl p-4">
-                      <p className="text-sm text-[#E5E5E5] mb-3">{prompt.message}</p>
-                      <div className="flex space-x-2">
-                        {prompt.options.map(option => (
-                          <button
-                            key={option.id}
-                            onClick={() => handlePromptResponse(prompt.id, option.id)}
-                            disabled={isRespondingToPrompt}
-                            className="px-3 py-1 bg-[#2D2D30] hover:bg-[#252526] text-[#E5E5E5] text-sm rounded transition-colors disabled:opacity-50"
-                            data-testid={`chat-prompt-option-${option.id}`}
-                          >
-                            {option.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
+                  <InteractivePromptComponent
+                    key={prompt.id}
+                    prompt={prompt}
+                    onOptionSelect={handlePromptResponse}
+                    isResponding={isRespondingToPrompt}
+                  />
                 ))}
               </div>
             </div>

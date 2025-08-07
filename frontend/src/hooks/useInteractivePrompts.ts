@@ -281,7 +281,7 @@ export const useInteractivePrompts = ({ conversationId, enableAnalytics = false 
   // HTTP acknowledgment as backup to WebSocket
   const sendPromptAcknowledgmentHTTP = useCallback(async (promptId: string, clientInfo: any) => {
     try {
-      await fetch(`${API_BASE}/chat/prompts/${promptId}/acknowledge`, {
+      await fetch(`${API_BASE}/api/chat/prompts/${promptId}/acknowledge`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -12,7 +12,7 @@ import mcpRoutes from './routes/mcp';
 import claudeTodosRoutes from './routes/claude-todos';
 import plansRoutes from './routes/plans';
 import claudeRoutes from './routes/claude';
-import chatRoutes from './routes/chat';
+import chatRoutes, { setSocketIOInstance } from './routes/chat';
 import { BatonMCPServer } from './mcp/server/index';
 import { chatService } from './services/chat.service';
 
@@ -26,6 +26,9 @@ const io = new Server(server, {
     methods: ["GET", "POST"]
   }
 });
+
+// Initialize the Socket.IO instance for chat routes
+setSocketIOInstance(io);
 
 const PORT = process.env.PORT || 3001;
 

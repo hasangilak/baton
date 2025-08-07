@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { chatService } from '../services/chat.service';
 import { ConversationPermissionsService } from '../services/conversation-permissions.service';
-import { io } from '../index';
+import type { Server as SocketIOServer } from 'socket.io';
 import multer from 'multer';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
@@ -13,8 +13,26 @@ import { PromptDeliveryService } from '../utils/promptDelivery';
 const router = Router();
 const prisma = new PrismaClient();
 
-// Initialize the robust prompt delivery service
-const promptDeliveryService = new PromptDeliveryService(prisma, io);
+// Global io instance - will be set by index.ts
+let ioInstance: SocketIOServer | null = null;
+
+// Initialize the robust prompt delivery service lazily
+let promptDeliveryService: PromptDeliveryService | null = null;
+
+function getPromptDeliveryService(): PromptDeliveryService {
+  if (!ioInstance) {
+    throw new Error('Socket.IO instance not initialized. Call setSocketIOInstance first.');
+  }
+  if (!promptDeliveryService) {
+    promptDeliveryService = new PromptDeliveryService(prisma, ioInstance);
+  }
+  return promptDeliveryService;
+}
+
+// Function to set the Socket.IO instance from index.ts
+export function setSocketIOInstance(io: SocketIOServer) {
+  ioInstance = io;
+}
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -81,7 +99,7 @@ router.post('/conversations', async (req: Request, res: Response) => {
     );
 
     // Emit WebSocket event
-    io.to(`project-${projectId}`).emit('conversation:created', conversation);
+    ioInstance?.to(`project-${projectId}`).emit('conversation:created', conversation);
 
     return res.status(201).json({
       success: true,
@@ -266,7 +284,7 @@ router.post('/messages', async (req: Request, res: Response): Promise<void> => {
           res.end();
 
           // Emit WebSocket event for message complete
-          io.to(`project-${conversation.projectId}`).emit('message:complete', {
+          ioInstance?.to(`project-${conversation.projectId}`).emit('message:complete', {
             conversationId,
             messageId: assistantMessage.id,
           });
@@ -341,7 +359,7 @@ router.put('/conversations/:conversationId/archive', async (req: Request, res: R
     const conversation = await chatService.archiveConversation(conversationId);
 
     // Emit WebSocket event
-    io.emit('conversation:archived', { conversationId });
+    ioInstance?.emit('conversation:archived', { conversationId });
 
     return res.json({
       success: true,
@@ -372,7 +390,7 @@ router.delete('/conversations/:conversationId', async (req: Request, res: Respon
     await chatService.deleteConversation(conversationId);
 
     // Emit WebSocket event
-    io.emit('conversation:deleted', { conversationId });
+    ioInstance?.emit('conversation:deleted', { conversationId });
 
     return res.status(204).send();
   } catch (error) {
@@ -459,7 +477,7 @@ router.post('/response', async (req: Request, res: Response) => {
     );
 
     // Emit WebSocket event for real-time updates
-    io.emit('message:updated', { 
+    ioInstance?.emit('message:updated', { 
       messageId, 
       content, 
       isComplete,
@@ -717,7 +735,7 @@ router.post('/conversations/:conversationId/prompts', async (req: Request, res: 
     // Use the robust multi-channel delivery service
     console.log(`🔧 Creating robust prompt delivery for: ${promptId} (${type}) Risk: ${context?.riskLevel || 'MEDIUM'}`);
     
-    const deliveryResult = await promptDeliveryService.deliverPrompt({
+    const deliveryResult = await getPromptDeliveryService().deliverPrompt({
       id: promptId,
       conversationId,
       type,
@@ -792,7 +810,7 @@ router.post('/prompts/:promptId/acknowledge', async (req: Request, res: Response
     }
 
     // Track acknowledgment in the delivery service
-    promptDeliveryService.acknowledgePrompt(promptId, {
+    getPromptDeliveryService().acknowledgePrompt(promptId, {
       ...clientInfo,
       acknowledgedAt: timestamp || Date.now(),
       userAgent: req.headers['user-agent'],
@@ -822,7 +840,7 @@ router.post('/prompts/:promptId/acknowledge', async (req: Request, res: Response
  */
 router.get('/delivery-stats', async (req: Request, res: Response) => {
   try {
-    const stats = promptDeliveryService.getDeliveryStats();
+    const stats = getPromptDeliveryService().getDeliveryStats();
     
     return res.json({
       success: true,
@@ -888,7 +906,7 @@ router.post('/prompts/:promptId/escalate', async (req: Request, res: Response) =
 
     // Send to specific conversation
     if (updatedPrompt) {
-      io.to(`conversation-${updatedPrompt.conversationId}`).emit('permission_escalation', escalationEvent);
+      ioInstance?.to(`conversation-${updatedPrompt.conversationId}`).emit('permission_escalation', escalationEvent);
       
       // Also send to project room for broader awareness
       const conversation = await prisma.conversation.findUnique({
@@ -897,11 +915,11 @@ router.post('/prompts/:promptId/escalate', async (req: Request, res: Response) =
       });
       
       if (conversation?.projectId) {
-        io.to(`project-${conversation.projectId}`).emit('permission_escalation_project', escalationEvent);
+        ioInstance?.to(`project-${conversation.projectId}`).emit('permission_escalation_project', escalationEvent);
       }
     } else {
       // Fallback broadcast if we can't find the conversation
-      io.emit('permission_escalation_global', escalationEvent);
+      ioInstance?.emit('permission_escalation_global', escalationEvent);
     }
 
     return res.json({
@@ -1052,11 +1070,11 @@ router.post('/prompts/:promptId/respond', async (req: Request, res: Response) =>
     };
 
     // Emit to conversation room
-    io.to(`conversation-${originalPrompt.conversationId}`).emit('permission:response', primaryEvent);
+    ioInstance?.to(`conversation-${originalPrompt.conversationId}`).emit('permission:response', primaryEvent);
 
     // Emit analytics event to project room
     if (originalPrompt.conversation?.projectId) {
-      io.to(`project-${originalPrompt.conversation.projectId}`).emit('permission_analytics', {
+      ioInstance?.to(`project-${originalPrompt.conversation.projectId}`).emit('permission_analytics', {
         conversationId: originalPrompt.conversationId,
         toolName: originalPrompt.context?.toolName,
         decision: selectedOptionData?.value,
@@ -1067,7 +1085,7 @@ router.post('/prompts/:promptId/respond', async (req: Request, res: Response) =>
     }
 
     // Global analytics for dashboard
-    io.emit('permission_statistics', {
+    ioInstance?.emit('permission_statistics', {
       totalResponses: await prisma.interactivePrompt.count({ where: { status: 'answered' }}),
       averageResponseTime: responseTimeMs, // Could be computed properly with aggregation
       decision: selectedOptionData?.value,
@@ -1079,7 +1097,7 @@ router.post('/prompts/:promptId/respond', async (req: Request, res: Response) =>
     // Handle session continuation if needed
     if (prompt.sessionId) {
       const sessionResponse = mapOptionToSessionResponse(selectedOptionData);
-      io.emit('session:continue', {
+      ioInstance?.emit('session:continue', {
         sessionId: prompt.sessionId,
         response: sessionResponse,
         timestamp: responseTime
@@ -1137,7 +1155,7 @@ router.post('/prompts/notify', async (req: Request, res: Response) => {
     }
 
     // Emit interactive prompt event to all connected clients
-    io.emit('interactive_prompt', {
+    ioInstance?.emit('interactive_prompt', {
       promptId,
       conversationId,
       type,
@@ -1177,7 +1195,7 @@ router.post('/prompts/continue-session', async (req: Request, res: Response) => 
     }
     
     // Emit to Socket.IO to trigger session continuation in chat handler
-    io.emit('session:continue', {
+    ioInstance?.emit('session:continue', {
       sessionId,
       response,
       timestamp: Date.now()
@@ -1235,7 +1253,7 @@ router.post('/prompts/tool-permission', async (req: Request, res: Response) => {
     });
 
     // Emit interactive prompt event to frontend
-    io.emit('interactive_prompt', {
+    ioInstance?.emit('interactive_prompt', {
       promptId: prompt.id,
       conversationId,
       type: 'tool_permission',
@@ -2043,7 +2061,7 @@ router.post('/analytics/track-event', async (req: Request, res: Response) => {
     };
 
     // For now, emit as WebSocket event for real-time analytics
-    io.emit('analytics_event', event);
+    ioInstance?.emit('analytics_event', event);
 
     console.log(`📊 Analytics event tracked: ${eventType} for ${toolName || 'general'}`);
 
