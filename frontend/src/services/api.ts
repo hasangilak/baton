@@ -260,7 +260,7 @@ class ApiService {
     if (status) params.append('status', status);
     
     const response = await this.request<ClaudeCodePlansResponse>(`/api/plans?${params.toString()}`);
-    return response.data as ClaudeCodePlansResponse; // Handle API response
+    return response as ClaudeCodePlansResponse;
   }
 
   async getPlan(id: string): Promise<ApiResponse<ClaudeCodePlan>> {
