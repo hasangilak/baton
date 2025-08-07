@@ -23,8 +23,9 @@ export function useAbortController() {
       setIsAborting(true);
 
       try {
-        // Call abort endpoint
-        const response = await fetch(`/api/chat/messages/abort/${requestId}`, {
+        // Call bridge abort endpoint
+        const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+        const response = await fetch(`${API_BASE_URL}/api/chat/messages/abort-bridge/${requestId}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

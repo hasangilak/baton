@@ -1,0 +1,14 @@
+In the realm of code where tasks align,
+Baton orchestrates with design divine,
+AI agents dance through MCP's embrace,
+While React and Node keep perfect pace.
+
+TypeScript strict, no errors allowed,
+Prisma queries, clean and proud,
+WebSocket streams and todos sync,
+Claude Code integration, perfect link.
+
+From frontend views to backend might,
+Docker containers burning bright,
+A symphony of modern tech,
+Where productivity and beauty intersect.

@@ -1117,6 +1117,42 @@ router.post('/prompts/tool-permission', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/chat/prompts/:promptId
+ * Get a specific prompt status (used by bridge for polling)
+ */
+router.get('/prompts/:promptId', async (req: Request, res: Response) => {
+  try {
+    const promptId = req.params.promptId;
+
+    if (!promptId) {
+      return res.status(400).json({
+        error: 'Prompt ID is required',
+      });
+    }
+
+    const prompt = await prisma.interactivePrompt.findUnique({
+      where: { id: promptId }
+    });
+
+    if (!prompt) {
+      return res.status(404).json({
+        error: 'Prompt not found',
+      });
+    }
+
+    return res.json({
+      success: true,
+      prompt,
+    });
+  } catch (error) {
+    console.error('Error fetching prompt:', error);
+    return res.status(500).json({
+      error: 'Failed to fetch prompt',
+    });
+  }
+});
+
+/**
  * PUT /api/chat/prompts/:promptId/timeout
  * Mark a prompt as timed out
  */
@@ -1352,10 +1388,270 @@ router.post('/messages/stream', async (req: Request, res: Response): Promise<voi
 router.post('/messages/stream-webui', handleStreamingChat);
 
 /**
+ * POST /api/chat/messages/stream-bridge
+ * Stream Claude Code responses via local bridge service
+ * This forwards requests to the bridge.ts service running on localhost
+ */
+router.post('/messages/stream-bridge', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { conversationId, content, requestId } = req.body;
+
+    if (!conversationId || !content || !requestId) {
+      res.status(400).json({
+        error: 'Conversation ID, content, and requestId are required',
+      });
+      return;
+    }
+
+    // Get conversation to verify it exists and get project context
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      include: { project: true },
+    });
+
+    if (!conversation) {
+      res.status(404).json({
+        error: 'Conversation not found',
+      });
+      return;
+    }
+
+    // Store user message first
+    await prisma.message.create({
+      data: {
+        conversationId,
+        role: 'user',
+        content,
+        status: 'completed',
+      },
+    });
+
+    // Create assistant message placeholder
+    const assistantMessage = await prisma.message.create({
+      data: {
+        conversationId,
+        role: 'assistant',
+        content: '',
+        status: 'sending',
+      },
+    });
+
+    // Get allowed tools for this conversation
+    const permissions = await ConversationPermissionsService.getGrantedPermissions(conversationId);
+    const safeTools = ["Read", "LS", "Glob", "Grep", "WebFetch", "WebSearch"];
+    const allowedTools = [...new Set([...safeTools, ...permissions])];
+
+    // Set up streaming headers
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+    });
+
+    let fullContent = '';
+    let currentSessionId = conversation.claudeSessionId;
+
+    try {
+      // Forward request to bridge service
+      const bridgeUrl = process.env.BRIDGE_URL || 'http://localhost:8080';
+      const bridgeRequest = {
+        message: content,
+        requestId,
+        conversationId,
+        sessionId: currentSessionId,
+        allowedTools,
+        workingDirectory: process.env.WORKING_DIRECTORY || '/home/hassan/work/baton',
+        permissionMode: 'interactive',
+        projectName: conversation.project?.name
+      };
+
+      console.log(`🌉 Forwarding request ${requestId} to bridge at ${bridgeUrl}`);
+      
+      const axios = require('axios');
+      const response = await axios.post(`${bridgeUrl}/execute`, bridgeRequest, {
+        responseType: 'stream',
+        timeout: 0 // No timeout for streaming
+      });
+
+      // Pipe bridge responses to frontend
+      response.data.on('data', (chunk: Buffer) => {
+        const lines = chunk.toString().split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.substring(6));
+              
+              // Extract content for database storage
+              if (data.type === 'claude_json' && data.data) {
+                const sdkMessage = data.data;
+                
+                // Extract session ID if present
+                const sessionId = sdkMessage.sessionId || sdkMessage.session_id ||
+                               (sdkMessage.type === 'system' && sdkMessage.session?.id);
+                
+                if (sessionId && sessionId !== currentSessionId) {
+                  currentSessionId = sessionId;
+                  console.log(`🆔 New session ID captured: ${currentSessionId}`);
+                  
+                  // Store session ID in database
+                  prisma.conversation.update({
+                    where: { id: conversationId },
+                    data: { claudeSessionId: currentSessionId }
+                  }).catch(err => {
+                    console.error('Failed to store session ID:', err);
+                  });
+                }
+
+                // Extract content for database
+                if (sdkMessage.type === 'assistant' && sdkMessage.message) {
+                  let textContent = '';
+                  if (Array.isArray(sdkMessage.message.content)) {
+                    textContent = sdkMessage.message.content
+                      .filter((block: any) => block.type === 'text')
+                      .map((block: any) => block.text)
+                      .join('');
+                  } else if (typeof sdkMessage.message.content === 'string') {
+                    textContent = sdkMessage.message.content;
+                  }
+                  
+                  if (textContent && textContent !== fullContent) {
+                    fullContent = textContent;
+                  }
+                } else if (sdkMessage.type === 'result' && sdkMessage.result) {
+                  fullContent = sdkMessage.result;
+                }
+              }
+              
+              // Forward response to frontend (include messageId for reference)
+              const streamResponse = {
+                ...data,
+                messageId: assistantMessage.id
+              };
+              
+              res.write(`data: ${JSON.stringify(streamResponse)}\n\n`);
+              
+              // Handle completion
+              if (data.type === 'done' || data.type === 'error' || data.type === 'aborted') {
+                console.log(`✅ Bridge request ${requestId} completed: ${data.type}`);
+                
+                // Update message in database with final content
+                prisma.message.update({
+                  where: { id: assistantMessage.id },
+                  data: {
+                    content: fullContent,
+                    status: data.type === 'done' ? 'completed' : 'failed',
+                    error: data.error || null
+                  }
+                }).catch(err => {
+                  console.error('Failed to update message:', err);
+                });
+
+                return;
+              }
+              
+            } catch (parseError) {
+              console.error('Error parsing bridge response:', parseError);
+            }
+          }
+        }
+      });
+
+      response.data.on('end', () => {
+        console.log(`🏁 Bridge stream ended for request ${requestId}`);
+        res.end();
+      });
+
+      response.data.on('error', (error: any) => {
+        console.error(`❌ Bridge stream error for ${requestId}:`, error);
+        res.write(`data: ${JSON.stringify({
+          type: 'error',
+          error: error.message,
+          requestId,
+          messageId: assistantMessage.id
+        })}\n\n`);
+        res.end();
+      });
+
+    } catch (error) {
+      console.error('❌ Bridge request failed:', error);
+      
+      // Update message status to failed
+      await prisma.message.update({
+        where: { id: assistantMessage.id },
+        data: {
+          status: 'failed',
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+
+      // Send error to frontend
+      res.write(`data: ${JSON.stringify({
+        type: 'error',
+        error: error instanceof Error ? error.message : String(error),
+        requestId,
+        messageId: assistantMessage.id
+      })}\n\n`);
+      res.end();
+    }
+
+  } catch (error) {
+    console.error('❌ Stream bridge setup error:', error);
+    res.status(500).json({
+      error: 'Failed to set up bridge streaming response',
+      details: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+/**
  * POST /api/chat/messages/abort/:requestId
  * Abort a streaming request using WebUI shared abort controller pattern
  */
 router.post('/messages/abort/:requestId', handleAbortRequest);
+
+/**
+ * POST /api/chat/messages/abort-bridge/:requestId
+ * Abort a bridge streaming request
+ */
+router.post('/messages/abort-bridge/:requestId', async (req: Request, res: Response) => {
+  try {
+    const requestId = req.params.requestId;
+    
+    if (!requestId) {
+      return res.status(400).json({
+        error: 'Request ID is required',
+      });
+    }
+
+    // Forward abort request to bridge service
+    const bridgeUrl = process.env.BRIDGE_URL || 'http://localhost:8080';
+    const axios = require('axios');
+    
+    try {
+      await axios.post(`${bridgeUrl}/abort/${requestId}`, {}, { timeout: 5000 });
+      console.log(`⏹️ Abort request sent to bridge for ${requestId}`);
+      
+      res.json({
+        success: true,
+        message: 'Abort request sent to bridge'
+      });
+    } catch (bridgeError) {
+      console.error(`❌ Failed to abort bridge request ${requestId}:`, bridgeError);
+      res.status(500).json({
+        error: 'Failed to abort bridge request',
+        details: bridgeError instanceof Error ? bridgeError.message : String(bridgeError)
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Abort bridge request error:', error);
+    res.status(500).json({
+      error: 'Failed to process abort request',
+    });
+  }
+});
 
 /**
  * GET /api/chat/conversations/:conversationId/permissions

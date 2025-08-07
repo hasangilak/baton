@@ -641,7 +641,7 @@ class UltimateClaudeSDK {
       contextStrategy = await this.sessionManager.askContextStrategy();
     }
 
-    let conversationDone: (() => void) | undefined;
+    // GITHUB ISSUE #4775 FIX: Removed conversationDone since we're not using blocking pattern
     const startTime = Date.now();
     const toolsUsed: string[] = [];
     
@@ -649,10 +649,8 @@ class UltimateClaudeSDK {
       const messages: SDKMessage[] = [];
       const abortController = new AbortController();
 
-      const conversationComplete = new Promise<void>(resolve => {
-        conversationDone = resolve;
-      });
-
+      // GITHUB ISSUE #4775 FIX: Non-blocking stream pattern
+      // Do NOT block the stream - this allows canUseTool callbacks to work properly
       async function* createPromptStream(): AsyncIterableIterator<SDKUserMessage> {
         yield {
           type: 'user',
@@ -660,7 +658,7 @@ class UltimateClaudeSDK {
           parent_tool_use_id: null,
           session_id: options.sessionId || `ultimate-${Date.now()}`
         };
-        await conversationComplete;
+        // CRITICAL: No await here - let the stream complete naturally
       }
 
       // Configure ultimate SDK options
@@ -706,7 +704,19 @@ class UltimateClaudeSDK {
         
         if (message.type === 'assistant') {
           if (!options.testMode) {
-            console.log('📥 Claude is processing...');
+            console.log('📥 Claude response:');
+            
+            // Display the actual message content
+            if (message.message?.content) {
+              for (const content of message.message.content) {
+                if (content.type === 'text') {
+                  console.log(content.text);
+                } else if (content.type === 'tool_use') {
+                  console.log(`🔧 Using tool: ${content.name}`);
+                }
+              }
+            }
+            console.log('---');
           }
         } else if (message.type === 'system') {
           finalSessionId = message.session_id;
@@ -724,7 +734,7 @@ class UltimateClaudeSDK {
           const duration = Date.now() - startTime;
           finalCost = message.total_cost_usd;
           
-          if (conversationDone) conversationDone();
+          // GITHUB ISSUE #4775 FIX: No need to call conversationDone() anymore
           
           // Save comprehensive session data
           if (finalSessionId && message.subtype === 'success') {
@@ -757,9 +767,14 @@ class UltimateClaudeSDK {
           const stats = this.permissionSystem.getStats();
           console.log(`🛡️  Permissions: ${stats.autoAllow ? 'Auto-allow ON' : 'Interactive'}`);
           
-          if (message.subtype === 'success') {
+          if (message.subtype === 'success' && finalSessionId) {
+            console.log('\n💾 SESSION SAVED FOR FUTURE USE:');
+            console.log(`   🔑 Full Session ID: ${finalSessionId}`);
+            console.log('\n📋 TO RESUME THIS CONVERSATION:');
+            console.log(`   Continue: bun ultimate-claude-sdk.ts query "your message" --continue`);
+            console.log(`   Resume: bun ultimate-claude-sdk.ts query "your message" --session ${finalSessionId}`);
+            console.log(`   Interactive: Run script and choose 'c' (continue) or 'r' (resume)`);
             console.log('\n🎵 Listen for completion sound (hooks)');
-            console.log('💾 Session data saved for future context');
           }
           
           console.log('='.repeat(60));
@@ -780,7 +795,7 @@ class UltimateClaudeSDK {
       throw new Error('Query completed without result');
       
     } catch (error) {
-      if (conversationDone) conversationDone();
+      // GITHUB ISSUE #4775 FIX: No need to call conversationDone() anymore
       
       console.error('\n💥 ULTIMATE QUERY FAILED:', error);
       return {
@@ -964,12 +979,32 @@ async function main() {
     switch (command) {
       case 'query':
       case 'q':
-        const prompt = args.slice(1).join(' ');
-        if (!prompt) {
+        const queryArgs = args.slice(1);
+        let queryPrompt = '';
+        let queryOptions: any = {};
+        
+        // Parse arguments for session options
+        for (let i = 0; i < queryArgs.length; i++) {
+          if (queryArgs[i] === '--continue') {
+            queryOptions.contextStrategy = 'continue';
+          } else if (queryArgs[i] === '--session' && i + 1 < queryArgs.length) {
+            queryOptions.contextStrategy = 'resume';
+            queryOptions.sessionId = queryArgs[i + 1];
+            i++; // skip next arg as it's the session ID
+          } else if (!queryArgs[i].startsWith('--')) {
+            queryPrompt += (queryPrompt ? ' ' : '') + queryArgs[i];
+          }
+        }
+        
+        if (!queryPrompt) {
           console.log('❌ Usage: bun run ultimate-claude-sdk.ts query "your prompt here"');
+          console.log('   Options:');
+          console.log('     --continue          Continue from last session');
+          console.log('     --session <id>      Resume specific session');
           process.exit(1);
         }
-        await sdk.runUltimateQuery(prompt);
+        
+        await sdk.runUltimateQuery(queryPrompt, queryOptions);
         break;
         
       case 'test':
@@ -1003,6 +1038,8 @@ async function main() {
       default:
         console.log('❓ Unknown command. Available commands:');
         console.log('   query "prompt" - Run single query');
+        console.log('     --continue          Continue from last session');
+        console.log('     --session <id>      Resume specific session');
         console.log('   test - Run test suite');
         console.log('   demo - Run demonstration');
         console.log('   stats - Show statistics');

@@ -138,12 +138,16 @@ export function useClaudeStreaming(options: ClaudeStreamingOptions = {}) {
         allowedTools: allowedTools?.length || 0,
       });
 
-      // Make streaming request to new WebUI endpoint
+      // Make streaming request to bridge endpoint
       const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-      const response = await fetch(`${API_BASE_URL}/api/chat/messages/stream-webui`, {
+      const response = await fetch(`${API_BASE_URL}/api/chat/messages/stream-bridge`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestPayload),
+        body: JSON.stringify({
+          conversationId: targetId,
+          content,
+          requestId,
+        }),
       });
 
       if (!response.ok) {

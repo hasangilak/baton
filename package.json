@@ -2,8 +2,10 @@
   "dependencies": {
     "@anthropic-ai/claude-code": "^1.0.70",
     "axios": "^1.11.0",
+    "cors": "^2.8.5",
     "crypto": "^1.0.1",
     "events": "^3.3.0",
+    "express": "^5.1.0",
     "p-limit": "^6.2.0",
     "playwright": "^1.54.2",
     "puppeteer": "^24.15.0",

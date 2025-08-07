@@ -1,56 +1,56 @@
 {
-  "totalRequests": 10,
-  "completedRequests": 10,
+  "totalRequests": 8,
+  "completedRequests": 8,
   "failedRequests": 0,
   "abortedRequests": 0,
-  "totalTokens": 68,
-  "totalCost": 0.6459842000000001,
-  "totalDuration": 43561,
+  "totalTokens": 192,
+  "totalCost": 1.0813636,
+  "totalDuration": 114973,
   "messageTypes": [
     [
       "system",
-      4
+      8
     ],
     [
       "assistant",
-      4
+      18
+    ],
+    [
+      "user",
+      10
     ],
     [
       "result",
-      4
+      8
     ]
   ],
   "toolUsage": [],
   "sessionEvents": [
     [
       "new",
-      4
+      5
     ],
     [
       "id_captured",
-      4
+      8
     ],
     [
       "stored",
-      4
+      8
     ],
     [
       "completed",
-      4
+      8
     ],
     [
       "resume",
-      6
-    ],
-    [
-      "error",
-      6
+      3
     ]
   ],
   "performanceMetrics": {
-    "averageResponseTime": 5445.125,
-    "minResponseTime": 7095,
-    "maxResponseTime": 21057
+    "averageResponseTime": 16424.714285714286,
+    "minResponseTime": 7622,
+    "maxResponseTime": 26881
   },
-  "lastUpdated": "2025-08-07T11:46:06.945Z"
+  "lastUpdated": "2025-08-07T13:35:01.952Z"
 }
