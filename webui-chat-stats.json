@@ -1,0 +1,56 @@
+{
+  "totalRequests": 2,
+  "completedRequests": 2,
+  "failedRequests": 0,
+  "abortedRequests": 0,
+  "totalTokens": 14,
+  "totalCost": 0.18613060000000003,
+  "totalDuration": 7677,
+  "messageTypes": [
+    [
+      "system",
+      1
+    ],
+    [
+      "assistant",
+      1
+    ],
+    [
+      "result",
+      1
+    ]
+  ],
+  "toolUsage": [],
+  "sessionEvents": [
+    [
+      "new",
+      1
+    ],
+    [
+      "id_captured",
+      1
+    ],
+    [
+      "stored",
+      1
+    ],
+    [
+      "completed",
+      1
+    ],
+    [
+      "resume",
+      1
+    ],
+    [
+      "error",
+      1
+    ]
+  ],
+  "performanceMetrics": {
+    "averageResponseTime": 0,
+    "minResponseTime": 7677,
+    "maxResponseTime": 7677
+  },
+  "lastUpdated": "2025-08-07T11:19:18.621Z"
+}

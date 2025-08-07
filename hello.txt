@@ -1,6 +1,19 @@
-testing context preservation
+Beneath Berlin's sky so wide,
+Hassan walks with quiet pride.
+Blue as oceans, deep and true,
+His favorite hue in morning dew.
 
-Code flows like rivers deep,
-Through branches where bugs may sleep,
-Functions dance and variables sing,
-While compilers their magic bring.
+From German streets to code's embrace,
+Building Baton, line by space.
+Tasks and todos, neatly arranged,
+A digital world, beautifully changed.
+
+In Docker containers, services rise,
+WebSockets connect beneath the skies.
+MCP servers hum their song,
+As Claude and Baton dance along.
+
+From Berlin's heart to pixels bright,
+A coder's journey, day and night.
+Where blue dreams meet the screen's soft glow,
+And projects flourish, row by row.
