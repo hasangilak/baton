@@ -1,15 +1,12 @@
 import React from "react";
 import { Menu, X } from "lucide-react";
-import type { Message } from "../../../../types";
 import { formatDistanceToNow } from "date-fns";
 import { WelcomeScreen } from "../WelcomeScreen";
 import { SessionInfoBar } from "../SessionInfoBar";
 import { ConversationInputArea } from "../ConversationInputArea";
-import { MessageBubble, LoadingMessage } from "../MessageBubble";
-import { InteractivePromptComponent } from "../../InteractivePrompt";
-import { extractMessageContent } from "../messageUtils";
-import { generateMessageId } from "../../../../utils/id";
 import { useChatPageLogic } from "../../../../hooks/useChatPageLogic";
+import { useConversationItems } from "../../../../hooks/useConversationItems";
+import { ConversationItemRenderer } from "../ConversationItem";
 
 export const ChatLayoutMobile: React.FC = () => {
   const {
@@ -38,6 +35,14 @@ export const ChatLayoutMobile: React.FC = () => {
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   const autoScrollRef = React.useRef(true);
   const lastScrollHeightRef = React.useRef(0);
+
+  // Always call hooks at top level - never conditionally
+  const conversationItems = useConversationItems({
+    dbMessages,
+    claudeStreaming,
+    pendingPrompts,
+    selectedConversationId
+  });
 
   // Track user manual scroll to disable auto-scroll temporarily
   React.useEffect(() => {
@@ -105,10 +110,7 @@ export const ChatLayoutMobile: React.FC = () => {
     lastScrollHeightRef.current = el.scrollHeight;
   }, [
     scrollToBottom,
-    dbMessages?.length,
-    claudeStreaming.messages.length,
-    claudeStreaming.currentAssistantMessage?.content,
-    pendingPrompts.length,
+    conversationItems.length,
     claudeStreaming.isStreaming,
   ]);
 
@@ -121,6 +123,7 @@ export const ChatLayoutMobile: React.FC = () => {
       }, 100);
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [isNewChat, scrollToBottom]);
 
   return (
@@ -239,109 +242,14 @@ export const ChatLayoutMobile: React.FC = () => {
                     </div>
                   </div>
                 )}
-                {[
-                  ...(dbMessages || []),
-                  ...claudeStreaming.messages.map((msg: any, index: number) => {
-                    const messageId =
-                      msg.id ||
-                      msg.timestamp?.toString() ||
-                      `msg-${index}-${generateMessageId()}`;
-                    const timestamp = msg.timestamp
-                      ? new Date(msg.timestamp)
-                      : new Date();
-                    let displayMessage: Message;
-                    if (msg.type === "chat") {
-                      displayMessage = {
-                        id: messageId,
-                        conversationId: selectedConversationId || "",
-                        role: msg.role || "assistant",
-                        content: extractMessageContent(msg),
-                        status: "completed",
-                        createdAt: timestamp.toISOString(),
-                        updatedAt: timestamp.toISOString(),
-                      } as Message;
-                    } else {
-                      displayMessage = {
-                        id: messageId,
-                        conversationId: selectedConversationId || "",
-                        role: "system",
-                        content: extractMessageContent(msg),
-                        status: "completed",
-                        createdAt: timestamp.toISOString(),
-                        updatedAt: timestamp.toISOString(),
-                        metadata: {
-                          streamingType: msg.type,
-                          streamingSubtype: msg.subtype,
-                        },
-                      } as Message;
-                    }
-                    return {
-                      ...displayMessage,
-                      originalMessage: msg,
-                      isStreamingMessage: true,
-                    };
-                  }),
-                  ...(claudeStreaming.currentAssistantMessage
-                    ? [
-                        {
-                          id: "streaming",
-                          conversationId: selectedConversationId || "",
-                          role: "assistant",
-                          content: extractMessageContent(
-                            claudeStreaming.currentAssistantMessage
-                          ),
-                          status: "sending",
-                          createdAt: new Date().toISOString(),
-                          updatedAt: new Date().toISOString(),
-                          originalMessage: claudeStreaming.currentAssistantMessage,
-                          isStreamingMessage: true,
-                          isStreaming: true,
-                        },
-                      ]
-                    : []),
-                  ...(claudeStreaming.isStreaming &&
-                  !claudeStreaming.currentAssistantMessage
-                    ? [
-                        {
-                          id: "loading",
-                          type: "loading",
-                        },
-                      ]
-                    : []),
-                  ...pendingPrompts.map((p) => ({
-                    id: p.id,
-                    type: "prompt",
-                    prompt: p,
-                  })),
-                ]
-                  .sort((a, b) => {
-                    const dateA = new Date(a.createdAt || 0).getTime();
-                    const dateB = new Date(b.createdAt || 0).getTime();
-                    return dateA - dateB;
-                  })
-                  .map((item) => {
-                    if (item.type === "loading") {
-                      return <LoadingMessage key="loading" />;
-                    }
-                    if (item.type === "prompt") {
-                      return (
-                        <InteractivePromptComponent
-                          key={item.id}
-                          prompt={item.prompt}
-                          onOptionSelect={handlePromptResponse}
-                          isResponding={isRespondingToPrompt}
-                        />
-                      );
-                    }
-                    return (
-                      <MessageBubble
-                        key={item.id}
-                        message={item}
-                        streamingMessage={item.originalMessage}
-                        isStreaming={item.isStreaming}
-                      />
-                    );
-                  })}
+{conversationItems.map((item) => (
+                    <ConversationItemRenderer
+                      key={item.id}
+                      item={item}
+                      onPromptResponse={handlePromptResponse}
+                      isRespondingToPrompt={isRespondingToPrompt}
+                    />
+                  ))}
                 <div style={{ height: 1 }} />
               </div>
             </div>
