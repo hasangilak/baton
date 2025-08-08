@@ -486,7 +486,7 @@ class ClaudeCodeBridge {
             message: 'Bridge conversation initialized',
             requestId: `init-${conversationId}`,
             conversationId,
-            projectId: 'demo-project-1', // Use demo project from seed data
+            projectId: 'cmdxumi04000k4yhw92fvsqqa', // Use baton project
             userId: 'demo-user-1' // Use demo user from seed data
           })
         }

@@ -215,7 +215,7 @@ This script tests:
 
 ### Database Testing
 Test database operations should use the seeded data from `npm run db:seed` which creates:
-- Demo project with ID `demo-project-1`
+- Baton project with ID `cmdxumi04000k4yhw92fvsqqa`
 - Sample tasks in different statuses
 - Default user account
 

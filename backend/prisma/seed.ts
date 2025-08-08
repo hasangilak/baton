@@ -15,7 +15,9 @@ async function main() {
     },
   });
 
-  // Create demo project
+  // Demo project creation removed to keep development environment clean
+  // Only one project (baton) should exist for simplified development
+  /*
   const demoProject = await prisma.project.upsert({
     where: { id: 'demo-project-1' },
     update: {},
@@ -27,8 +29,10 @@ async function main() {
       ownerId: defaultUser.id,
     },
   });
+  */
 
-  // Create sample tasks
+  // Sample tasks creation removed since it depends on demo project
+  /*
   const tasks = [
     {
       id: 'task-1',
@@ -81,6 +85,7 @@ async function main() {
       },
     });
   }
+  */
 
   // Create sample MCP agent
   const sampleAgent = await prisma.mCPAgent.upsert({

@@ -132,7 +132,7 @@ export const ChatPage: React.FC = () => {
 
   // Get current project
   const { data: projects } = useProjects();
-  const currentProjectId = projects?.[0]?.id || 'demo-project-1';
+  const currentProjectId = projects?.[0]?.id || 'cmdxumi04000k4yhw92fvsqqa';
 
   // Chat hooks
   const {
