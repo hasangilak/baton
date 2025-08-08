@@ -188,6 +188,9 @@ class ClaudeCodeBridge {
               messageCount++;
               seq++;
               
+              // SIMPLE AGENT MESSAGE LOGGING - just log each message we get from Claude
+              console.log(`🤖 AGENT_MSG [${requestId}] seq=${seq}`, JSON.stringify(sdkMessage, null, 2));
+              
               // Log first few messages for debugging
               if (messageCount <= 3) {
                 console.log(`📨 Message ${messageCount} type: ${sdkMessage.type || "unknown"} for ${requestId}`);

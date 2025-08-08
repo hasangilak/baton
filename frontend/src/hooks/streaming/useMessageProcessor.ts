@@ -103,14 +103,19 @@ export function useMessageProcessor() {
   // Handle system messages
   const handleSystemMessage = useCallback(
     (sdkMessage: SDKMessage, context: StreamingContext) => {
-      const systemMessage: SystemMessage = {
-        type: "system",
-        subtype: "sdk_system",
-        message: sdkMessage.message?.content || "System message",
-        timestamp: Date.now(),
-        data: sdkMessage,
-      };
-      context.addMessage(systemMessage);
+      // SKIP SYSTEM MESSAGES - Don't add system messages to chat UI to prevent clutter
+      console.log('🔇 Skipping system message from chat UI:', sdkMessage.type);
+      return;
+      
+      // Original code commented out to prevent system message display
+      // const systemMessage: SystemMessage = {
+      //   type: "system",
+      //   subtype: "sdk_system",
+      //   message: sdkMessage.message?.content || "System message",
+      //   timestamp: Date.now(),
+      //   data: sdkMessage,
+      // };
+      // context.addMessage(systemMessage);
     },
     [],
   );
@@ -118,25 +123,26 @@ export function useMessageProcessor() {
   // Handle result messages (final response)
   const handleResultMessage = useCallback(
     (sdkMessage: SDKMessage, context: StreamingContext) => {
-      if (sdkMessage.result) {
-        // Only apply final result text if we did NOT already stream assistant chunks.
-        // If a streaming assistant message exists, its content is already up-to-date.
-        if (!context.currentAssistantMessage) {
-          handleAssistantTextMessage({ text: sdkMessage.result }, context);
-        }
-      }
+      // COMPLETELY SKIP PROCESSING RESULT CONTENT - The assistant message already contains the response
+      // Don't create additional assistant messages from result content to prevent duplicates
+      console.log('🚫 Skipping result message content processing - assistant message already handled the response');
       
-      // Add result system message
-      const resultMessage: SystemMessage = {
-        type: "result",
-        subtype: "completion",
-        message: "Query completed successfully",
-        timestamp: Date.now(),
-        data: sdkMessage,
-      };
-      context.addMessage(resultMessage);
+      // ONLY SHOW RESULT MESSAGES FOR ERRORS - Skip success result messages to prevent duplicates
+      if ((sdkMessage as any).is_error) {
+        console.log('❌ Showing result message because it contains an error');
+        const resultMessage: SystemMessage = {
+          type: "result",
+          subtype: "completion",
+          message: sdkMessage.result || "Query completed with error",
+          timestamp: Date.now(),
+          data: sdkMessage,
+        };
+        context.addMessage(resultMessage);
+      } else {
+        console.log('✅ Skipping success result message entirely to prevent duplicate content');
+      }
     },
-    [handleAssistantTextMessage],
+    [],
   );
 
   // Main processor function (following WebUI guide pattern)
