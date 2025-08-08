@@ -226,10 +226,11 @@ export function useClaudeStreaming(options: ClaudeStreamingOptions = {}) {
                 const data = JSON.parse(trimmedLine.substring(6));
                 
                 // Track session ID from enhanced backend
-                if (data.sessionId && !chatState.currentSessionId) {
-                  console.log('🆔 Session ID received from enhanced backend:', data.sessionId);
-                  chatState.updateSessionId(data.sessionId);
-                  onSessionId?.(data.sessionId);
+                const incomingSessionId = data.sessionId || data.currentSessionId;
+                if (incomingSessionId && !chatState.currentSessionId) {
+                  console.log('🆔 Session ID received from enhanced backend:', incomingSessionId);
+                  chatState.updateSessionId(incomingSessionId);
+                  onSessionId?.(incomingSessionId);
                 }
                 
                 // Handle completion and error states from enhanced backend

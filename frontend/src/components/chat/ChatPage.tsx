@@ -160,6 +160,16 @@ export const ChatPage: React.FC = () => {
     conversationId: selectedConversationId || undefined,
     onSessionId: (sessionId) => {
       console.log('🆔 Session ID received in ChatPage:', sessionId);
+      
+      // Immediately update URL with session ID query parameter
+      if (selectedConversationId && sessionId) {
+        const newUrl = `/chat/${selectedConversationId}?sessionId=${sessionId}`;
+        console.log('🔄 Updating URL with session ID:', newUrl);
+        navigate(newUrl, { replace: true });
+        
+        // Update chat state with session ID
+        claudeStreaming.updateSessionId(sessionId);
+      }
     },
     onPermissionError: (error) => {
       console.warn('🔒 Permission error in ChatPage:', error);

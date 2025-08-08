@@ -1686,10 +1686,11 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
                 }
               }
               
-              // Forward response to frontend (include messageId for reference)
+              // Forward response to frontend (include messageId and sessionId for reference)
               const streamResponse = {
                 ...data,
-                messageId: assistantMessage.id
+                messageId: assistantMessage.id,
+                currentSessionId: currentSessionId // Include current session ID for immediate URL updates
               };
               
               res.write(`data: ${JSON.stringify(streamResponse)}\n\n`);
