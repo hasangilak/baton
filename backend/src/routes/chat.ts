@@ -1561,7 +1561,7 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
   const messageStorage = getMessageStorageService(prisma);
   
   try {
-    const { conversationId, content, requestId } = req.body;
+    const { conversationId, content, requestId, permissionMode = 'default' } = req.body;
 
     if (!conversationId || !content || !requestId) {
       res.status(400).json({
@@ -1612,7 +1612,7 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
         sessionId: currentSessionId,
         allowedTools,
         workingDirectory: process.env.WORKING_DIRECTORY || '/home/hassan/work/baton',
-        permissionMode: 'interactive',
+        permissionMode: permissionMode,
         projectName: conversation.project?.name
       };
 

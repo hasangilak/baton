@@ -33,6 +33,8 @@ export const ChatLayoutDesktop: React.FC = () => {
     dbMessages,
     archiveConversation,
     deleteConversation,
+    permissionMode,
+    cyclePermissionMode,
   } = useChatPageLogic();
 
   // Always call hooks at top level - never conditionally
@@ -144,6 +146,8 @@ export const ChatLayoutDesktop: React.FC = () => {
             handleSendMessage={handleSendMessage}
             fileUpload={fileUpload}
             getGreeting={getGreeting}
+            permissionMode={permissionMode}
+            onCyclePermissionMode={cyclePermissionMode}
           />
         ) : (
           <>
@@ -186,6 +190,8 @@ export const ChatLayoutDesktop: React.FC = () => {
               handleSendMessage={handleSendMessage}
               fileUpload={fileUpload}
               isDisabled={claudeStreaming.isStreaming}
+              permissionMode={permissionMode}
+              onCyclePermissionMode={cyclePermissionMode}
             />
           </>
         )}

@@ -30,6 +30,8 @@ export const ChatLayoutMobile: React.FC = () => {
     setShowSidebar,
     isLoadingMessages,
     dbMessages,
+    permissionMode,
+    cyclePermissionMode,
   } = useChatPageLogic();
 
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
@@ -215,6 +217,8 @@ export const ChatLayoutMobile: React.FC = () => {
             handleSendMessage={handleSendMessage}
             fileUpload={fileUpload}
             getGreeting={getGreeting}
+            permissionMode={permissionMode}
+            onCyclePermissionMode={cyclePermissionMode}
           />
         ) : (
           <div className="flex-1 flex flex-col min-h-0">
@@ -260,6 +264,8 @@ export const ChatLayoutMobile: React.FC = () => {
               handleSendMessage={handleSendMessage}
               fileUpload={fileUpload}
               isDisabled={claudeStreaming.isStreaming}
+              permissionMode={permissionMode}
+              onCyclePermissionMode={cyclePermissionMode}
             />
           </div>
         )}

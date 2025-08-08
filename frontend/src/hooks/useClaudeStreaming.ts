@@ -108,7 +108,7 @@ export function useClaudeStreaming(options: ClaudeStreamingOptions = {}) {
 
 
   // Main send message function
-  const sendMessage = useCallback(async (messageContent?: string, targetConversationId?: string) => {
+  const sendMessage = useCallback(async (messageContent?: string, targetConversationId?: string, permissionMode?: 'default' | 'plan' | 'acceptEdits') => {
     const content = messageContent || chatState.input.trim();
     const targetId = targetConversationId || conversationId;
     if (!content || isStreaming || !targetId) return;
@@ -139,7 +139,7 @@ export function useClaudeStreaming(options: ClaudeStreamingOptions = {}) {
         allowedTools,
         workingDirectory,
         sessionId: chatState.currentSessionId || undefined,
-        permissionMode: 'default',
+        permissionMode: permissionMode || 'default',
       };
 
       console.log('🚀 Starting streaming request:', {
@@ -158,6 +158,7 @@ export function useClaudeStreaming(options: ClaudeStreamingOptions = {}) {
           conversationId: targetId,
           content,
           requestId,
+          permissionMode: permissionMode || 'default',
         }),
       });
 

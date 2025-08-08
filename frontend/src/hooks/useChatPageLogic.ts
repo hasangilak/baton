@@ -16,6 +16,7 @@ export const useChatPageLogic = () => {
   const [inputValue, setInputValue] = useState('');
   const [showSidebar, setShowSidebar] = useState(false);
   const [isNewChat, setIsNewChat] = useState(true);
+  const [permissionMode, setPermissionMode] = useState<'default' | 'plan' | 'acceptEdits'>('default');
 
   // Get current project
   const { data: projects } = useProjects();
@@ -123,7 +124,7 @@ export const useChatPageLogic = () => {
       setSelectedConversationId(convId);
     }
 
-    claudeStreaming.sendMessage(trimmed, convId || undefined);
+    claudeStreaming.sendMessage(trimmed, convId || undefined, permissionMode);
     setInputValue('');
     fileUpload.clearFiles();
   };
@@ -135,6 +136,18 @@ export const useChatPageLogic = () => {
     }
   };
 
+  // Permission mode cycling function
+  const cyclePermissionMode = () => {
+    setPermissionMode(current => {
+      switch (current) {
+        case 'default': return 'plan';
+        case 'plan': return 'acceptEdits';
+        case 'acceptEdits': return 'default';
+        default: return 'default';
+      }
+    });
+  };
+
   return {
     // State
     isNewChat,
@@ -144,6 +157,8 @@ export const useChatPageLogic = () => {
     setSelectedConversationId,
     showSidebar,
     setShowSidebar,
+    permissionMode,
+    cyclePermissionMode,
     
     // Data
     conversationDetails,

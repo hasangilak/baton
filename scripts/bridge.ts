@@ -11,7 +11,7 @@
  * bun run bridge.ts [--port 8080] [--backend http://localhost:3001]
  */
 
-import { query, type PermissionResult, type SDKUserMessage } from "@anthropic-ai/claude-code";
+import { query, type PermissionResult, type SDKUserMessage, type PermissionMode} from "@anthropic-ai/claude-code";
 
 interface BridgeRequest {
   message: string;
@@ -20,7 +20,7 @@ interface BridgeRequest {
   sessionId?: string;
   allowedTools?: string[];
   workingDirectory?: string;
-  permissionMode?: string;
+  permissionMode?: PermissionMode;
   projectName?: string;
 }
 
@@ -45,13 +45,14 @@ class ClaudeCodeBridge {
   private async handleExecuteRequest(request: Request): Promise<Response> {
     try {
       const body = await request.json() as BridgeRequest;
-      const { message, requestId, conversationId, sessionId, allowedTools, workingDirectory, permissionMode, projectName } = body;
+      const { message, requestId, conversationId, sessionId, allowedTools, workingDirectory, permissionMode = 'default', projectName } = body;
 
       console.log(`🚀 Bridge executing Claude Code request ${requestId}`);
       console.log(`📝 Message: "${message.substring(0, 100)}..."`);
       console.log(`🔗 Session: ${sessionId || 'new'}`);
       console.log(`🛠️  Tools: ${allowedTools?.join(', ') || 'default'}`);
       console.log(`📁 Working Dir: ${workingDirectory || 'default CWD'}`);
+      console.log(`🔐 Permission Mode: ${permissionMode}`);
       console.log(`📦 Conversation: ${conversationId} | Project: ${projectName || 'n/a'}`);
 
       // Create readable stream for Server-Sent Events
@@ -97,7 +98,7 @@ class ClaudeCodeBridge {
               pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_PATH || "/home/hassan/.nvm/versions/node/v22.18.0/bin/claude",
               maxTurns: 20,
               mcpServers: {},
-              permissionMode: 'default' as const,
+              permissionMode: permissionMode,
               // Add session resume if provided
               ...(sessionId && sessionId.trim() !== "" ? { resume: sessionId } : {}),
             };
