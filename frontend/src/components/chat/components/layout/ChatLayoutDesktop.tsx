@@ -58,8 +58,8 @@ export const ChatLayoutDesktop: React.FC = () => {
   ]);
 
   return (
-    <div className="h-full min-h-screen flex flex-col md:flex-row bg-[#1E1F22] text-gray-200">
-      <div className="hidden md:flex w-12 bg-[#191A1C] border-r border-[#2C2D30] flex-col items-center py-3">
+    <div className="h-[calc(100vh-90px)] flex flex-col md:flex-row bg-[#1E1F22] text-gray-200">
+      <div className="hidden md:flex w-12 bg-[#191A1C] border-r border-[#2C2D30] flex-col items-center">
         <button
           onClick={() => setShowSidebar(!showSidebar)}
           className="p-2 hover:bg-[#242528] rounded-lg transition-colors"
@@ -144,7 +144,7 @@ export const ChatLayoutDesktop: React.FC = () => {
             getGreeting={getGreeting}
           />
         ) : (
-          <div className="flex-1 flex flex-col">
+          <>
             <SessionInfoBar
               sessionId={
                 conversationDetails?.claudeSessionId ||
@@ -153,12 +153,12 @@ export const ChatLayoutDesktop: React.FC = () => {
               }
               contextTokens={conversationDetails?.contextTokens ?? null}
             />
-            <div className="flex-1 min-h-0 overflow-y-auto">
-              <div
-                ref={scrollContainerRef}
-                className="max-w-3xl mx-auto px-3 md:px-4 py-3 md:py-6 overflow-y-auto no-scrollbar pb-8"
-                data-testid="chat-messages-scroll"
-              >
+            <div
+              ref={scrollContainerRef}
+              className="flex-1 min-h-0 overflow-y-auto no-scrollbar pb-8"
+              data-testid="chat-messages-scroll"
+            >
+              <div className="max-w-3xl mx-auto px-3 md:px-4 py-3 md:py-6">
                 {isLoadingMessages && selectedConversationId && (
                   <div className="flex items-center justify-center py-8">
                     <div className="text-sm text-gray-500">
@@ -251,7 +251,7 @@ export const ChatLayoutDesktop: React.FC = () => {
               fileUpload={fileUpload}
               isDisabled={claudeStreaming.isStreaming}
             />
-          </div>
+          </>
         )}
       </div>
       <input
