@@ -6,6 +6,7 @@ import type {
   ClaudeCodePlanStatus, 
   CapturePlanRequest 
 } from '../types';
+import { useToast } from './useToast';
 
 // Query hook for fetching plans by project
 export function usePlans(projectId: string, status?: string) {
@@ -40,6 +41,7 @@ export function usePlan(id: string | undefined) {
 // Mutation hook for capturing a plan (from hooks)
 export function useCapturePlan() {
   const queryClient = useQueryClient();
+  const { error: showError } = useToast();
 
   return useMutation({
     mutationFn: async (data: CapturePlanRequest) => {
@@ -60,9 +62,9 @@ export function useCapturePlan() {
       // Invalidate all plans lists to be safe
       queryClient.invalidateQueries({ queryKey: queryKeys.plans.lists() });
     },
-    onError: (error) => {
+    onError: (error: unknown) => {
       console.error('Failed to capture plan:', error);
-      // TODO: Show error toast
+      showError('Failed to capture plan', 'Please try again.');
     },
   });
 }
@@ -70,6 +72,7 @@ export function useCapturePlan() {
 // Mutation hook for updating a plan
 export function useUpdatePlan() {
   const queryClient = useQueryClient();
+  const { error: showError } = useToast();
 
   return useMutation({
     mutationFn: async ({ 
@@ -121,7 +124,7 @@ export function useUpdatePlan() {
         queryClient.setQueryData(queryKeys.plans.detail(variables.id), context.previousPlan);
       }
       console.error('Failed to update plan:', error);
-      // TODO: Show error toast
+      showError('Failed to update plan', 'Your changes were reverted.');
     },
     onSettled: (_data, _error, variables) => {
       // Always refetch after error or success
@@ -133,6 +136,7 @@ export function useUpdatePlan() {
 // Mutation hook for deleting a plan
 export function useDeletePlan() {
   const queryClient = useQueryClient();
+  const { error: showError } = useToast();
 
   return useMutation({
     mutationFn: async (id: string) => {
@@ -183,7 +187,7 @@ export function useDeletePlan() {
         queryClient.invalidateQueries({ queryKey: queryKeys.plans.lists() });
       }
       console.error('Failed to delete plan:', error);
-      // TODO: Show error toast
+      showError('Failed to delete plan', 'Please try again.');
     },
     onSettled: () => {
       // Always refetch to ensure consistency

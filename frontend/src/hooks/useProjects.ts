@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiService } from '../services/api';
 import { queryKeys } from '../lib/queryClient';
 import type { CreateProjectRequest, UpdateProjectRequest } from '../types';
+import { useToast } from './useToast';
 
 // Query hook for fetching all projects
 export function useProjects() {
@@ -31,6 +32,7 @@ export function useProject(id: string | undefined) {
 // Mutation hook for creating a project
 export function useCreateProject() {
   const queryClient = useQueryClient();
+  const { error: showError } = useToast();
 
   return useMutation({
     mutationFn: async (data: CreateProjectRequest) => {
@@ -48,7 +50,7 @@ export function useCreateProject() {
     },
     onError: (error) => {
       console.error('Failed to create project:', error);
-      // TODO: Show error toast
+      showError('Failed to create project', 'Please try again.');
     },
   });
 }
@@ -56,6 +58,7 @@ export function useCreateProject() {
 // Mutation hook for updating a project
 export function useUpdateProject() {
   const queryClient = useQueryClient();
+  const { error: showError } = useToast();
 
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: UpdateProjectRequest }) => {
@@ -73,7 +76,7 @@ export function useUpdateProject() {
     },
     onError: (error) => {
       console.error('Failed to update project:', error);
-      // TODO: Show error toast
+      showError('Failed to update project', 'Please try again.');
     },
   });
 }
@@ -81,6 +84,7 @@ export function useUpdateProject() {
 // Mutation hook for deleting a project
 export function useDeleteProject() {
   const queryClient = useQueryClient();
+  const { error: showError } = useToast();
 
   return useMutation({
     mutationFn: async (id: string) => {
@@ -99,7 +103,7 @@ export function useDeleteProject() {
     },
     onError: (error) => {
       console.error('Failed to delete project:', error);
-      // TODO: Show error toast
+      showError('Failed to delete project', 'Please try again.');
     },
   });
 }

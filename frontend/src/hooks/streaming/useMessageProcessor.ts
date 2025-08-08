@@ -54,7 +54,7 @@ export function useMessageProcessor() {
 
   // Handle assistant messages (following WebUI guide pattern)
   const handleAssistantMessage = useCallback(
-    (sdkMessage: SDKMessage, context: StreamingContext) => {
+    (sdkMessage: SDKMessage, _context: StreamingContext) => {
       if (!sdkMessage.message?.content) return;
 
       // Handle array of content blocks (WebUI pattern)
@@ -63,7 +63,7 @@ export function useMessageProcessor() {
         for (const contentItem of content) {
           if (contentItem.type === "text") {
             // Handle streaming text content
-            handleAssistantTextMessage(contentItem, context);
+            handleAssistantTextMessage(contentItem, _context);
           } else if (contentItem.type === "tool_use") {
             // Handle tool usage messages
             const toolMessage: ToolMessage = {
@@ -73,13 +73,13 @@ export function useMessageProcessor() {
               id: contentItem.id || `tool_${Date.now()}`,
               timestamp: Date.now(),
             };
-            context.onToolUse?.(toolMessage);
-            context.addMessage(toolMessage);
+            _context.onToolUse?.(toolMessage);
+            _context.addMessage(toolMessage);
           }
         }
       } else if (typeof content === 'string') {
         // Handle simple string content
-        handleAssistantTextMessage({ text: content }, context);
+        handleAssistantTextMessage({ text: content }, _context);
       }
     },
     [handleAssistantTextMessage],
@@ -102,7 +102,7 @@ export function useMessageProcessor() {
 
   // Handle system messages
   const handleSystemMessage = useCallback(
-    (sdkMessage: SDKMessage, context: StreamingContext) => {
+    (sdkMessage: SDKMessage, _context: StreamingContext) => {
       // SKIP SYSTEM MESSAGES - Don't add system messages to chat UI to prevent clutter
       console.log('🔇 Skipping system message from chat UI:', sdkMessage.type);
       return;

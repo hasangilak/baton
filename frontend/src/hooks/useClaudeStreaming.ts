@@ -201,8 +201,7 @@ export function useClaudeStreaming(options: ClaudeStreamingOptions = {}) {
       };
 
       // Enhanced stream processing with better error handling and session tracking
-      let buffer = '';
-      let lastContentUpdate = Date.now();
+  let buffer = '';
       
       while (true) {
         const { done, value } = await reader.read();
@@ -211,7 +210,6 @@ export function useClaudeStreaming(options: ClaudeStreamingOptions = {}) {
         // Decode chunk and add to buffer
         const chunk = decoder.decode(value, { stream: true });
         buffer += chunk;
-        lastContentUpdate = Date.now();
 
         // Process complete lines
         const lines = buffer.split('\n');
