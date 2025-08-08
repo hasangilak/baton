@@ -6,14 +6,15 @@ import {
   FileText,
   Settings,
   User,
-  Bot,
   Loader2,
   Shield,
   ShieldAlert,
   ShieldCheck,
   BarChart3,
   Timer,
-  Zap
+  Zap,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 import clsx from 'clsx';
 import type { InteractivePrompt, PromptOption } from '../../types';
@@ -31,49 +32,32 @@ const promptTypeIcons = {
   tool_permission: Settings,
   multiple_choice: FileText,
   three_option: FileText,
-  file_selection: FileText,
+  file_selection: FileText
 };
 
-const promptTypeColors = {
-  permission: 'text-blue-600 bg-blue-50 border-blue-200',
-  tool_usage: 'text-purple-600 bg-purple-50 border-purple-200',
-  tool_permission: 'text-orange-600 bg-orange-50 border-orange-200',
-  multiple_choice: 'text-green-600 bg-green-50 border-green-200',
-  three_option: 'text-green-600 bg-green-50 border-green-200',
-  file_selection: 'text-yellow-600 bg-yellow-50 border-yellow-200',
-};
-
-const riskLevelColors = {
-  LOW: 'text-green-600 bg-green-50 border-green-200',
-  MEDIUM: 'text-yellow-600 bg-yellow-50 border-yellow-200', 
-  HIGH: 'text-orange-600 bg-orange-50 border-orange-200',
-  CRITICAL: 'text-red-600 bg-red-50 border-red-200',
-};
-
-const riskLevelIcons = {
+const riskIconMap = {
   LOW: ShieldCheck,
   MEDIUM: Shield,
   HIGH: ShieldAlert,
-  CRITICAL: AlertCircle,
+  CRITICAL: AlertCircle
+};
+
+const riskAccentMap: Record<string, { border: string; icon: string; text: string; bg: string }> = {
+  LOW: { border: 'border-green-500/60', icon: 'text-green-400', text: 'text-green-300', bg: 'bg-green-950/30' },
+  MEDIUM: { border: 'border-yellow-500/60', icon: 'text-yellow-400', text: 'text-yellow-300', bg: 'bg-yellow-950/30' },
+  HIGH: { border: 'border-orange-500/70', icon: 'text-orange-400', text: 'text-orange-300', bg: 'bg-orange-950/30' },
+  CRITICAL: { border: 'border-red-500/70', icon: 'text-red-400', text: 'text-red-300', bg: 'bg-red-950/30' }
 };
 
 const getOptionButtonVariant = (option: PromptOption) => {
-  if (option.isRecommended) {
-    return 'default'; // Primary blue button for recommended options
-  }
-  if (option.isDefault) {
-    return 'secondary'; // Secondary button for default options
-  }
-  return 'outline'; // Outline button for regular options
+  if (option.isRecommended) return 'default';
+  if (option.isDefault) return 'secondary';
+  return 'outline';
 };
 
 const getOptionButtonIcon = (option: PromptOption) => {
-  if (option.value === 'yes' || option.value === 'yes_dont_ask') {
-    return <CheckCircle2 className="w-4 h-4" />;
-  }
-  if (option.value === 'no' || option.value === 'no_explain') {
-    return <AlertCircle className="w-4 h-4" />;
-  }
+  if (option.value === 'yes' || option.value === 'yes_dont_ask') return <CheckCircle2 className="w-4 h-4" />;
+  if (option.value === 'no' || option.value === 'no_explain') return <AlertCircle className="w-4 h-4" />;
   return null;
 };
 
@@ -83,190 +67,93 @@ export const InteractivePromptComponent: React.FC<InteractivePromptComponentProp
   isResponding = false
 }) => {
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
 
-  if (prompt.status !== 'pending') {
-    return null; // Don't show non-pending prompts
-  }
+  if (prompt.status !== 'pending') return null;
 
   const PromptIcon = promptTypeIcons[prompt.type] || AlertCircle;
-
-  const handleOptionClick = (optionId: string) => {
-    if (isResponding || selectedOption) return;
-    
-    setSelectedOption(optionId);
-    onOptionSelect(prompt.id, optionId);
-  };
-
-  const formatPromptMessage = (message: string) => {
-    // For tool usage prompts, extract the tool name for a cleaner display
-    if (prompt.type === 'tool_usage' && prompt.context?.toolName) {
-      return `Allow ${prompt.context.toolName} to run?`;
-    }
-    
-    // For tool permission prompts, show a cleaner format
-    if (prompt.type === 'tool_permission' && prompt.context?.toolName) {
-      return `Allow Claude Code to use the ${prompt.context.toolName} tool?`;
-    }
-    
-    // For other prompts, show the full message but limit length
-    if (message.length > 200) {
-      return message.substring(0, 200) + '...';
-    }
-    
-    return message;
-  };
-
-  // Extract enhanced context data
   const riskLevel = (prompt.context as any)?.riskLevel || 'MEDIUM';
+  const accent: { border: string; icon: string; text: string; bg: string } = (riskAccentMap as any)[riskLevel] || riskAccentMap.MEDIUM;
+  const RiskIcon = (riskIconMap as any)[riskLevel] || Shield;
   const toolName = (prompt.context as any)?.toolName;
   const usageCount = (prompt.context as any)?.usageCount || 0;
   const usageStatistics = (prompt as any).usageStatistics;
   const timestamp = (prompt as any).timestamp;
-  
-  const RiskIcon = riskLevelIcons[riskLevel as keyof typeof riskLevelIcons] || Shield;
-  const riskColors = riskLevelColors[riskLevel as keyof typeof riskLevelColors] || riskLevelColors.MEDIUM;
 
-  // Dynamic background based on risk level
-  const containerBg = riskLevel === 'CRITICAL' ? 'bg-red-50 border-red-200' :
-                      riskLevel === 'HIGH' ? 'bg-orange-50 border-orange-200' :
-                      riskLevel === 'MEDIUM' ? 'bg-yellow-50 border-yellow-200' :
-                      'bg-green-50 border-green-200';
+  const shortMsg = (() => {
+    if (prompt.type === 'tool_usage' && toolName) return `Allow ${toolName} to run?`;
+    if (prompt.type === 'tool_permission' && toolName) return `Allow tool: ${toolName}?`;
+    const msg = prompt.message || '';
+    return msg.length > 160 ? msg.slice(0, 160) + '…' : msg;
+  })();
+
+  const handleOptionClick = (optionId: string) => {
+    if (isResponding || selectedOption) return;
+    setSelectedOption(optionId);
+    onOptionSelect(prompt.id, optionId);
+  };
 
   return (
-    <div className={clsx("rounded-lg p-4 my-3", containerBg)} data-testid="permission-prompt-container">
-      {/* Enhanced Header with Risk Analysis */}
-      <div className="flex items-start space-x-3 mb-3">
-        <div className={clsx(
-          'flex items-center justify-center w-8 h-8 rounded-lg border',
-          promptTypeColors[prompt.type]
-        )}>
-          <PromptIcon className="w-4 h-4" />
-        </div>
-        
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center space-x-2 mb-2">
-            <Bot className="w-4 h-4 text-gray-500" />
-            <span className="text-sm font-medium text-gray-700">
-              Claude Code needs your permission
-            </span>
-            {prompt.title && (
-              <span className={clsx(
-                'inline-flex items-center px-2 py-1 rounded-md text-xs font-medium border',
-                promptTypeColors[prompt.type]
-              )}>
-                {prompt.title}
-              </span>
-            )}
-          </div>
-
-          {/* Risk Level Indicator */}
-          <div className="flex items-center space-x-2 mb-2">
-            <div className={clsx(
-              'flex items-center space-x-1 px-2 py-1 rounded-md text-xs font-medium border',
-              riskColors
-            )}>
-              <RiskIcon className="w-3 h-3" />
-              <span>{riskLevel} RISK</span>
-            </div>
-            
-            {/* Usage Statistics */}
-            {usageCount > 0 && (
-              <div className="flex items-center space-x-1 px-2 py-1 rounded-md text-xs bg-gray-100 border border-gray-200">
-                <BarChart3 className="w-3 h-3 text-gray-500" />
-                <span className="text-gray-600">Used {usageCount} times</span>
-              </div>
-            )}
-
-            {/* Recommended Action Badge */}
-            {usageStatistics?.recommendedAction && (
-              <div className={clsx(
-                'flex items-center space-x-1 px-2 py-1 rounded-md text-xs border',
-                usageStatistics.recommendedAction === 'auto_allow' 
-                  ? 'bg-green-100 border-green-200 text-green-700'
-                  : 'bg-yellow-100 border-yellow-200 text-yellow-700'
-              )}>
-                <Zap className="w-3 h-3" />
-                <span>
-                  {usageStatistics.recommendedAction === 'auto_allow' ? 'Low Risk' : 'Review Needed'}
-                </span>
-              </div>
-            )}
-          </div>
-          
-          <p className="text-sm text-gray-800 leading-relaxed">
-            {formatPromptMessage(prompt.message)}
-          </p>
-          
-          {/* Enhanced Context Info */}
-          {(prompt.type === 'tool_usage' || prompt.type === 'tool_permission') && toolName && (
-            <div className="mt-3 text-xs text-gray-700 bg-white rounded-lg px-3 py-2 border shadow-sm">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <div className="flex items-center space-x-2">
-                  <Settings className="w-3 h-3 text-gray-400" />
-                  <span><strong>Tool:</strong> {toolName}</span>
-                </div>
-                
-                {usageCount > 0 && (
-                  <div className="flex items-center space-x-2">
-                    <BarChart3 className="w-3 h-3 text-gray-400" />
-                    <span><strong>Usage:</strong> {usageCount} times</span>
-                  </div>
-                )}
-              </div>
-
-              {(prompt.context as any)?.projectPath && (
-                <div className="mt-1 flex items-center space-x-2">
-                  <FileText className="w-3 h-3 text-gray-400" />
-                  <span><strong>Location:</strong> {(prompt.context as any).projectPath}</span>
-                </div>
-              )}
-
-              {(prompt.context as any)?.parameters && (
-                <div className="mt-2 p-2 bg-gray-50 rounded border text-xs font-mono">
-                  <div className="text-gray-500 mb-1">Parameters:</div>
-                  <div className="text-gray-700 max-h-20 overflow-y-auto">
-                    {(prompt.context as any).parameters.length > 200 
-                      ? (prompt.context as any).parameters.substring(0, 200) + '...'
-                      : (prompt.context as any).parameters
-                    }
-                  </div>
-                </div>
-              )}
-
-              {(prompt.context as any)?.originalContext && (
-                <div className="mt-2 flex items-start space-x-2">
-                  <AlertCircle className="w-3 h-3 text-gray-400 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <strong>Context:</strong> {(prompt.context as any).originalContext}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-        
-        <div className="text-xs text-gray-500 space-y-1">
-          <div className="flex items-center space-x-1">
-            <Clock className="w-3 h-3" />
-            <span>30s timeout</span>
-          </div>
-          {timestamp && (
-            <div className="flex items-center space-x-1">
-              <Timer className="w-3 h-3" />
-              <span>
-                {new Date(timestamp).toLocaleTimeString()}
-              </span>
-            </div>
-          )}
-        </div>
+    <div className={`border-l-2 ${accent.border} ${accent.bg} pl-3 py-2 rounded-sm space-y-2 my-2 transition-colors hover:bg-opacity-60`} data-testid="permission-prompt-container">
+      {/* Summary Row */}
+  <div className="flex items-center gap-2">
+        <PromptIcon size={14} className={accent.icon} />
+        <span className={`text-[10px] font-semibold tracking-wide ${accent.text}`}>{prompt.title || 'PERMISSION'}</span>
+        <span className="flex items-center gap-1 text-[10px] text-gray-400">
+          <RiskIcon size={12} className={accent.icon} />{riskLevel}
+        </span>
+        <span className="flex-1 truncate text-xs text-gray-300">{shortMsg}</span>
+        {timestamp && (
+          <span className="text-[10px] text-gray-500 flex items-center gap-1">
+            <Timer size={12} />{new Date(timestamp).toLocaleTimeString()}
+          </span>
+        )}
+        <button
+          onClick={() => setShowDetails(d => !d)}
+            className="ml-1 text-gray-500 hover:text-gray-300"
+          aria-label={showDetails ? 'Collapse details' : 'Expand details'}
+        >
+          {showDetails ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </button>
       </div>
 
+      {showDetails && (
+        <div className="space-y-3">
+          <div className="text-[11px] text-gray-400 leading-snug">
+            {prompt.message}
+          </div>
+          {(prompt.type === 'tool_usage' || prompt.type === 'tool_permission') && toolName && (
+            <div className="bg-gray-950/50 border border-gray-800 rounded p-2 text-[11px] space-y-2">
+              <div className="flex flex-wrap gap-3 text-gray-300">
+                <span className="flex items-center gap-1"><Settings size={12} className="text-gray-400" />Tool: <span className="font-mono text-gray-200">{toolName}</span></span>
+                {usageCount > 0 && (
+                  <span className="flex items-center gap-1"><BarChart3 size={12} className="text-gray-400" />Usage: {usageCount}</span>
+                )}
+                {usageStatistics?.recommendedAction && (
+                  <span className="flex items-center gap-1"><Zap size={12} className="text-yellow-400" />{usageStatistics.recommendedAction === 'auto_allow' ? 'Low Risk' : 'Review'}</span>
+                )}
+              </div>
+              {(prompt.context as any)?.projectPath && (
+                <div className="flex items-center gap-1 text-gray-400"><FileText size={12} className="text-gray-500" />Location: <span className="font-mono text-gray-300">{(prompt.context as any).projectPath}</span></div>
+              )}
+              {(prompt.context as any)?.parameters && (
+                <div className="border border-gray-800 rounded p-2 bg-gray-950/60 max-h-32 overflow-auto font-mono text-[11px] text-gray-300">
+                  {(prompt.context as any).parameters}
+                </div>
+              )}
+              {(prompt.context as any)?.originalContext && (
+                <div className="flex items-start gap-1 text-gray-400"><AlertCircle size={12} className="text-gray-500 mt-0.5" />{(prompt.context as any).originalContext}</div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Options */}
-      <div className="space-y-2">
+      <div className="space-y-1">
         {prompt.options.map((option, index) => {
           const isSelected = selectedOption === option.id;
           const ButtonIcon = getOptionButtonIcon(option);
-          
           return (
             <Button
               key={option.id}
@@ -282,71 +169,50 @@ export const InteractivePromptComponent: React.FC<InteractivePromptComponentProp
                 `permission-option-${option.id}`
               }
               className={clsx(
-                'w-full justify-start text-left h-auto py-2 px-3',
-                isSelected && 'ring-2 ring-blue-500 ring-offset-1',
-                option.isRecommended && 'shadow-md border-blue-300',
-                // Special styling for tool usage options
-                (prompt.type === 'tool_usage' || prompt.type === 'tool_permission') && index === 0 && 'border-green-300 hover:border-green-400',
-                (prompt.type === 'tool_usage' || prompt.type === 'tool_permission') && index === 1 && 'border-blue-300 hover:border-blue-400',
-                (prompt.type === 'tool_usage' || prompt.type === 'tool_permission') && index === 2 && 'border-red-300 hover:border-red-400'
+                'w-full justify-start text-left h-auto py-2 px-3 text-sm',
+                isSelected && 'ring-1 ring-offset-0 ring-blue-500',
+                option.isRecommended && 'border-blue-400',
+                (prompt.type === 'tool_usage' || prompt.type === 'tool_permission') && index === 0 && 'border-green-400/60',
+                (prompt.type === 'tool_usage' || prompt.type === 'tool_permission') && index === 1 && 'border-blue-400/60',
+                (prompt.type === 'tool_usage' || prompt.type === 'tool_permission') && index === 2 && 'border-red-400/60'
               )}
             >
-              <div className="flex items-center space-x-2">
-                <span className="text-xs font-mono text-gray-500 min-w-[1.5rem]">
-                  {option.id}.
-                </span>
-                
+              <div className="flex items-center gap-2 w-full">
+                <span className="text-[10px] font-mono text-gray-500 w-5">{option.id}.</span>
                 {ButtonIcon}
-                
-                <div className="flex-1 min-w-0">
-                  <span className="text-sm block">
-                    {option.label}
-                  </span>
-                  
-                  {/* Show additional context for specific option types */}
-                  {option.isRecommended && (
-                    <span className="text-xs text-blue-600 block">Recommended</span>
-                  )}
-                  
-                  {option.isDefault && !option.isRecommended && (
-                    <span className="text-xs text-gray-500 block">Default</span>
-                  )}
-                </div>
-                
-                {isSelected && isResponding && (
-                  <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
-                )}
-                
-                {isSelected && !isResponding && (
-                  <CheckCircle2 className="w-4 h-4 text-green-600" />
-                )}
+                <span className="flex-1 truncate">{option.label}</span>
+                {option.isRecommended && <span className="text-[10px] text-blue-400">Rec</span>}
+                {option.isDefault && !option.isRecommended && <span className="text-[10px] text-gray-500">Default</span>}
+                {isSelected && isResponding && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+                {isSelected && !isResponding && <CheckCircle2 className="w-4 h-4 text-green-500" />}
               </div>
             </Button>
           );
         })}
       </div>
-      
-      {/* Status message */}
-      {selectedOption && (
-        <div className="mt-3 text-xs text-gray-600 flex items-center space-x-1">
-          {isResponding ? (
-            <>
-              <Loader2 className="w-3 h-3 animate-spin" />
-              <span>Sending response to Claude Code...</span>
-            </>
-          ) : (
-            <>
-              <CheckCircle2 className="w-3 h-3 text-green-600" />
-              <span>Response sent! Claude Code will continue...</span>
-            </>
-          )}
+
+      {/* Status + timeout */}
+      <div className="flex flex-wrap items-center gap-3 text-[11px] text-gray-500 pt-1">
+        <div className="flex items-center gap-1">
+          <Clock size={12} />
+          <span>30s timeout</span>
         </div>
-      )}
-      
-      {/* Auto-timeout warning */}
-      <div className="mt-3 text-xs text-amber-700 bg-amber-100 rounded px-2 py-1">
-        <AlertCircle className="w-3 h-3 inline mr-1" />
-        This prompt will timeout in 30 seconds if no option is selected.
+        {selectedOption && (
+          <div className="flex items-center gap-1">
+            {isResponding ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <CheckCircle2 className="w-3 h-3 text-green-500" />
+            )}
+            <span>{isResponding ? 'Sending response…' : 'Response sent'}</span>
+          </div>
+        )}
+        {!selectedOption && (
+          <div className="flex items-center gap-1 text-amber-400">
+            <AlertCircle size={12} />
+            <span>No selection yet</span>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -233,7 +233,7 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
               <strong>Error:</strong> {message.error}
             </div>
           ) : (
-            renderedContent
+            <div className='text-gray-100'>{renderedContent}</div>
           )}
         </div>
 
