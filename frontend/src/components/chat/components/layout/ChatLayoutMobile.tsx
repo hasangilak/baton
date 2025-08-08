@@ -37,6 +37,7 @@ export const ChatLayoutMobile: React.FC = () => {
 
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   const autoScrollRef = React.useRef(true);
+  const lastScrollHeightRef = React.useRef(0);
 
   // Track user manual scroll to disable auto-scroll temporarily
   React.useEffect(() => {
@@ -45,8 +46,8 @@ export const ChatLayoutMobile: React.FC = () => {
     const onScroll = () => {
       const distanceFromBottom =
         el.scrollHeight - el.scrollTop - el.clientHeight;
-      // If user scrolls up more than 200px from bottom, disable auto-scroll
-      autoScrollRef.current = distanceFromBottom < 200;
+      // If user scrolls up more than 50px from bottom, disable auto-scroll
+      autoScrollRef.current = distanceFromBottom < 50;
     };
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => el.removeEventListener("scroll", onScroll);
@@ -58,29 +59,68 @@ export const ChatLayoutMobile: React.FC = () => {
       if (!el) return;
       // Only auto-scroll if user near bottom or explicitly streaming
       if (!autoScrollRef.current) return;
+      
+      // Calculate if we're already at the bottom
+      const isAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 10;
+      
+      // If we're already at bottom, no need to scroll
+      if (isAtBottom) return;
+      
       try {
-        el.scrollTo({ top: el.scrollHeight, behavior });
+        // Use setTimeout to ensure this runs after render
+        setTimeout(() => {
+          el.scrollTo({ 
+            top: el.scrollHeight,
+            behavior: behavior === "auto" ? "auto" : "smooth"
+          });
+        }, 0);
       } catch {
+        // Fallback
         el.scrollTop = el.scrollHeight;
       }
     },
     []
   );
 
-  // Scroll when new persisted, streamed, or prompt messages appear
+  // Improved scroll effect that handles all message updates
   React.useEffect(() => {
-    scrollToBottom(claudeStreaming.isStreaming ? "auto" : "smooth");
+    const el = scrollContainerRef.current;
+    if (!el) return;
+
+    // Check if we should auto-scroll
+    const shouldAutoScroll = autoScrollRef.current;
+    
+    // Scroll to bottom if we're streaming or if this is a new message
+    if (shouldAutoScroll) {
+      // Use requestAnimationFrame to ensure DOM is updated
+      requestAnimationFrame(() => {
+        // Add a small delay to ensure content is fully rendered
+        setTimeout(() => {
+          scrollToBottom(claudeStreaming.isStreaming ? "auto" : "smooth");
+        }, 10);
+      });
+    }
+    
+    // Update last scroll height
+    lastScrollHeightRef.current = el.scrollHeight;
   }, [
     scrollToBottom,
     dbMessages?.length,
     claudeStreaming.messages.length,
     claudeStreaming.currentAssistantMessage?.content,
     pendingPrompts.length,
+    claudeStreaming.isStreaming,
   ]);
 
   // Force scroll on first load of an existing chat
   React.useEffect(() => {
-    if (!isNewChat) scrollToBottom("auto");
+    if (!isNewChat) {
+      // Delay slightly to ensure content is rendered
+      const timer = setTimeout(() => {
+        scrollToBottom("auto");
+      }, 100);
+      return () => clearTimeout(timer);
+    }
   }, [isNewChat, scrollToBottom]);
 
   return (
@@ -163,7 +203,7 @@ export const ChatLayoutMobile: React.FC = () => {
           />
         </div>
       )}
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-h-0">
         {isNewChat ? (
           <WelcomeScreen
             inputValue={inputValue}
@@ -174,7 +214,7 @@ export const ChatLayoutMobile: React.FC = () => {
             getGreeting={getGreeting}
           />
         ) : (
-          <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex flex-col min-h-0">
             <SessionInfoBar
               sessionId={
                 conversationDetails?.claudeSessionId ||
@@ -186,7 +226,7 @@ export const ChatLayoutMobile: React.FC = () => {
             {/* Single dedicated scroll container */}
             <div
               ref={scrollContainerRef}
-              className="flex-1 min-h-0 overflow-y-auto scroll-smooth no-scrollbar"
+              className="flex-1 overflow-y-auto scroll-smooth no-scrollbar"
             >
               <div
                 className="max-w-3xl mx-auto px-3 py-3 md:py-6 pb-[calc(var(--app-bottom-nav-height,56px)+140px)]"
