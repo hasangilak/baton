@@ -78,6 +78,7 @@ export class MessageStorageService {
   /**
    * Update assistant message during streaming
    * Hybrid approach: immediate DB update + optimistic UI
+   * ENHANCED WITH COMPREHENSIVE DEBUGGING
    */
   async updateAssistantMessageStreaming(
     messageId: string, 
@@ -85,15 +86,51 @@ export class MessageStorageService {
     isComplete: boolean = false,
     sessionId?: string
   ): Promise<void> {
-    logger.storage?.debug('Updating streaming message', { 
+    const timestamp = new Date().toISOString();
+    
+    logger.storage?.info('🔄 STARTING updateAssistantMessageStreaming', { 
       messageId, 
       contentLength: content.length, 
       isComplete,
-      hasSessionId: !!sessionId 
+      hasSessionId: !!sessionId,
+      sessionId,
+      timestamp
     });
 
+    // Check if message exists before updating
     try {
+      const existingMessage = await this.prisma.message.findUnique({
+        where: { id: messageId },
+        select: { id: true, conversationId: true, content: true, status: true }
+      });
+      
+      if (!existingMessage) {
+        logger.storage?.error('❌ MESSAGE NOT FOUND - Cannot update non-existent message', { messageId });
+        return;
+      }
+      
+      logger.storage?.info('✅ Message exists, proceeding with update', { 
+        messageId,
+        currentStatus: existingMessage.status,
+        currentContentLength: existingMessage.content.length,
+        newContentLength: content.length
+      });
+    } catch (error) {
+      logger.storage?.error('❌ Error checking message existence', { error, messageId });
+      return;
+    }
+
+    try {
+      logger.storage?.info('🏗️ Starting database transaction', { messageId });
+      
       await this.prisma.$transaction(async (tx) => {
+        logger.storage?.info('📝 Updating message content in transaction', { 
+          messageId, 
+          contentPreview: content.substring(0, 100),
+          isComplete,
+          status: isComplete ? 'completed' : 'sending'
+        });
+        
         // Update message content and status and get conversation ID
         const updatedMessage = await tx.message.update({
           where: { id: messageId },
@@ -103,8 +140,17 @@ export class MessageStorageService {
             updatedAt: new Date(),
           },
           select: {
-            conversationId: true, // Get conversation ID for next update
+            conversationId: true,
+            content: true,
+            status: true
           },
+        });
+
+        logger.storage?.info('✅ Message updated successfully in transaction', { 
+          messageId,
+          conversationId: updatedMessage.conversationId,
+          newStatus: updatedMessage.status,
+          newContentLength: updatedMessage.content.length
         });
 
         // Update conversation timestamp and session ID if provided
@@ -114,26 +160,60 @@ export class MessageStorageService {
 
         if (sessionId) {
           conversationUpdateData.claudeSessionId = sessionId;
+          logger.storage?.info('🆔 Adding session ID to conversation update', { 
+            sessionId,
+            conversationId: updatedMessage.conversationId
+          });
         }
 
+        logger.storage?.info('💬 Updating conversation in transaction', { 
+          conversationId: updatedMessage.conversationId,
+          updateData: conversationUpdateData
+        });
+
         // Fix: Use conversation ID (unique identifier) instead of relation query
-        await tx.conversation.update({
+        const updatedConversation = await tx.conversation.update({
           where: { id: updatedMessage.conversationId }, // Use unique ID
           data: conversationUpdateData,
+          select: { claudeSessionId: true, updatedAt: true }
+        });
+
+        logger.storage?.info('✅ Conversation updated successfully in transaction', { 
+          conversationId: updatedMessage.conversationId,
+          newSessionId: updatedConversation.claudeSessionId,
+          newUpdatedAt: updatedConversation.updatedAt
         });
       });
 
+      logger.storage?.info('✅ TRANSACTION COMPLETED SUCCESSFULLY', { messageId, isComplete });
+
       if (isComplete) {
-        logger.storage?.info('✅ Assistant message completed', { messageId, finalLength: content.length });
+        logger.storage?.info('🎯 Assistant message marked as COMPLETED', { 
+          messageId, 
+          finalLength: content.length,
+          sessionId 
+        });
+      } else {
+        logger.storage?.debug('📊 Assistant message updated (still streaming)', { 
+          messageId, 
+          currentLength: content.length 
+        });
       }
     } catch (error) {
-      logger.storage?.error('❌ Failed to update streaming message', { 
-        error, 
+      logger.storage?.error('❌ CRITICAL: Transaction failed in updateAssistantMessageStreaming', { 
+        error: error instanceof Error ? {
+          message: error.message,
+          stack: error.stack,
+          name: error.name
+        } : error,
         messageId, 
-        isComplete 
+        isComplete,
+        contentLength: content.length,
+        sessionId
       });
       
       // Don't throw during streaming - mark message as failed instead
+      logger.storage?.info('🚨 Marking message as failed due to transaction error', { messageId });
       await this.markMessageFailed(messageId, error instanceof Error ? error.message : 'Storage error');
     }
   }
