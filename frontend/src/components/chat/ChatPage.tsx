@@ -306,8 +306,20 @@ export const ChatPage: React.FC = () => {
         <div className="mt-8 space-y-4">
           <button
             onClick={() => {
+              // Enhanced new conversation - clear all session state
+              console.log('🆕 Starting new conversation - clearing all state');
+              
+              // Clear streaming state first
+              claudeStreaming.handleAbort();
+              
+              // Use enhanced reset function to clear all state
+              claudeStreaming.resetForNewConversation();
+              
+              // Clear component state
               setSelectedConversationId(null);
               setIsNewChat(true);
+              
+              console.log('✅ New conversation ready - all state cleared');
             }}
             className="p-2 hover:bg-[#2D2D30] rounded-lg transition-colors"
             data-testid="chat-new-conversation"

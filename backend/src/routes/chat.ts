@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { handleStreamingChat, handleAbortRequest } from '../handlers/streaming-chat';
 import axios from 'axios';
 import { PromptDeliveryService } from '../utils/promptDelivery';
+import { getMessageStorageService } from '../services/message-storage.service';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -1553,10 +1554,12 @@ router.post('/messages/stream-webui', handleStreamingChat);
 
 /**
  * POST /api/chat/messages/stream-bridge
- * Stream Claude Code responses via local bridge service
- * This forwards requests to the bridge.ts service running on localhost
+ * Enhanced stream Claude Code responses via local bridge service
+ * Now with reliable message storage and hybrid persistence approach
  */
 router.post('/messages/stream-bridge', async (req: Request, res: Response): Promise<void> => {
+  const messageStorage = getMessageStorageService(prisma);
+  
   try {
     const { conversationId, content, requestId } = req.body;
 
@@ -1567,12 +1570,8 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
       return;
     }
 
-    // Get conversation to verify it exists and get project context
-    const conversation = await prisma.conversation.findUnique({
-      where: { id: conversationId },
-      include: { project: true },
-    });
-
+    // Get conversation with enhanced error handling
+    const conversation = await messageStorage.getConversationWithProject(conversationId);
     if (!conversation) {
       res.status(404).json({
         error: 'Conversation not found',
@@ -1580,25 +1579,11 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
       return;
     }
 
-    // Store user message first
-    await prisma.message.create({
-      data: {
-        conversationId,
-        role: 'user',
-        content,
-        status: 'completed',
-      },
-    });
-
-    // Create assistant message placeholder
-    const assistantMessage = await prisma.message.create({
-      data: {
-        conversationId,
-        role: 'assistant',
-        content: '',
-        status: 'sending',
-      },
-    });
+    // Use enhanced message storage with hybrid approach
+    const userMessage = await messageStorage.createUserMessage(conversationId, content);
+    const assistantMessage = await messageStorage.createAssistantMessagePlaceholder(conversationId);
+    
+    console.log(`📝 Created messages: user=${userMessage.id}, assistant=${assistantMessage.id}`);
 
     // Get allowed tools for this conversation
     const permissions = await ConversationPermissionsService.getGrantedPermissions(conversationId);
@@ -1615,6 +1600,7 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
 
     let fullContent = '';
     let currentSessionId = conversation.claudeSessionId;
+    let hasReceivedFirstContent = false;
 
     try {
       // Forward request to bridge service
@@ -1637,7 +1623,7 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
         timeout: 0 // No timeout for streaming
       });
 
-      // Pipe bridge responses to frontend
+      // Enhanced bridge response processing with real-time DB updates
       response.data.on('data', (chunk: Buffer) => {
         const lines = chunk.toString().split('\n');
         
@@ -1650,7 +1636,7 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
               if (data.type === 'claude_json' && data.data) {
                 const sdkMessage = data.data;
                 
-                // Extract session ID if present
+                // Enhanced session ID handling
                 const sessionId = sdkMessage.sessionId || sdkMessage.session_id ||
                                (sdkMessage.type === 'system' && sdkMessage.session?.id);
                 
@@ -1658,18 +1644,13 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
                   currentSessionId = sessionId;
                   console.log(`🆔 New session ID captured: ${currentSessionId}`);
                   
-                  // Store session ID in database
-                  prisma.conversation.update({
-                    where: { id: conversationId },
-                    data: { claudeSessionId: currentSessionId }
-                  }).catch(err => {
-                    console.error('Failed to store session ID:', err);
-                  });
+                  // Use enhanced session storage
+                  messageStorage.updateConversationSession(conversationId, currentSessionId);
                 }
 
-                // Extract content for database
+                // Enhanced content extraction and immediate DB updates
+                let textContent = '';
                 if (sdkMessage.type === 'assistant' && sdkMessage.message) {
-                  let textContent = '';
                   if (Array.isArray(sdkMessage.message.content)) {
                     textContent = sdkMessage.message.content
                       .filter((block: any) => block.type === 'text')
@@ -1681,9 +1662,27 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
                   
                   if (textContent && textContent !== fullContent) {
                     fullContent = textContent;
+                    hasReceivedFirstContent = true;
+                    
+                    // Hybrid approach: immediate DB update for streaming content
+                    messageStorage.updateAssistantMessageStreaming(
+                      assistantMessage.id, 
+                      fullContent, 
+                      false, // not complete yet
+                      currentSessionId
+                    );
                   }
                 } else if (sdkMessage.type === 'result' && sdkMessage.result) {
                   fullContent = sdkMessage.result;
+                  hasReceivedFirstContent = true;
+                  
+                  // Update with result content
+                  messageStorage.updateAssistantMessageStreaming(
+                    assistantMessage.id, 
+                    fullContent, 
+                    false,
+                    currentSessionId
+                  );
                 }
               }
               
@@ -1695,27 +1694,35 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
               
               res.write(`data: ${JSON.stringify(streamResponse)}\n\n`);
               
-              // Handle completion
+              // Enhanced completion handling
               if (data.type === 'done' || data.type === 'error' || data.type === 'aborted') {
                 console.log(`✅ Bridge request ${requestId} completed: ${data.type}`);
                 
-                // Update message in database with final content
-                prisma.message.update({
-                  where: { id: assistantMessage.id },
-                  data: {
-                    content: fullContent,
-                    status: data.type === 'done' ? 'completed' : 'failed',
-                    error: data.error || null
+                // Final message update with completion status
+                if (data.type === 'done') {
+                  messageStorage.updateAssistantMessageStreaming(
+                    assistantMessage.id, 
+                    fullContent, 
+                    true, // complete
+                    currentSessionId
+                  );
+                  
+                  // Extract code blocks from final content
+                  if (fullContent) {
+                    messageStorage.extractAndSaveCodeBlocks(assistantMessage.id, fullContent);
                   }
-                }).catch(err => {
-                  console.error('Failed to update message:', err);
-                });
+                } else {
+                  // Handle error cases with user-visible error
+                  const errorMessage = data.error || `Request ${data.type}: ${data.type === 'aborted' ? 'Request was cancelled' : 'Unknown error'}`;
+                  messageStorage.markMessageFailed(assistantMessage.id, errorMessage);
+                }
 
                 return;
               }
               
             } catch (parseError) {
               console.error('Error parsing bridge response:', parseError);
+              // Don't break the stream for parsing errors - continue processing
             }
           }
         }
@@ -1740,29 +1747,44 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
     } catch (error) {
       console.error('❌ Bridge request failed:', error);
       
-      // Update message status to failed
-      await prisma.message.update({
-        where: { id: assistantMessage.id },
-        data: {
-          status: 'failed',
-          error: error instanceof Error ? error.message : String(error),
-        },
-      });
+      // Enhanced error handling with user-visible messages
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      const userFriendlyError = `Connection to Claude Code bridge failed: ${errorMessage}. Please ensure the bridge service is running.`;
+      
+      // Use enhanced error marking
+      await messageStorage.markMessageFailed(assistantMessage.id, userFriendlyError);
 
-      // Send error to frontend
+      // Send user-friendly error to frontend
       res.write(`data: ${JSON.stringify({
         type: 'error',
-        error: error instanceof Error ? error.message : String(error),
+        error: userFriendlyError,
         requestId,
-        messageId: assistantMessage.id
+        messageId: assistantMessage.id,
+        canRetry: true // User can manually retry
       })}\n\n`);
       res.end();
     }
 
   } catch (error) {
     console.error('❌ Stream bridge setup error:', error);
+    
+    // Enhanced setup error handling with user-friendly messages
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    let userFriendlyError = 'Failed to start chat session';
+    
+    if (errorMessage.includes('Conversation not found')) {
+      userFriendlyError = 'Chat conversation not found. Please start a new conversation.';
+    } else if (errorMessage.includes('save your message')) {
+      userFriendlyError = errorMessage; // Already user-friendly from MessageStorageService
+    } else if (errorMessage.includes('prepare response')) {
+      userFriendlyError = errorMessage; // Already user-friendly from MessageStorageService
+    } else {
+      userFriendlyError = `Chat setup failed: ${errorMessage}`;
+    }
+    
     res.status(500).json({
-      error: 'Failed to set up bridge streaming response',
+      error: userFriendlyError,
+      canRetry: true,
       details: error instanceof Error ? error.message : String(error),
     });
   }

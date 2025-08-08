@@ -48,6 +48,7 @@ export const logger = {
   api: getLogger(['api']),
   app: getLogger(['app']),
   handlers: getLogger(['handlers']),
+  storage: getLogger(['storage']), // For MessageStorageService
 };
 
 // Export the factory function for custom loggers

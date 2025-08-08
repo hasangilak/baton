@@ -47,7 +47,7 @@ export function useClaudeStreaming(options: ClaudeStreamingOptions = {}) {
   const [hasReceivedInit, setHasReceivedInit] = useState(false);
   const streamReaderRef = useRef<ReadableStreamDefaultReader | null>(null);
 
-  // Custom event integration for message updates
+  // Enhanced custom event integration for hybrid message persistence
   useEffect(() => {
     const handleMessageUpdate = (event: CustomEvent) => {
       const data = event.detail;
@@ -55,7 +55,7 @@ export function useClaudeStreaming(options: ClaudeStreamingOptions = {}) {
       // Only process messages for the current conversation
       if (!conversationId || data.conversationId !== conversationId) return;
       
-      console.log('🎯 Custom event message update for current conversation:', data);
+      console.log('🎯 Enhanced message update for current conversation:', data);
       
       if (data.content) {
         // Create or update the current assistant message
@@ -66,15 +66,26 @@ export function useClaudeStreaming(options: ClaudeStreamingOptions = {}) {
           timestamp: Date.now(),
         };
 
-        // Update current streaming message
+        // Update current streaming message for optimistic UI
         setCurrentAssistantMessage(assistantMessage);
 
-        // If message is complete, add it to the persistent message list
+        // Hybrid approach: Backend handles persistence, frontend shows optimistic updates
         if (data.isComplete) {
-          console.log('💾 Message complete, adding to chat history:', data.content);
+          console.log('✅ Message completed - backend has persisted, clearing UI streaming state');
+          
+          // Add to UI state for immediate display (backend already persisted)
           chatState.addMessage(assistantMessage);
-          setCurrentAssistantMessage(null); // Clear streaming state
+          
+          // Clear streaming state since message is complete and persisted
+          setCurrentAssistantMessage(null);
           setIsStreaming(false);
+          
+          // Log session ID if captured
+          if (data.sessionId) {
+            console.log('🆔 Final session ID from complete message:', data.sessionId);
+            chatState.updateSessionId(data.sessionId);
+            onSessionId?.(data.sessionId);
+          }
         }
       }
     };
@@ -84,7 +95,7 @@ export function useClaudeStreaming(options: ClaudeStreamingOptions = {}) {
     return () => {
       window.removeEventListener('webui:message-updated', handleMessageUpdate as EventListener);
     };
-  }, [conversationId, chatState]);
+  }, [conversationId, chatState, onSessionId]);
 
   // Handle permission errors (WebUI guide signature)
   const handlePermissionError = useCallback((toolName: string, patterns: string[], toolUseId: string) => {
@@ -189,8 +200,10 @@ export function useClaudeStreaming(options: ClaudeStreamingOptions = {}) {
         onAbortRequest: handleAbortRequest,
       };
 
-      // Process stream
+      // Enhanced stream processing with better error handling and session tracking
       let buffer = '';
+      let lastContentUpdate = Date.now();
+      
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -198,6 +211,7 @@ export function useClaudeStreaming(options: ClaudeStreamingOptions = {}) {
         // Decode chunk and add to buffer
         const chunk = decoder.decode(value, { stream: true });
         buffer += chunk;
+        lastContentUpdate = Date.now();
 
         // Process complete lines
         const lines = buffer.split('\n');
@@ -206,52 +220,71 @@ export function useClaudeStreaming(options: ClaudeStreamingOptions = {}) {
         for (const line of lines) {
           const trimmedLine = line.trim();
           if (trimmedLine) {
-            processStreamLine(trimmedLine, streamingContext);
+            try {
+              // Enhanced line processing with session ID tracking
+              if (trimmedLine.startsWith('data: ')) {
+                const data = JSON.parse(trimmedLine.substring(6));
+                
+                // Track session ID from enhanced backend
+                if (data.sessionId && !chatState.currentSessionId) {
+                  console.log('🆔 Session ID received from enhanced backend:', data.sessionId);
+                  chatState.updateSessionId(data.sessionId);
+                  onSessionId?.(data.sessionId);
+                }
+                
+                // Handle completion and error states from enhanced backend
+                if (data.type === 'done') {
+                  console.log('✅ Stream completed successfully via enhanced backend');
+                } else if (data.type === 'error') {
+                  console.error('❌ Error from enhanced backend:', data.error);
+                  if (data.canRetry) {
+                    console.log('🔄 Backend indicates this error is retryable by user');
+                  }
+                }
+              }
+              
+              processStreamLine(trimmedLine, streamingContext);
+            } catch (lineError) {
+              console.warn('⚠️ Failed to process stream line:', lineError, trimmedLine);
+              // Continue processing other lines
+            }
           }
         }
       }
 
       // Process any remaining buffer content
       if (buffer.trim()) {
-        processStreamLine(buffer.trim(), streamingContext);
+        try {
+          processStreamLine(buffer.trim(), streamingContext);
+        } catch (bufferError) {
+          console.warn('⚠️ Failed to process remaining buffer:', bufferError);
+        }
       }
 
-      console.log('✅ Streaming completed successfully');
+      console.log('✅ Streaming completed successfully with enhanced backend');
 
     } catch (error) {
       console.error('❌ Streaming error:', error);
       
-      // Add error message
+      // Enhanced error handling - show user-friendly messages
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // Check if this is a user-friendly error from the backend
+      const isUserFriendlyError = errorMessage.includes('Chat setup failed') || 
+                                 errorMessage.includes('Connection to Claude Code bridge failed') ||
+                                 errorMessage.includes('save your message') ||
+                                 errorMessage.includes('prepare response');
+      
       chatState.addMessage({
         type: "error",
         subtype: "stream_error",
-        message: error instanceof Error ? error.message : String(error),
+        message: isUserFriendlyError ? errorMessage : `Connection error: ${errorMessage}`,
         timestamp: Date.now(),
       });
-      
-      // Note: permission errors will be handled by the stream processor
     } finally {
-      // Persist the current assistant message before clearing it
-      if (currentAssistantMessage && currentAssistantMessage.content) {
-        console.log('💾 Persisting final assistant message:', currentAssistantMessage.content);
-        
-        // Create a final completed message from the streaming message
-        const finalMessage = {
-          ...currentAssistantMessage,
-          type: "chat" as const,
-          role: "assistant" as const,
-          timestamp: Date.now(),
-        };
-        
-        // Add to message history if it's not already there
-        if (!chatState.messages.some(msg => 
-          msg.type === 'chat' && 
-          msg.role === 'assistant' && 
-          msg.content === currentAssistantMessage.content
-        )) {
-          chatState.addMessage(finalMessage);
-        }
-      }
+      // Simplified cleanup - backend now handles message persistence
+      // No need for complex finally persistence logic since backend uses hybrid approach
+      console.log('🧹 Cleaning up streaming state');
 
       // Clean up (WebUI guide pattern)
       setIsStreaming(false);

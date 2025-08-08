@@ -117,15 +117,30 @@ export function useChatState(options: ChatStateOptions = {}) {
     setCurrentRequestId(null);
   }, []);
 
-  // Session management
+  // Enhanced session management for new conversations
   const updateSessionId = useCallback((sessionId: string) => {
     console.log('🆔 Updating session ID:', sessionId);
     setCurrentSessionId(sessionId);
   }, []);
 
   const clearSession = useCallback(() => {
+    console.log('🧹 Clearing session ID for new conversation');
     setCurrentSessionId(null);
   }, []);
+  
+  // Complete reset for new conversations
+  const resetForNewConversation = useCallback(() => {
+    console.log('🆕 Complete reset for new conversation');
+    
+    // Clear all state
+    setMessages(defaultMessages);
+    setInput("");
+    setIsLoading(false);
+    setCurrentSessionId(null);
+    setCurrentRequestId(null);
+    
+    console.log('✅ All state cleared for new conversation');
+  }, [defaultMessages]);
 
   // Utility functions
   const getLastMessage = useCallback(() => {
@@ -195,6 +210,7 @@ export function useChatState(options: ChatStateOptions = {}) {
     // Session management
     updateSessionId,
     clearSession,
+    resetForNewConversation,
     
     // Utilities
     getLastMessage,
