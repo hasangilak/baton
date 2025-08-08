@@ -1,18 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-// (Layout-specific icons moved into layout components)
-import { useConversations, useConversation, useMessages } from '../../hooks/useChat';
-import { useProjects } from '../../hooks/useProjects';
-import { useInteractivePrompts } from '../../hooks/useInteractivePrompts';
-import { useClaudeStreaming } from '../../hooks/useClaudeStreaming';
-import { useFileUpload } from '../../hooks/useFileUpload';
-import { generateMessageId } from '../../utils/id';
-import { ChatLayoutMobile } from './components/layout/ChatLayoutMobile';
-import { ChatLayoutDesktop } from './components/layout/ChatLayoutDesktop';
-import { useIsMobile } from './hooks/useIsMobile';
-import { useToast } from '../../hooks/useToast';
+import { useConversations, useConversation, useMessages } from './useChat';
+import { useProjects } from './useProjects';
+import { useInteractivePrompts } from './useInteractivePrompts';
+import { useClaudeStreaming } from './useClaudeStreaming';
+import { useFileUpload } from './useFileUpload';
 
-export const ChatPage: React.FC = () => {
+export const useChatPageLogic = () => {
   const navigate = useNavigate();
   const { conversationId } = useParams<{ conversationId?: string }>();
   const [searchParams] = useSearchParams();
@@ -34,9 +28,6 @@ export const ChatPage: React.FC = () => {
     archiveConversation,
     deleteConversation,
   } = useConversations(currentProjectId);
-
-  // Search hook retained for future filtering (currently unused after layout refactor)
-  // const { searchQuery, searchResults, isSearching } = useChatSearch(currentProjectId);
 
   // Interactive prompts
   const {
@@ -72,17 +63,7 @@ export const ChatPage: React.FC = () => {
     maxSizeBytes: 25 * 1024 * 1024, // 25MB
     onError: (err: unknown) => {
       console.error('File upload error:', err);
-      // Safe toast usage (component is within provider hierarchy in App.tsx)
-      try {
-        const { error: showError } = useToast();
-        let msg: string;
-        if (typeof err === 'string') msg = err;
-        else if (err && typeof err === 'object' && 'message' in err) msg = (err as any).message || 'Unable to upload file(s).';
-        else msg = 'Unable to upload file(s).';
-        showError('File upload failed', msg);
-      } catch (_) {
-        /* no-op if toast not available */
-      }
+      // Toast will be handled at component level if needed
     }
   });
 
@@ -110,8 +91,6 @@ export const ChatPage: React.FC = () => {
     }
   }, [selectedConversationId, conversationDetails?.claudeSessionId, claudeStreaming.currentSessionId, navigate]);
 
-  // const pendingMessageRef = useRef<string | null>(null); // Not needed after refactor
-
   // Greeting helper
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -136,7 +115,8 @@ export const ChatPage: React.FC = () => {
       // Mutation returns API response; refetch will populate list; we need to trust conversations update effect
       // For immediate continuity we fallback to using existing selectedConversationId once query invalidates
       // If API returns id, attempt to capture
-      const maybeId: any = (result as any)?.id || (result as any)?.conversation?.id;
+      const maybeId = (result as { id?: string; conversation?: { id?: string } })?.id || 
+                     (result as { id?: string; conversation?: { id?: string } })?.conversation?.id;
       if (maybeId) {
         convId = maybeId;
       }
@@ -155,60 +135,39 @@ export const ChatPage: React.FC = () => {
     }
   };
 
-  const isMobile = useIsMobile();
-  return isMobile ? (
-    <ChatLayoutMobile
-      isNewChat={isNewChat}
-      inputValue={inputValue}
-      setInputValue={setInputValue}
-      handleKeyPress={handleKeyPress}
-      handleSendMessage={handleSendMessage}
-      fileUpload={fileUpload}
-      getGreeting={getGreeting}
-      conversationDetails={conversationDetails}
-      urlSessionId={urlSessionId}
-      claudeStreaming={claudeStreaming}
-      pendingPrompts={pendingPrompts}
-      isRespondingToPrompt={isRespondingToPrompt}
-      handlePromptResponse={handlePromptResponse}
-      displayConversations={displayConversations}
-      selectedConversationId={selectedConversationId}
-      setSelectedConversationId={setSelectedConversationId}
-      showSidebar={showSidebar}
-      setShowSidebar={setShowSidebar}
-      isLoadingMessages={isLoadingMessages}
-      dbMessages={dbMessages}
-      archiveConversation={archiveConversation}
-      deleteConversation={deleteConversation}
-      generateMessageId={generateMessageId}
-    />
-  ) : (
-    <ChatLayoutDesktop
-      isNewChat={isNewChat}
-      inputValue={inputValue}
-      setInputValue={setInputValue}
-      handleKeyPress={handleKeyPress}
-      handleSendMessage={handleSendMessage}
-      fileUpload={fileUpload}
-      getGreeting={getGreeting}
-      conversationDetails={conversationDetails}
-      urlSessionId={urlSessionId}
-      claudeStreaming={claudeStreaming}
-      pendingPrompts={pendingPrompts}
-      isRespondingToPrompt={isRespondingToPrompt}
-      handlePromptResponse={handlePromptResponse}
-      displayConversations={displayConversations}
-      selectedConversationId={selectedConversationId}
-      setSelectedConversationId={setSelectedConversationId}
-      showSidebar={showSidebar}
-      setShowSidebar={setShowSidebar}
-      isLoadingMessages={isLoadingMessages}
-      dbMessages={dbMessages}
-      archiveConversation={archiveConversation}
-      deleteConversation={deleteConversation}
-      generateMessageId={generateMessageId}
-    />
-  );
+  return {
+    // State
+    isNewChat,
+    inputValue,
+    setInputValue,
+    selectedConversationId,
+    setSelectedConversationId,
+    showSidebar,
+    setShowSidebar,
+    
+    // Data
+    conversationDetails,
+    urlSessionId,
+    displayConversations,
+    dbMessages,
+    isLoadingMessages,
+    
+    // Hooks
+    claudeStreaming,
+    fileUpload,
+    
+    // Interactive prompts
+    pendingPrompts,
+    isRespondingToPrompt,
+    handlePromptResponse,
+    
+    // Actions
+    handleKeyPress,
+    handleSendMessage,
+    archiveConversation,
+    deleteConversation,
+    
+    // Helpers
+    getGreeting,
+  };
 };
-
-// (Moved helper + UI subcomponents into ./components/* for modularity)

@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { Layout } from './components/layout/Layout';
 import { AppRouter } from './components/router';
 import { queryClient } from './lib/queryClient';
@@ -74,8 +73,6 @@ function App() {
         <ThemeProvider>
           <ToastProvider>
             <AppContent />
-            {/* React Query DevTools - only shows in development */}
-            <ReactQueryDevtools initialIsOpen={false} />
           </ToastProvider>
         </ThemeProvider>
       </QueryClientProvider>

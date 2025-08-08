@@ -2,7 +2,8 @@ import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { DesktopLayout } from '../layout/DesktopLayout';
 import { MobileLayout } from '../layout/MobileLayout';
-import { ChatPage } from '../chat/ChatPage';
+import { ChatLayoutDesktop } from '../chat/components/layout/ChatLayoutDesktop';
+import { ChatLayoutMobile } from '../chat/components/layout/ChatLayoutMobile';
 import { useBreakpoints } from '../../hooks/useBreakpoints';
 
 interface AppRouterProps {
@@ -30,9 +31,27 @@ export const AppRouter: React.FC<AppRouterProps> = ({ projectId, onSync }) => {
         } 
       />
       
-      {/* Chat page */}
-      <Route path="/chat" element={<ChatPage />} />
-      <Route path="/chat/:conversationId" element={<ChatPage />} />
+      {/* Chat page with responsive layouts */}
+      <Route 
+        path="/chat" 
+        element={
+          isMobile ? (
+            <ChatLayoutMobile />
+          ) : (
+            <ChatLayoutDesktop />
+          )
+        } 
+      />
+      <Route 
+        path="/chat/:conversationId" 
+        element={
+          isMobile ? (
+            <ChatLayoutMobile />
+          ) : (
+            <ChatLayoutDesktop />
+          )
+        } 
+      />
       
       {/* Other sections - for now redirect to tasks */}
       <Route path="/dashboard" element={<Navigate to="/tasks" replace />} />
