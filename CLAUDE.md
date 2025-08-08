@@ -78,11 +78,11 @@ npx prisma generate        # Regenerate client after schema changes
 ### Claude Code WebUI Testing
 ```bash
 # Start the WebUI chat handler (required for Claude Code integration)
-node scripts/webui-chat-handler.js  # Local handler with Claude Code executable path
-tail -f scripts/webui-chat-handler.log  # Monitor handler activity
+bun run scripts/bridge.ts  # Local bridge service with Claude Code integration
+tail -f /tmp/bridge-service.log  # Monitor bridge service activity
 
 # Start the bridge service (for permission system)
-node scripts/bridge.ts  # Claude Code bridge with progressive timeout strategy
+bun run scripts/bridge.ts  # Claude Code bridge with progressive timeout strategy
 
 # WebUI streaming endpoints
 curl -X POST http://localhost:3001/api/chat/messages/stream-webui \
@@ -273,7 +273,7 @@ Baton offers two powerful ways to integrate with Claude Code:
 
 ### WebUI Integration (Recommended for Interactive Use)
 1. **Start Services**: Ensure Docker services are running (`docker compose up -d`)
-2. **Start Handler**: Run `node scripts/webui-chat-handler.js` for local Claude Code execution
+2. **Start Bridge**: Run `bun run scripts/bridge.ts` for local Claude Code execution
 3. **Open Chat**: Navigate to `/chat` in the Baton frontend for gorgeous Claude-style interface
 4. **Upload Files**: Use paperclip buttons to attach files (supports code, images, documents)
 5. **Stream Responses**: Real-time streaming with session persistence and tool usage

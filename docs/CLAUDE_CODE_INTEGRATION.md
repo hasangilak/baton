@@ -1,468 +1,736 @@
 # Claude Code Integration with Baton
 
-This document provides a comprehensive guide to integrating Claude Code with Baton, including the AI chat agent, interactive prompt handling, and automated permission management.
+Complete guide to integrating Claude Code with Baton's task management system. This document consolidates all integration approaches and provides accurate, tested setup instructions.
 
 ## 📋 Table of Contents
 
 1. [Overview](#overview)
 2. [Architecture](#architecture)
-3. [Quick Start](#quick-start)
-4. [Permission Management](#permission-management)
-5. [Interactive Prompt System](#interactive-prompt-system)
-6. [Session Management](#session-management)
+3. [WebUI Integration (Recommended)](#webui-integration-recommended)
+4. [MCP Server Integration](#mcp-server-integration)
+5. [Hook System Integration](#hook-system-integration)
+6. [Permission Management](#permission-management)
 7. [Troubleshooting](#troubleshooting)
 8. [Advanced Configuration](#advanced-configuration)
 
 ## 🎯 Overview
 
-Baton's Claude Code integration provides:
+Baton provides three ways to integrate with Claude Code:
 
-- **AI Chat Agent**: Full conversation interface with Claude using your local Claude Code installation
-- **Automated Permissions**: Smart permission handling that allows trusted operations without prompts
-- **Interactive Prompts**: User-friendly inline prompts for potentially dangerous operations
-- **Session Continuity**: Maintain conversation context across multiple interactions
-- **File Operations**: Seamless file creation, editing, and management
-- **Project Context**: Automatic project detection and scoping
+### **🌟 WebUI Integration** (Best for Interactive Use)
+- **Handler**: `scripts/bridge.ts` (the current, working solution)
+- **Interface**: Beautiful web chat at `/chat`
+- **Features**: File uploads, real-time streaming, permission management
+- **Best for**: Daily development workflow, team collaboration
+
+### **🔌 MCP Server Integration** (Best for Programmatic Use)
+- **Protocol**: Model Context Protocol via WebSocket/STDIO
+- **Features**: 16 tools, 8 prompts, project context awareness
+- **Best for**: Claude Desktop, automated workflows, AI agents
+
+### **🪝 Hook System** (Best for Automation)
+- **Scripts**: `capture-plan.js`, `capture-todos.js`
+- **Features**: Automatic plan/todo capture from Claude Code
+- **Best for**: Background integration, workflow automation
 
 ## 🏗️ Architecture
 
-### System Components
+### Current System Architecture
 
 ```mermaid
 graph TB
-    UI[Baton Frontend] --> API[Backend API]
-    API --> Handler[Chat Handler]
-    Handler --> Claude[Claude Code SDK]
+    A[Claude Code] --> B[Bridge Service<br/>scripts/bridge.ts]
+    B --> C[Backend API<br/>Port 3001]
+    C --> D[WebSocket Events]
+    D --> E[Frontend Chat UI<br/>Port 5173]
     
-    API --> Socket[Socket.IO Events]
-    Socket --> UI
-    Socket --> Handler
+    F[Claude Desktop] --> G[MCP Server<br/>Port 3002]
+    G --> C
     
-    Handler --> PermissionEngine[Permission Engine]
-    PermissionEngine --> Allowlist[Allowlist Strategy]
-    PermissionEngine --> Denylist[Denylist Strategy] 
-    PermissionEngine --> UserPrompt[User Delegation]
+    H[Claude Code Hooks] --> I[Capture Scripts]
+    I --> J[Backend APIs]
+    J --> C
     
-    UserPrompt --> PromptDB[(Interactive Prompts DB)]
-    API --> PromptDB
-    UI --> PromptDB
-    
-    Handler --> SessionDB[(Session Storage)]
+    C --> K[PostgreSQL Database]
+    C --> L[File Storage]
 ```
 
-### Key Files
+## 🌟 WebUI Integration (Recommended)
 
-- **`scripts/chat-handler.js`**: Main Claude Code integration bridge
-- **`scripts/decision-engine.js`**: Permission handling and user delegation
-- **`scripts/prompt-detector.js`**: Interactive prompt detection patterns
-- **`backend/src/routes/chat.ts`**: Chat API endpoints and session management
-- **`frontend/src/components/InteractivePrompt.tsx`**: UI for user prompts
-- **`Makefile`**: Process management and development commands
+The **bridge.ts** service provides the most robust and feature-rich integration.
 
-## 🚀 Quick Start
-
-### 1. Prerequisites
+### Prerequisites
 
 ```bash
-# Install Claude Code globally
-npm install -g @anthropic-ai/claude-code
-
-# Verify installation
+# Ensure Claude Code is installed
 claude --version
+
+# Ensure Bun runtime is available
+bun --version
+
+# Ensure Docker services are running
+docker compose ps
 ```
 
-### 2. Start Baton Services
+### Setup Steps
 
+#### 1. Start Baton Services
 ```bash
-# Complete setup (first time)
-make dev-full
+# From project root
+docker compose up -d
 
-# Or if already set up
-make dev
+# Verify all services are running
+docker compose ps
 ```
 
-### 3. Test Integration
-
+#### 2. Start Bridge Service
 ```bash
-# Check all services are running
-make status
+# Method 1: Using the start script (recommended)
+./scripts/start-bridge.sh
 
-# Test basic connectivity
-make test-integration
+# Method 2: Direct execution
+bun run scripts/bridge.ts
 
-# Test permission handling
-make test-claude-permissions
+# Method 3: Custom configuration
+bun run scripts/bridge.ts --port 8080 --backend http://localhost:3001
 ```
 
-### 4. Access Chat Interface
+#### 3. Access Chat Interface
+```bash
+# Open in browser
+open http://localhost:5173/chat
+```
 
-Visit `http://localhost:5173/chat` and start chatting with Claude!
+### Architecture Details
 
-## 🔐 Permission Management
+#### Request Flow
+```
+1. User sends message in chat UI
+2. Frontend → Backend API (/api/chat/messages/stream-bridge)
+3. Backend → Bridge Service (localhost:8080/execute)
+4. Bridge → Claude Code SDK (local execution)
+5. Claude Code responses → Bridge → Backend → Frontend (Server-Sent Events)
+6. Real-time chat updates displayed to user
+```
 
-### Automated Permission Modes
+#### Permission System Flow
+```
+1. Claude Code requests tool usage (e.g., Write, Edit, Bash)
+2. Bridge detects high-risk operation → Backend permission API
+3. Backend creates interactive_prompt record → WebSocket event
+4. Frontend displays permission UI with risk indicators
+5. User clicks Allow/Deny → Backend stores decision
+6. Bridge polls backend for response → Continues/aborts Claude execution
+```
 
-Baton configures Claude Code with smart permission handling:
+### Features
 
-```javascript
-const baseOptions = {
-  permissionMode: 'acceptEdits', // Auto-accept file operations
-  allowedTools: [
-    'Write', 'Edit', 'MultiEdit',     // File operations
-    'Read', 'Glob', 'Grep', 'LS',     // File reading/searching
-    'Bash(npm:*)', 'Bash(git:*)',     // Safe commands
-    'mcp__*',                         // MCP tools
-    'WebFetch', 'WebSearch'           // Web tools
-  ]
+#### 🎨 **Professional Chat Interface**
+- Claude-style dark theme with time-based greetings
+- Streaming response rendering with typewriter effect
+- Message history and conversation management
+- Professional avatars and status indicators
+
+#### 📎 **File Upload System**
+- Support for code files (.js, .ts, .py, etc.)
+- Image uploads (.png, .jpg, .gif, .webp)
+- Document uploads (.pdf, .txt, .md)
+- Up to 25MB per file, 5 files per message
+- Automatic file type detection and validation
+
+#### 🛡️ **Interactive Permission Management**
+- Real-time permission prompts for tool usage
+- Risk-based color coding (LOW/MEDIUM/HIGH/CRITICAL)
+- "Allow Once" vs "Allow Always" options
+- Session-based permission persistence
+- Comprehensive audit logs
+
+#### 📊 **Analytics & Monitoring**
+- Token usage tracking and context management
+- Session persistence with automatic resume
+- Response time monitoring
+- Permission decision analytics
+- Real-time connection status
+
+### Configuration Options
+
+#### Bridge Service Configuration
+```bash
+# Default configuration
+bun run scripts/bridge.ts
+
+# Custom port and backend
+bun run scripts/bridge.ts --port 9000 --backend http://localhost:3001
+
+# Debug mode
+DEBUG=1 bun run scripts/bridge.ts
+
+# Development mode with auto-restart
+bun --watch scripts/bridge.ts
+```
+
+#### Backend Environment Variables
+```bash
+# In docker-compose.dev.yml or .env
+BRIDGE_URL=http://localhost:8080    # Bridge service URL
+CLIENT_URL=http://localhost:5173    # Frontend URL for CORS
+```
+
+#### Permission Modes
+The bridge automatically handles permissions, but you can configure behavior:
+
+```typescript
+// In bridge.ts, you can modify permission settings:
+const permissionConfig = {
+  autoAllow: ['Read', 'LS', 'Glob', 'Grep'],  // Safe read operations
+  alwaysPrompt: ['Write', 'Edit', 'MultiEdit'], // File modifications
+  critical: ['Bash']  // System commands - always prompt
 };
 ```
 
-### Permission Strategies
+## 🔌 MCP Server Integration
 
-#### 1. Allowlist Strategy
-Automatically allows common, safe operations:
-- File operations: Write, Edit, Read
-- Development commands: npm, git, node
-- Search tools: Grep, Glob, WebSearch
-- MCP tools: All MCP-prefixed tools
+For programmatic integration and Claude Desktop usage.
 
-#### 2. Denylist Strategy
-Blocks potentially dangerous operations:
-- System commands: `rm -rf`, `sudo`, `format`
-- Database operations: `DROP TABLE`, `TRUNCATE`
-- Network security risks
+### Prerequisites
+```bash
+# Ensure MCP server is running (included in docker compose)
+curl http://localhost:3002 || echo "MCP WebSocket server running"
+```
 
-#### 3. User Delegation Strategy
-For operations not covered by allowlist/denylist:
-- Shows interactive prompts in chat UI
-- Stores decisions in database
-- Supports session continuation after approval
+### Connection Configuration
+
+#### For Claude Desktop
+Add to your Claude Desktop MCP configuration:
+
+```json
+{
+  "mcpServers": {
+    "baton": {
+      "transport": {
+        "type": "websocket",
+        "url": "ws://localhost:3002"
+      },
+      "capabilities": {
+        "resources": true,
+        "tools": true,
+        "prompts": true
+      },
+      "description": "Baton task manager with MCP integration"
+    }
+  }
+}
+```
+
+#### For Claude Code
+Add to your Claude Code MCP configuration:
+
+```json
+{
+  "name": "baton",
+  "transport": {
+    "type": "websocket", 
+    "url": "ws://localhost:3002"
+  }
+}
+```
+
+### Available MCP Features
+
+#### 📚 **Resources** (Read-Only Data Access)
+- `baton://projects` - All projects
+- `baton://projects/{id}` - Specific project  
+- `baton://projects/{id}/tasks` - Project tasks
+- `baton://projects/{id}/tasks/kanban` - Kanban view
+- `baton://workspace/current` - Current workspace project
+
+#### 🛠️ **Tools** (Actions)
+- **Project Management**: `create_project`, `update_project`
+- **Task Management**: `create_task`, `update_task`, `move_task`
+- **Todo Integration**: `sync_todos_to_tasks`, `sync_tasks_to_todos`
+- **Analytics**: `get_project_analytics`, `get_team_productivity`
+
+#### 💬 **Prompts** (Templates)
+- `create_project_plan` - Generate comprehensive project plans
+- `analyze_project_status` - Project health analysis
+- `generate_task_breakdown` - Break complex tasks into subtasks
+- `sprint_planning` - Sprint planning assistance
+
+### Usage Examples
+
+#### Reading Project Data
+```
+@baton://projects
+```
+Shows all projects with status and task counts.
+
+#### Creating Tasks
+```
+Use the create_task tool to add "Implement user authentication" to project "web-app"
+```
+
+#### Project Planning
+```
+Use the create_project_plan prompt for a "E-commerce Platform" with React and Node.js, 3 month timeline, team of 5
+```
+
+For complete MCP documentation, see [MCP_SERVER_GUIDE.md](./MCP_SERVER_GUIDE.md).
+
+## 🪝 Hook System Integration
+
+Automatically capture plans and todos from Claude Code plan mode.
+
+### Prerequisites
+```bash
+# Ensure hook scripts exist and are executable
+ls -la scripts/capture-*.js
+chmod +x scripts/capture-*.js
+```
+
+### Setup Steps
+
+#### 1. Create Project Configuration
+Create `.baton-project` in your workspace root:
+
+```json
+{
+  "projectId": "your-project-id",
+  "projectName": "Your Project Name"
+}
+```
+
+#### 2. Configure Claude Code Hooks
+Edit `~/.claude.json` and add:
+
+```json
+{
+  "projects": {
+    "/absolute/path/to/your/project": {
+      "post_tool_use_hooks": [
+        {
+          "pattern": "ExitPlanMode",
+          "command": "node scripts/capture-plan.js"
+        },
+        {
+          "pattern": "TodoWrite", 
+          "command": "cd /absolute/path/to/your/project && node scripts/capture-todos.js"
+        }
+      ]
+    }
+  }
+}
+```
+
+#### 3. Test Integration
+```bash
+# Run the test script
+./scripts/test-hook-integration.sh
+
+# Or test manually with Claude Code
+claude -p
+# Create a plan and some todos
+```
+
+### How Hooks Work
+
+#### Plan Capture Flow
+1. User accepts plan in Claude Code plan mode
+2. Claude Code calls `ExitPlanMode` tool
+3. `capture-plan.js` hook executes
+4. Plan content extracted and sent to `/api/claude/plans`
+5. Plan stored in database with project context
+6. Real-time WebSocket notification to frontend
+
+#### Todo Sync Flow
+1. Claude Code updates todos via `TodoWrite` tool
+2. `capture-todos.js` hook executes
+3. Todos extracted and sent to `/api/claude/todos`
+4. Todos stored in `claude_todos` table
+5. Optional: Use `sync_todos_to_tasks` to convert to Baton tasks
+
+### Hook Configuration
+
+#### Environment Variables
+```bash
+export BATON_API_URL="http://localhost:3001"  # Backend URL
+export DEBUG_PLAN_CAPTURE=true               # Enable debug logging
+export DEBUG_TODO_CAPTURE=true               # Enable todo debug logging
+```
+
+#### Custom Hook Paths
+If running from different locations, update hook commands:
+```json
+{
+  "pattern": "ExitPlanMode",
+  "command": "/full/path/to/baton/scripts/capture-plan.js"
+}
+```
+
+## 🛡️ Permission Management
+
+Baton implements a comprehensive permission system for safe Claude Code integration.
+
+### Permission Levels
+
+#### **Automatic Approval** (No Prompt)
+- `Read`, `LS`, `Glob`, `Grep` - Safe file reading operations
+- `WebFetch`, `WebSearch` - External data access (read-only)
+
+#### **User Prompt Required** (Interactive)
+- `Write`, `Edit`, `MultiEdit` - File modification operations
+- `Bash` - System command execution
+- Custom tools and commands
 
 ### Permission Flow
 
+#### 1. Tool Request Detection
 ```
-1. Claude Code attempts operation
-   ↓
-2. Permission Engine evaluates:
-   - Is it allowlisted? → Auto-approve
-   - Is it denylisted? → Auto-block
-   - Neither? → Ask user via prompt
-   ↓
-3. If user prompt needed:
-   - Store prompt in database
-   - Show in chat UI
-   - Wait for user response
-   - Continue Claude session with response
+Claude Code: "I need to use the Write tool to create config.json"
+Bridge: "🛡️ High-risk tool detected: Write - requesting permission"
 ```
 
-## 🤝 Interactive Prompt System
-
-### Prompt Detection
-
-The system detects various Claude Code prompts:
-
+#### 2. Interactive Prompt Creation
 ```javascript
-// Permission requests
-CLAUDE_PERMISSION: /Claude requested permissions to (.+?), but you haven't granted it yet\./i
-
-// Tool usage confirmations
-TOOL_USAGE: /Do you want to use the (.+?) tool\?/i
-
-// Command confirmations
-BASH_COMMAND: /Do you want me to run (.+?)\?/i
+// Backend creates interactive prompt
+{
+  type: 'tool_permission',
+  title: 'Write Tool Permission',
+  message: 'Allow Claude Code to create/modify files?',
+  options: [
+    { id: 'allow_once', label: 'Allow Once' },
+    { id: 'allow_always', label: 'Allow Always' }, 
+    { id: 'deny', label: 'Deny' }
+  ],
+  context: {
+    toolName: 'Write',
+    riskLevel: 'HIGH',
+    parameters: 'filename: config.json'
+  }
+}
 ```
 
-### Database Schema
+#### 3. User Interface Display
+- Permission prompt appears in chat interface
+- Risk level shown with color coding:
+  - 🟢 **LOW**: Green background, informational
+  - 🟡 **MEDIUM**: Yellow background, caution
+  - 🟠 **HIGH**: Orange background, warning
+  - 🔴 **CRITICAL**: Red background, danger
+- Context information displayed (file paths, command details)
 
-Interactive prompts are stored with:
+#### 4. Permission Persistence
+- **"Allow Once"**: Permission valid for current request only
+- **"Allow Always"**: Permission stored in `conversation_permissions` table
+- Session-based permissions expire with conversation
+- Global permissions can be managed via UI
 
-```sql
-CREATE TABLE interactive_prompts (
-  id VARCHAR PRIMARY KEY,
-  conversationId VARCHAR NOT NULL,
-  sessionId VARCHAR,        -- Claude Code session ID
-  type VARCHAR NOT NULL,    -- 'permission', 'tool_usage', etc.
-  title VARCHAR,
-  message TEXT NOT NULL,
-  options JSON NOT NULL,    -- Array of response options
-  context JSON,             -- Additional context data
-  status VARCHAR DEFAULT 'pending',
-  selectedOption VARCHAR,
-  autoHandler VARCHAR,      -- Which strategy handled it
-  timeoutAt TIMESTAMP,
-  createdAt TIMESTAMP,
-  respondedAt TIMESTAMP
-);
+### Risk Assessment
+
+#### Tool Risk Levels
+```javascript
+const riskLevels = {
+  // Safe operations
+  'Read': 'LOW',
+  'LS': 'LOW', 
+  'Glob': 'LOW',
+  'Grep': 'LOW',
+  
+  // External access
+  'WebFetch': 'MEDIUM',
+  'WebSearch': 'MEDIUM',
+  
+  // File modifications
+  'Write': 'HIGH',
+  'Edit': 'HIGH',
+  'MultiEdit': 'HIGH',
+  
+  // System commands
+  'Bash': 'CRITICAL'
+};
 ```
 
-### UI Components
+#### Context-Based Risk Assessment
+- File path analysis (system files vs project files)
+- Command content analysis (destructive vs safe commands)
+- Parameter inspection (file sizes, destinations)
+- Historical usage patterns
 
-Interactive prompts appear inline in chat:
+### Permission Analytics
 
-```tsx
-<InteractivePrompt
-  prompt={prompt}
-  onResponse={(option) => handleResponse(prompt.id, option)}
-/>
-```
+#### Dashboard Metrics
+- Total permission requests
+- Approval/denial rates by tool
+- Average response times
+- Risk level distribution
+- Most requested tools
+- User decision patterns
 
-Options are rendered as clickable buttons:
-- **Yes** / **No** for simple confirmations
-- **Yes, don't ask again** for repeated operations
-- Custom options based on prompt type
+#### Audit Trail
+All permission decisions are logged with:
+- Timestamp and user context
+- Tool name and parameters
+- Risk assessment details
+- User decision and response time
+- Session and conversation context
 
-## 🔄 Session Management
-
-### Session Continuity
-
-Baton maintains Claude Code session state:
-
-1. **Session ID Capture**: Extract session IDs from Claude Code messages
-2. **Database Storage**: Link sessions to conversations
-3. **Resume Capability**: Use `--resume <session-id>` for continuity
-4. **Context Preservation**: Maintain conversation history across interactions
-
-### Session Flow
-
-```
-User Message → Chat Handler → Claude Code SDK
-                     ↓
-              Capture Session ID
-                     ↓
-              Store in Database
-                     ↓
-            Next Message Uses --resume
-```
-
-### Token Management
-
-- **Monitoring**: Track token usage per conversation
-- **Compaction**: Automatic context compression when approaching limits
-- **Optimization**: Smart session reuse vs. fresh starts
-
-## 🛠️ Troubleshooting
+## 🔧 Troubleshooting
 
 ### Common Issues
 
-#### 1. Chat Not Responding
-
+#### **Bridge Service Not Starting**
 ```bash
-# Check service status
-make status
+# Check Bun installation
+bun --version
 
-# View real-time logs
-make logs
+# Check port availability
+lsof -i :8080
 
-# Restart services
-make restart
-```
-
-**Symptoms**: No response in chat interface
-**Causes**: Handler process stopped, backend connection lost
-**Solution**: Restart chat handler with `make restart`
-
-#### 2. Permission Prompts Not Showing
-
-```bash
-# Test permission detection
-make test-claude-permissions
-
-# Check handler configuration
-grep -A 10 "permissionMode" scripts/chat-handler.js
-
-# View prompt detection logs
-make logs-handler | grep "Interactive prompt detected"
-```
-
-**Symptoms**: No prompts appear for blocked operations
-**Causes**: Permission mode too permissive, prompt detection failure
-**Solution**: Verify allowlist configuration, check prompt patterns
-
-#### 3. Files Not Created After Approval
-
-```bash
-# Check session continuation
-make logs-handler | grep "session continuation"
-
-# Verify session IDs are stored
-docker exec -i baton-postgres-dev psql -U baton_user -d baton_dev \
-  -c "SELECT id, \"sessionId\" FROM interactive_prompts WHERE status = 'answered';"
-```
-
-**Symptoms**: User clicks "Yes" but file isn't created
-**Causes**: Session ID not captured, continuation failed
-**Solution**: Verify session ID storage, check continuation logs
-
-#### 4. Claude Code Not Found
-
-```bash
-# Verify installation
-which claude
+# Check Claude Code installation
 claude --version
 
-# Check PATH
-echo $PATH | grep -o '[^:]*node[^:]*'
-
-# Reinstall if needed
-npm install -g @anthropic-ai/claude-code
+# Try manual startup with debug
+DEBUG=1 bun run scripts/bridge.ts
 ```
 
-### Diagnostic Commands
-
+#### **Chat Interface Not Responding**
 ```bash
-# Complete health check
-make status
-make test-integration
-make test-claude-permissions
+# Check bridge is running
+ps aux | grep bridge.ts
 
-# Service-specific logs
-make logs-handler    # Chat handler only
-make logs-bridge     # WebSocket bridge only
-make logs-docker     # Docker containers only
+# Check backend connection
+curl http://localhost:3001/health
 
-# Database inspection
+# Check WebSocket connection in browser dev tools
+# Look for WebSocket connection errors
+```
+
+#### **Permission Prompts Not Appearing**
+```bash
+# Check WebSocket connection
+# Browser Dev Tools → Network → WS tab
+
+# Check interactive_prompts table
 docker exec -i baton-postgres-dev psql -U baton_user -d baton_dev \
-  -c "SELECT COUNT(*) FROM interactive_prompts;"
+  -c "SELECT * FROM interactive_prompts ORDER BY created_at DESC LIMIT 5;"
+
+# Check backend logs
+docker compose logs backend | grep -i prompt
+```
+
+#### **MCP Server Connection Issues**
+```bash
+# Check MCP server status
+curl http://localhost:3002 || echo "WebSocket server running"
+
+# Check MCP server logs  
+docker compose logs mcp-server
+
+# Test WebSocket connection
+wscat -c ws://localhost:3002
+```
+
+#### **Hook Integration Not Working**
+```bash
+# Check hook configuration
+jq '.projects' ~/.claude.json
+
+# Verify .baton-project file
+cat .baton-project
+
+# Test hook scripts manually
+echo '{"tool_name": "ExitPlanMode", "tool_input": {"plan": "Test"}}' | \
+  node scripts/capture-plan.js
+
+# Check hook execution in Claude Code logs
+DEBUG_PLAN_CAPTURE=true claude -p
+```
+
+### Performance Issues
+
+#### **Slow Response Times**
+- Check bridge service CPU/memory usage
+- Verify Docker container resources
+- Monitor token usage and context window
+- Check database connection pool settings
+
+#### **Memory Usage**
+- Monitor Claude Code session management
+- Check for context window bloat
+- Review conversation cleanup policies
+- Monitor file upload storage usage
+
+### Debug Information
+
+#### Bridge Service Logs
+```bash
+# Bridge outputs to console with timestamps
+bun run scripts/bridge.ts
+# Look for:
+# - "🚀 Bridge executing Claude Code request"
+# - "🔧 Creating robust prompt delivery"
+# - "✅ Prompt delivered via: websocket"
+```
+
+#### Backend API Logs
+```bash
+docker compose logs backend | grep -E "(chat|prompt|permission)"
+```
+
+#### Database Inspection
+```bash
+# Check recent conversations
+docker exec -i baton-postgres-dev psql -U baton_user -d baton_dev \
+  -c "SELECT id, created_at FROM conversations ORDER BY created_at DESC LIMIT 5;"
+
+# Check interactive prompts
+docker exec -i baton-postgres-dev psql -U baton_user -d baton_dev \
+  -c "SELECT id, type, status, created_at FROM interactive_prompts ORDER BY created_at DESC LIMIT 5;"
 ```
 
 ## ⚙️ Advanced Configuration
 
 ### Custom Permission Rules
 
-Modify `scripts/chat-handler.js` to customize permissions:
+Modify permission behavior in `scripts/bridge.ts`:
 
-```javascript
-const baseOptions = {
-  permissionMode: 'acceptEdits',
-  allowedTools: [
-    // Add your custom tools here
-    'YourCustomTool',
-    'Bash(your-command:*)',
+```typescript
+// Custom allowlist configuration
+const customPermissions = {
+  autoAllow: [
+    'Read', 'LS', 'Glob', 'Grep',  // Default safe operations
+    'YourCustomTool',              // Add custom tools
   ],
-  // For completely automated workflows:
-  // permissionMode: 'bypassPermissions'
+  requirePrompt: [
+    'Write', 'Edit', 'MultiEdit',  // File operations
+    'Bash(git:*)',                 // Git commands only
+  ],
+  alwaysDeny: [
+    'Bash(rm:*)',                  // Dangerous deletions
+    'Bash(sudo:*)',                // System administration
+  ]
 };
 ```
 
-### Environment Variables
+### Environment Configuration
 
+#### Bridge Service Environment
 ```bash
-# Chat handler configuration
-export BACKEND_URL=http://localhost:3001
-export POLLING_INTERVAL=1000
+# Custom bridge configuration
+export BRIDGE_PORT=9000                    # Custom port
+export BRIDGE_BACKEND_URL=http://localhost:3001
+export BRIDGE_DEBUG=true                   # Enable debug logging
+export BRIDGE_TIMEOUT=60000               # Request timeout (ms)
+```
 
-# Claude Code paths
-export CLAUDE_PATH=/usr/local/bin/claude
-export CLAUDE_CONFIG_DIR=~/.claude
+#### Backend Environment
+```bash
+# In docker-compose.dev.yml
+environment:
+  - BRIDGE_URL=http://localhost:8080       # Bridge service URL
+  - CLAUDE_TIMEOUT=120000                  # Claude request timeout
+  - PERMISSION_TIMEOUT=30000               # Permission prompt timeout
+  - MAX_FILE_SIZE=26214400                 # 25MB file upload limit
 ```
 
 ### Database Configuration
 
+#### Custom Database Connection
 ```bash
-# Custom database connection
-export DATABASE_URL="postgresql://user:pass@host:port/db"
-
-# Migration and seeding
-cd backend
-npm run db:migrate
-npm run db:seed
+# Override default database URL
+export DATABASE_URL="postgresql://custom_user:password@host:port/db"
 ```
 
-### Logging Configuration
+#### Permission Table Management
+```sql
+-- Clean up old permissions
+DELETE FROM conversation_permissions 
+WHERE created_at < NOW() - INTERVAL '7 days' 
+AND expires_at IS NULL;
 
-```bash
-# Custom log locations
-export CHAT_HANDLER_LOG=/custom/path/handler.log
-export BRIDGE_LOG=/custom/path/bridge.log
+-- View permission statistics
+SELECT 
+  tool_name, 
+  permission, 
+  COUNT(*) as count
+FROM conversation_permissions 
+GROUP BY tool_name, permission;
+```
 
-# Log levels (in handler code)
-console.log = process.env.NODE_ENV === 'development' ? console.log : () => {};
+### Performance Tuning
+
+#### Context Management
+```typescript
+// In bridge.ts, configure context management
+const contextConfig = {
+  maxTokens: 150000,           // 75% of 200k limit
+  compactionThreshold: 0.75,   // Compact at 75%
+  messageRetention: 50,        // Keep last 50 messages
+  summaryLength: 1000          // Summary token limit
+};
+```
+
+#### Session Management
+```typescript
+// Configure session persistence
+const sessionConfig = {
+  maxSessions: 100,            // Maximum concurrent sessions
+  sessionTimeout: 3600000,     // 1 hour timeout
+  cleanupInterval: 300000,     // 5 minute cleanup
+  persistenceEnabled: true     // Database persistence
+};
 ```
 
 ## 🔍 Monitoring and Analytics
 
-### Metrics to Track
+### Real-Time Metrics
 
-- **Response Times**: Handler processing speed
-- **Session Success Rate**: Successful continuations
-- **Permission Decisions**: Auto vs. user delegated
-- **Error Rates**: Failed operations and causes
+#### Permission Analytics
+- Request volume and patterns
+- Response times by tool type
+- Approval/denial rates
+- Risk level distributions
+- User behavior patterns
 
-### Log Analysis
+#### System Health
+- Bridge service uptime and performance
+- MCP server connection status
+- Database query performance
+- WebSocket connection stability
+- File upload success rates
 
+### Usage Analytics
+
+#### Dashboard Views
+- Active conversations and sessions
+- Tool usage statistics
+- Permission decision trends
+- File upload analytics
+- Error rates and types
+
+#### Export and Reporting
 ```bash
-# Count permission types
-grep "Interactive prompt detected" /tmp/baton-chat-handler.log | \
-  grep -o "permission\|tool_usage\|command" | sort | uniq -c
-
-# Session continuation success rate  
-grep -c "Session continued successfully" /tmp/baton-chat-handler.log
-
-# Error analysis
-grep -i error /tmp/baton-chat-handler.log | \
-  grep -v "Error.*resolved" | tail -20
-```
-
-### Database Queries
-
-```sql
--- Prompt response statistics
-SELECT 
-  type,
-  status,
-  COUNT(*) as count,
-  AVG(EXTRACT(EPOCH FROM (respondedAt - createdAt))) as avg_response_time_seconds
-FROM interactive_prompts 
-GROUP BY type, status;
-
--- Session usage patterns
-SELECT 
-  DATE(createdAt) as date,
-  COUNT(DISTINCT sessionId) as unique_sessions,
-  COUNT(*) as total_prompts
-FROM interactive_prompts 
-GROUP BY DATE(createdAt)
-ORDER BY date DESC;
+# Export permission data
+docker exec -i baton-postgres-dev psql -U baton_user -d baton_dev \
+  -c "COPY (SELECT * FROM interactive_prompts WHERE created_at > NOW() - INTERVAL '30 days') TO STDOUT WITH CSV HEADER;" > permissions_report.csv
 ```
 
 ## 📚 Related Documentation
 
-- [Interactive Prompts Setup](./CLAUDE_CODE_INTERACTIVE_PROMPTS.md)
-- [Claude Code Hooks Integration](./CLAUDE_CODE_HOOKS_QUICKSTART.md)
-- [MCP Server Documentation](../README.md#mcp-integration)
-- [Main README](../README.md)
+- **[Getting Started](./GETTING_STARTED.md)** - Quick setup guide
+- **[MCP Server Guide](./MCP_SERVER_GUIDE.md)** - Complete MCP documentation
+- **[Technical Reference](./TECHNICAL_REFERENCE.md)** - API documentation and architecture
+- **[Bridge Service README](../scripts/BRIDGE_README.md)** - Bridge-specific documentation
 
-## 🤝 Contributing
+## 🎯 Summary
 
-To contribute to the Claude Code integration:
+Baton's Claude Code integration provides:
 
-1. **Test Changes**: Use `make test-integration` to verify functionality
-2. **Update Documentation**: Keep this document current with any changes
-3. **Add Tests**: Include tests for new permission patterns or prompt types
-4. **Monitor Performance**: Check impact on response times and resource usage
+- ✅ **Robust WebUI Integration** via `bridge.ts` service
+- ✅ **Professional Chat Interface** with file uploads and permissions
+- ✅ **MCP Server Protocol** for programmatic access
+- ✅ **Automatic Hook Integration** for plan and todo capture
+- ✅ **Comprehensive Permission System** with risk assessment
+- ✅ **Real-time Analytics** and monitoring
+- ✅ **Enterprise-grade Security** with audit trails
 
-## 📝 Changelog
-
-### v1.3.0 - Automated Permission Management
-- Added `permissionMode: 'acceptEdits'` configuration
-- Implemented allowlist/denylist strategies
-- Added session continuation for user responses
-- Created comprehensive Makefile for process management
-
-### v1.2.0 - Interactive Prompt System  
-- Built prompt detection engine with regex patterns
-- Added database storage for interactive prompts
-- Created inline prompt UI components
-- Implemented multi-strategy decision engine
-
-### v1.1.0 - Session Management
-- Added session ID capture and storage
-- Implemented conversation continuity
-- Added token usage monitoring
-- Created context compaction system
-
-### v1.0.0 - Initial Integration
-- Basic Claude Code SDK integration
-- Chat interface with streaming responses
-- Project context awareness
-- WebSocket real-time communication
+Choose the integration method that best fits your workflow, or use multiple methods together for maximum flexibility.

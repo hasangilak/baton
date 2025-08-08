@@ -51,6 +51,8 @@ class ClaudeCodeBridge {
       console.log(`📝 Message: "${message.substring(0, 100)}..."`);
       console.log(`🔗 Session: ${sessionId || 'new'}`);
       console.log(`🛠️  Tools: ${allowedTools?.join(', ') || 'default'}`);
+      console.log(`📁 Working Dir: ${workingDirectory || 'default CWD'}`);
+      console.log(`📦 Conversation: ${conversationId} | Project: ${projectName || 'n/a'}`);
 
       // Create readable stream for Server-Sent Events
       const stream = new ReadableStream({
@@ -130,7 +132,16 @@ class ClaudeCodeBridge {
               const riskLevel = this.assessRiskLevel(toolName);
               
               if (riskLevel === 'HIGH' || riskLevel === 'MEDIUM') {
+                const previewParams = (() => {
+                  try {
+                    const str = JSON.stringify(parameters);
+                    return str.length > 300 ? str.slice(0, 300) + '…' : str;
+                  } catch {
+                    return '[unserializable parameters]';
+                  }
+                })();
                 console.log(`🛡️  ${riskLevel}-risk tool detected: ${toolName} - requesting permission with progressive timeout`);
+                console.log(`   ↳ Params preview: ${previewParams}`);
                 try {
                   const permissionResult = await this.requestPermissionWithProgressiveTimeout(
                     toolName,
@@ -168,12 +179,14 @@ class ClaudeCodeBridge {
             };
 
             let messageCount = 0;
+            let seq = 0;
             
             for await (const sdkMessage of query({
               prompt: createPromptStream(),
               options: claudeOptions
             })) {
               messageCount++;
+              seq++;
               
               // Log first few messages for debugging
               if (messageCount <= 3) {
@@ -191,6 +204,27 @@ class ClaudeCodeBridge {
               };
               
               sendResponse(streamResponse);
+
+              // Detailed per-message logging (non-invasive)
+              try {
+                const type = (sdkMessage as any).type;
+                const role = (sdkMessage as any).message?.role || 'n/a';
+                const content = (sdkMessage as any).message?.content;
+                const contentSummary = (() => {
+                  if (!content) return 'none';
+                  if (typeof content === 'string') return `str(${content.length})`;
+                  if (Array.isArray(content)) {
+                    const textBlocks = content.filter((c: any) => c?.type === 'text');
+                    const toolBlocks = content.filter((c: any) => c?.type === 'tool_use');
+                    const textLen = textBlocks.map((t: any) => (t?.text || '').length).reduce((a: number, b: number) => a + b, 0);
+                    return `array{text:${textBlocks.length} (${textLen} chars), tools:${toolBlocks.length}}`;
+                  }
+                  return typeof content;
+                })();
+                console.log(`🔎 [${requestId}] seq=${seq} type=${type} role=${role} content=${contentSummary}`);
+              } catch (e) {
+                console.log(`🔎 [${requestId}] seq=${seq} message summary unavailable`);
+              }
 
               // Handle different message types and natural completion
               if (sdkMessage.type === "result") {

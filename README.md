@@ -63,10 +63,10 @@ Baton offers two powerful ways to integrate with Claude Code:
    docker compose up -d
    ```
 
-2. **Start WebUI Handler**
+2. **Start Bridge Service**
    ```bash
-   # Start the local Claude Code handler (runs outside Docker)
-   node scripts/webui-chat-handler.js
+   # Start the local Claude Code bridge service (runs outside Docker)
+   bun run scripts/bridge.ts
    ```
 
 3. **Open Chat Interface**
@@ -180,7 +180,7 @@ make dev
    make handler
    
    # Or manually:
-   node scripts/webui-chat-handler.js > /tmp/webui-chat-handler.log 2>&1 &
+   bun run scripts/bridge.ts > /tmp/bridge-service.log 2>&1 &
    ```
 
 2. **Start the Chat Bridge** (Optional - for WebSocket connections)
@@ -298,7 +298,7 @@ make test-claude-permissions
 make restart
 
 # Or manually check processes
-ps aux | grep chat-handler
+ps aux | grep bridge.ts
 
 # View handler logs specifically
 make logs-handler
@@ -309,14 +309,14 @@ make logs-bridge
 
 #### Permission prompts not working?
 ```bash
-# Check if permission mode is configured
-grep -A 10 "permissionMode" scripts/webui-chat-handler.js
+# Check if bridge service is running
+ps aux | grep bridge.ts
 
 # Test file creation (should work without prompts)
 make test-claude-permissions
 
-# Check for errors in handler logs
-tail -f /tmp/baton-chat-handler.log | grep -i error
+# Check for errors in bridge logs
+tail -f /tmp/bridge-service.log | grep -i error
 ```
 
 #### Claude Code not found?
@@ -696,6 +696,43 @@ If you encounter port conflicts, update these ports in `docker-compose.yml`:
 2. Verify all services are running: `docker ps`
 3. Test the health endpoint: `curl http://localhost:3001/health`
 4. Check Claude Code MCP connection: `claude mcp get baton`
+
+## 📚 Documentation
+
+Baton includes comprehensive documentation for all integration approaches:
+
+### **📖 Getting Started**
+- **[Getting Started Guide](./docs/GETTING_STARTED.md)** - Quick 5-minute setup with `bridge.ts`
+- Perfect for: New users, quick demos, development setup
+
+### **🔧 Claude Code Integration**
+- **[Claude Code Integration Guide](./docs/CLAUDE_CODE_INTEGRATION.md)** - Complete integration documentation
+- **Covers**: WebUI chat, MCP server, hook system, permission management
+- Perfect for: Full Claude Code integration, production deployments
+
+### **🔌 MCP Server**
+- **[MCP Server Guide](./docs/MCP_SERVER_GUIDE.md)** - Model Context Protocol documentation
+- **Features**: 20 tools, 12 prompts, Claude Desktop integration
+- Perfect for: AI agents, programmatic access, automation
+
+### **⚙️ Technical Reference**
+- **[Technical Reference](./docs/TECHNICAL_REFERENCE.md)** - Developer documentation
+- **Covers**: API endpoints, database schema, architecture, performance
+- Perfect for: Developers, API integration, troubleshooting
+
+### **🗂️ Quick Reference**
+
+| Integration Method | Best For | Setup Time | Documentation |
+|-------------------|----------|------------|---------------|
+| **WebUI Chat** | Interactive development | 5 minutes | [Integration Guide](./docs/CLAUDE_CODE_INTEGRATION.md#webui-integration-recommended) |
+| **MCP Server** | AI agents, automation | 2 minutes | [MCP Server Guide](./docs/MCP_SERVER_GUIDE.md) |
+| **Hook System** | Background automation | 10 minutes | [Integration Guide](./docs/CLAUDE_CODE_INTEGRATION.md#hook-system-integration) |
+
+### **🚨 Important Notes**
+- All examples in the documentation are **tested and verified** against the current implementation
+- Use `bun run scripts/bridge.ts` as the primary chat handler (not obsolete webui handlers)
+- The MCP server provides 20 tools and 12 AI-powered prompts
+- Documentation was completely rewritten in August 2025 to match current reality
 
 ## 🤝 Contributing
 
