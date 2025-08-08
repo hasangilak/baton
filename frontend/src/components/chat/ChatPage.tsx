@@ -1,4 +1,3 @@
-import { parseMixedContent, type MixedSegment } from '../../utils/mixedContent';
 import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
@@ -17,10 +16,7 @@ import {
   Send,
   Paperclip,
   Link,
-  Copy,
-  Settings,
-  CheckCircle,
-  AlertCircle
+  Copy
 } from 'lucide-react';
 import { useConversations, useChatSearch, useConversation, useMessages } from '../../hooks/useChat';
 import { useProjects } from '../../hooks/useProjects';
@@ -29,6 +25,7 @@ import { useClaudeStreaming } from '../../hooks/useClaudeStreaming';
 import { useFileUpload } from '../../hooks/useFileUpload';
 import { FileUploadArea } from './FileUploadArea';
 import { InteractivePromptComponent } from './InteractivePrompt';
+import { MessageTypeRenderer } from './messages/MessageTypeRenderer';
 import type { Conversation, Message } from '../../types';
 import { formatDistanceToNow } from 'date-fns';
 import { generateMessageId } from '../../utils/id';
@@ -82,42 +79,6 @@ const safeRenderContent = (content: any, _streamingMessage?: any): string => {
   return String(content);
 };
 
-// Simple code block renderer for fenced code segments
-const CodeBlock: React.FC<{ lang?: string; value: string }> = ({ lang, value }) => {
-  return (
-    <div className="rounded-xl border border-[#2a2a2a] bg-[#141414] overflow-hidden">
-      <div className="px-3 py-1.5 text-xs text-[#9aa0a6] border-b border-[#2a2a2a] flex items-center gap-2">
-        <span className="inline-block w-2 h-2 rounded-full bg-[#6b7280]" />
-        <span>{lang || 'code'}</span>
-      </div>
-      <pre className="m-0 p-3 text-sm whitespace-pre-wrap text-[#E5E5E5]">
-        <code>{value}</code>
-      </pre>
-    </div>
-  );
-};
-
-// Specialized renderer for arrays of links: [{title, url}]
-const LinksCard: React.FC<{ items: Array<{ title?: string; url?: string }> }> = ({ items }) => {
-  return (
-    <div className="rounded-xl border border-[#2a2a2a] bg-[#0e0e0e] p-3 space-y-2">
-      <div className="text-xs uppercase tracking-wide text-[#9aa0a6]">Links</div>
-      <ul className="space-y-1 list-disc pl-5">
-        {items.map((it, i) => (
-          <li key={i} className="text-sm">
-            {it.url ? (
-              <a href={it.url} target="_blank" rel="noreferrer" className="text-[#7dd3fc] hover:underline">
-                {it.title || it.url}
-              </a>
-            ) : (
-              <span className="text-[#E5E5E5]">{it.title || 'Untitled'}</span>
-            )}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-};
 
 // Helper function to extract meaningful content from different message types
 const extractMessageContent = (msg: any): string => {
@@ -691,311 +652,65 @@ const ActionButton: React.FC<{ icon: React.ElementType; label: string; testId?: 
   </button>
 );
 
-// Pretty JSON viewer with collapsible details
-const PrettyJson: React.FC<{ data: any; collapsedLabel?: string }> = ({ data, collapsedLabel = 'View details' }) => {
-  const json = (() => {
-    try {
-      return JSON.stringify(data, null, 2);
-    } catch {
-      return String(data);
-    }
-  })();
-  return (
-    <details className="bg-[#2A2A2D] border border-[#3E3E42] rounded-lg overflow-hidden">
-      <summary className="cursor-pointer px-3 py-2 text-sm text-[#CFCFD1] hover:bg-[#333336]">
-        {collapsedLabel}
-      </summary>
-      <pre className="m-0 p-3 text-xs leading-5 text-[#CFCFD1] overflow-auto">
-        {json}
-      </pre>
-    </details>
-  );
-};
 
-// Mixed content parsing moved to utils/mixedContent.ts using remark AST + JSON5
-
-// Tool Action Card to show tool calls/results in a readable format
-const ToolActionCard: React.FC<{
-  name?: string;
-  args?: any;
-  result?: any;
-  isError?: boolean;
-  status?: 'pending' | 'running' | 'done' | 'error';
-}> = ({ name, args, result, isError, status }) => {
-  const statusStyles: Record<string, string> = {
-    pending: 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30',
-    running: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-    done: 'bg-green-500/20 text-green-300 border-green-500/30',
-    error: 'bg-red-500/20 text-red-300 border-red-500/30',
-  };
-  const badge = isError ? 'error' : (status || 'done');
-  return (
-    <div className="border border-[#3E3E42] rounded-xl bg-[#1F1F22]">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-[#3E3E42]">
-        <div className="flex items-center space-x-2">
-          <Code2 className="w-4 h-4 text-[#CFCFD1]" />
-          <span className="text-sm text-[#E5E5E5]">{name || 'Tool Action'}</span>
-        </div>
-        <span className={`text-2xs px-2 py-0.5 rounded-full border ${statusStyles[badge] || ''}`}>
-          {badge.toUpperCase()}
-        </span>
-      </div>
-      <div className="p-3 space-y-3">
-        {typeof args !== 'undefined' && (
-          <div>
-            <div className="text-xs text-[#8B8B8D] mb-1">Arguments</div>
-            <PrettyJson data={args} collapsedLabel="Show arguments" />
-          </div>
-        )}
-        {typeof result !== 'undefined' && (
-          <div>
-            <div className="text-xs text-[#8B8B8D] mb-1">Result</div>
-            {(() => {
-              // If result is a string and looks like JSON, parse/pretty print
-              if (typeof result === 'string') {
-                try {
-                  const parsed = JSON.parse(result);
-                  return <PrettyJson data={parsed} collapsedLabel="Show result JSON" />;
-                } catch {
-                  // Show plain text (code-like block for multiline)
-                  return (
-                    <pre className="m-0 p-3 text-xs leading-5 text-[#CFCFD1] bg-[#2A2A2D] border border-[#3E3E42] rounded-lg overflow-auto whitespace-pre-wrap">{result}</pre>
-                  );
-                }
-              }
-              // Non-string result (object/array)
-              return <PrettyJson data={result} collapsedLabel="Show result" />;
-            })()}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// Message Bubble Component
+// Message Bubble Component - Now using our new MessageTypeRenderer
 const MessageBubble: React.FC<{ 
   message: Message; 
   isStreaming?: boolean; 
   streamingMessage?: any 
 }> = ({ message, isStreaming, streamingMessage }) => {
-  const isUser = message.role === 'user';
-  const toolUsages = (message as any).toolUsages || (message as any).metadata?.toolUsages;
+  // Convert streaming message to our message format if needed
+  let processedMessage = message;
   
-  // Get message type info for badges
-  const getMessageTypeInfo = () => {
-    if (streamingMessage) {
-      const type = streamingMessage.type;
-      const subtype = streamingMessage.subtype;
-      
-      switch (type) {
-        case 'system':
-          return { 
-            type: 'system', 
-            label: subtype === 'init' ? 'System Init' : 'System',
-            icon: Settings,
-            color: 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-          };
-        case 'result':
-          return { 
-            type: 'result', 
-            label: 'Result',
-            icon: CheckCircle,
-            color: 'bg-green-500/20 text-green-400 border-green-500/30'
-          };
-        case 'error':
-          return { 
-            type: 'error', 
-            label: 'Error',
-            icon: AlertCircle,
-            color: 'bg-red-500/20 text-red-400 border-red-500/30'
-          };
-        case 'tool_use':
-          return { 
-            type: 'tool_use', 
-            label: 'Tool',
-            icon: Code2,
-            color: 'bg-purple-500/20 text-purple-400 border-purple-500/30'
-          };
-        default:
-          return null;
+  if (streamingMessage) {
+    // Create a message object compatible with our MessageTypeRenderer
+    processedMessage = {
+      ...message,
+      // Add streaming type info to metadata for our components to use
+      metadata: {
+        ...message.metadata,
+        streamingType: streamingMessage.type,
+        streamingSubtype: streamingMessage.subtype,
+        streamingData: streamingMessage
       }
+    };
+    
+    // For tool messages, ensure we have proper tool data
+    if (streamingMessage.type === 'tool_use') {
+      processedMessage.metadata = {
+        ...processedMessage.metadata,
+        toolName: streamingMessage.name || 'Tool',
+        toolInput: streamingMessage.input || streamingMessage.args || streamingMessage.parameters
+      };
     }
-    return null;
+  }
+
+  const handleCopy = async (content: string, messageId: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      console.log('Copied content for message:', messageId);
+    } catch (error) {
+      console.error('Failed to copy:', error);
+    }
   };
-  
-  const typeInfo = getMessageTypeInfo();
-  
+
+  const handleRetry = (messageId: string) => {
+    console.log('Retry message:', messageId);
+  };
+
   return (
     <div 
-      className={`mb-6 ${isUser ? 'flex justify-end' : ''}`}
+      className="mb-6"
       data-testid={`message-${message.id}`}
       data-testid-role={`message-role-${message.role}`}
       data-testid-status={message.status}
     >
-      <div className={`max-w-[85%] ${isUser ? 'ml-auto' : ''}`}>
-        <div className={`flex items-start space-x-3 ${isUser ? 'flex-row-reverse space-x-reverse' : ''}`}>
-          <div 
-            className={`w-8 h-8 rounded-full flex items-center justify-center ${
-              isUser ? 'bg-[#FF6B6B]' : 'bg-[#3E3E42]'
-            }`}
-            data-testid={`message-avatar-${message.role}`}
-          >
-            {isUser ? (
-              <span className="text-xs text-white font-semibold">U</span>
-            ) : (
-              <Sparkles className="w-4 h-4 text-[#FF6B6B]" />
-            )}
-          </div>
-          
-          <div className={`flex-1 ${isUser ? 'text-right' : ''}`}>
-            <div className="flex items-center justify-between mb-1">
-              <p 
-                className="text-xs text-[#8B8B8D]"
-                data-testid={`message-sender-${message.id}`}
-              >
-                {isUser ? 'You' : 'Claude'}
-              </p>
-              
-              {/* Message Type Badge */}
-              {typeInfo && !isUser && (
-                <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs border ${typeInfo.color}`}>
-                  <typeInfo.icon className="w-3 h-3 mr-1" />
-                  <span>{typeInfo.label}</span>
-                </div>
-              )}
-            </div>
-            
-            {/* Tool Usage Display */}
-            {!isUser && toolUsages && toolUsages.length > 0 && (
-              <div 
-                className="mb-2 space-y-1"
-                data-testid={`message-tools-${message.id}`}
-              >
-                {toolUsages.map((tool: any, index: number) => (
-                  <div 
-                    key={index} 
-                    className="inline-flex items-center px-2 py-1 bg-[#3E3E42] rounded-md text-xs text-[#8B8B8D] mr-2 mb-1"
-                    data-testid={`message-tool-${index}`}
-                    data-tool-name={tool.name || tool}
-                  >
-                    <Code2 className="w-3 h-3 mr-1" />
-                    <span>Using {tool.name || tool}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            
-            {/* Content / Tool usage formatting */}
-            {(() => {
-              if (!isUser) {
-                // 1) Streaming tool invocation (tool_use)
-                if (streamingMessage?.type === 'tool_use') {
-                  // Try to extract name/input from anthropic-style content blocks
-                  const contentBlocks = streamingMessage?.message?.content;
-                  let tu = Array.isArray(contentBlocks) ? contentBlocks.find((c: any) => c?.type === 'tool_use') : undefined;
-                  // Some backends might send different shapes
-                  const name = tu?.name || streamingMessage?.name || 'Tool';
-                  const args = tu?.input ?? streamingMessage?.input ?? streamingMessage?.args ?? streamingMessage?.parameters;
-                  // As a fallback, show entire message payload in details
-                  if (!tu && !args) {
-                    return (
-                      <div className="space-y-2">
-                        <ToolActionCard name={name} status={isStreaming ? 'running' : 'done'} />
-                        <PrettyJson data={streamingMessage} collapsedLabel="Show raw tool_use payload" />
-                      </div>
-                    );
-                  }
-                  return <ToolActionCard name={name} args={args} status={isStreaming ? 'running' : 'done'} />;
-                }
-
-                // 2) Streaming tool result (tool_result)
-                if (streamingMessage?.type === 'tool_result') {
-                  const isErr = Boolean(streamingMessage?.is_error);
-                  const content = streamingMessage?.content;
-                  // try JSON parse, else plain text
-                  if (typeof content === 'string') {
-                    try {
-                      const parsed = JSON.parse(content);
-                      const toolName = parsed?.tool || parsed?.name || parsed?.tool_name;
-                      const result = parsed?.result ?? parsed?.output ?? parsed?.data ?? parsed;
-                      return <ToolActionCard name={toolName} result={result} isError={isErr} status={isErr ? 'error' : 'done'} />;
-                    } catch {
-                      return <ToolActionCard result={content} isError={isErr} status={isErr ? 'error' : 'done'} />;
-                    }
-                  }
-                  return <ToolActionCard result={content} isError={isErr} status={isErr ? 'error' : 'done'} />;
-                }
-
-                // 3) Persisted assistant message that may contain tool-like JSON
-                if (typeof message.content === 'string') {
-                  try {
-                    // First, split mixed content into segments
-                    const segments: MixedSegment[] = parseMixedContent(message.content);
-                    // If there's any json segment that looks tool-shaped, render rich cards interleaved with text
-                    return (
-                      <div className="space-y-2 text-left">
-                        {segments.map((seg, idx) => {
-                          if (seg.type === 'text') {
-                            if (!seg.value.trim()) return null;
-                            return (
-                              <div key={idx} className="inline-block px-4 py-2 rounded-xl bg-transparent text-[#E5E5E5]">
-                                <p className="text-sm whitespace-pre-wrap">{seg.value}</p>
-                              </div>
-                            );
-                          }
-                          if (seg.type === 'code') {
-                            return <CodeBlock key={idx} lang={seg.lang} value={seg.value} />;
-                          }
-                          // seg.type === 'json'
-                          const parsed = seg.value as any;
-                          // 1) Tool-shaped payloads -> ToolActionCard
-                          const toolName = parsed?.tool || parsed?.name || parsed?.tool_name;
-                          const args = parsed?.args || parsed?.input || parsed?.parameters;
-                          const result = parsed?.result ?? parsed?.output ?? parsed?.data;
-                          const isError = Boolean(parsed?.is_error || parsed?.error);
-                          if (toolName || args || typeof result !== 'undefined') {
-                            return (
-                              <ToolActionCard key={idx} name={toolName} args={args} result={result ?? parsed} isError={isError} status={isError ? 'error' : 'done'} />
-                            );
-                          }
-                          // 2) Array of links [{title, url}] -> LinksCard
-                          if (Array.isArray(parsed) && parsed.length && parsed.every((it: any) => typeof it === 'object' && (typeof it.title === 'string' || typeof it.url === 'string'))) {
-                            return <LinksCard key={idx} items={parsed} />;
-                          }
-                          // 3) Fallback JSON viewer
-                          return <PrettyJson key={idx} data={parsed} collapsedLabel="Show details" />;
-                        })}
-                      </div>
-                    );
-                  } catch {
-                    // fallthrough to normal text
-                  }
-                }
-              }
-              return (
-                <div 
-                  className={`inline-block px-4 py-2 rounded-xl ${
-                    isUser 
-                      ? 'bg-[#3E3E42] text-[#E5E5E5]' 
-                      : 'bg-transparent text-[#E5E5E5]'
-                  }`}
-                  data-testid={`message-content-${message.id}`}
-                  data-message-content={message.content}
-                >
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
-                </div>
-              );
-            })()}
-            {isStreaming && (
-              <span 
-                className="inline-block ml-2 text-[#FF6B6B]"
-                data-testid="message-streaming-indicator"
-              >●</span>
-            )}
-          </div>
-        </div>
-      </div>
+      <MessageTypeRenderer
+        message={processedMessage}
+        isStreaming={isStreaming}
+        onCopy={handleCopy}
+        onRetry={handleRetry}
+      />
     </div>
   );
 };

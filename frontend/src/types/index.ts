@@ -402,3 +402,19 @@ export interface InteractivePrompt {
   createdAt: string;
   respondedAt?: string;
 }
+
+// Re-export streaming types for compatibility
+export type {
+  StreamResponse,
+  ChatRequest,
+  SDKMessage,
+  ChatMessage,
+  SystemMessage as StreamingSystemMessage,
+  ToolMessage as StreamingToolMessage,
+  ToolResultMessage,
+  AbortMessage,
+  AllMessage,
+  StreamingContext,
+  PermissionRequest,
+  ChatStateOptions
+} from './streaming';
