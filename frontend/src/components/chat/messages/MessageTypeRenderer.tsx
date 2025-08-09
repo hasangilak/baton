@@ -11,10 +11,10 @@ import { AssistantMessage } from './AssistantMessage';
 import { UserMessage } from './UserMessage';
 import { SystemMessageComponent } from './SystemMessage';
 import { ToolMessageComponent } from './ToolMessage';
-import { TodoWriteComponent } from './TodoWriteComponent';
 import { ResultMessage } from './ResultMessage';
 import { ErrorMessage } from './ErrorMessage';
 import { AbortMessage } from './AbortMessage';
+import { TodoWriteTimeline } from './TodoWriteTimeline'
 
 interface MessageTypeRendererProps {
   message: Message | any; // Support both new and legacy message types
@@ -153,7 +153,7 @@ export const MessageTypeRenderer: React.FC<MessageTypeRendererProps> = ({
       const todosData = message.metadata?.toolInput?.todos || message.input?.todos;
       
       if (isTodoWrite && todosData) {
-        return <TodoWriteComponent todos={todosData} />;
+        return <TodoWriteTimeline todos={todosData} />;
       }
       
       return <ToolMessageComponent {...commonProps} message={message as StreamingToolMessage} />;
