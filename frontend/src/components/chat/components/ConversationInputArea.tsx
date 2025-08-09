@@ -1,5 +1,5 @@
 import React from 'react';
-import { Paperclip, Send } from 'lucide-react';
+import { Paperclip, Send, Lock, FileText, Edit } from 'lucide-react';
 import { FileUploadArea } from '../FileUploadArea';
 
 interface Props { 
@@ -36,9 +36,9 @@ export const ConversationInputArea: React.FC<Props> = ({ inputValue, setInputVal
 
   const getModeIcon = () => {
     switch (permissionMode) {
-      case 'plan': return '📝';
-      case 'acceptEdits': return '✏️';
-      default: return '🔒';
+      case 'plan': return <FileText className="w-3 h-3" />;
+      case 'acceptEdits': return <Edit className="w-3 h-3" />;
+      default: return <Lock className="w-3 h-3" />;
     }
   };
 
@@ -71,7 +71,7 @@ export const ConversationInputArea: React.FC<Props> = ({ inputValue, setInputVal
           title={`Current mode: ${getModeLabel()}. Click or press Shift+Tab to cycle.`}
           data-testid="chat-permission-mode-conversation"
         >
-          <span className="text-sm">{getModeIcon()}</span>
+          {getModeIcon()}
           <span className="hidden sm:inline text-xs text-[#8B8B8D]">{getModeLabel()}</span>
         </button>
       </div>

@@ -1,5 +1,5 @@
-import React from 'react';
-import { ChevronUp, MoreHorizontal, Paperclip, Search, Send, Sparkles, Edit3, BookOpen, Code2 } from 'lucide-react';
+import React, { useRef, useEffect } from 'react';
+import { ChevronUp, MoreHorizontal, Paperclip, Search, Send, Sparkles, Edit3, BookOpen, Code2, Lock, FileText, Edit } from 'lucide-react';
 import { FileUploadArea } from '../FileUploadArea';
 import { ActionButton } from './ActionButton';
 
@@ -15,6 +15,31 @@ interface Props {
 }
 
 export const WelcomeScreen: React.FC<Props> = ({ inputValue, setInputValue, handleKeyPress, handleSendMessage, fileUpload, getGreeting, permissionMode, onCyclePermissionMode }) => {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const adjustTextareaHeight = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = 'auto';
+    const scrollHeight = textarea.scrollHeight;
+    const lineHeight = 24;
+    const maxLines = 10;
+    const maxExpandedHeight = lineHeight * maxLines;
+
+    if (scrollHeight <= maxExpandedHeight) {
+      textarea.style.height = scrollHeight + 'px';
+      textarea.style.overflowY = 'hidden';
+    } else {
+      textarea.style.height = maxExpandedHeight + 'px';
+      textarea.style.overflowY = 'auto';
+    }
+  };
+
+  useEffect(() => {
+    adjustTextareaHeight();
+  }, [inputValue]);
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Handle Shift+Tab for permission mode cycling
     if (e.shiftKey && e.key === 'Tab') {
@@ -37,9 +62,9 @@ export const WelcomeScreen: React.FC<Props> = ({ inputValue, setInputValue, hand
 
   const getModeIcon = () => {
     switch (permissionMode) {
-      case 'plan': return '📝';
-      case 'acceptEdits': return '✏️';
-      default: return '🔒';
+      case 'plan': return <FileText className="w-3 h-3" />;
+      case 'acceptEdits': return <Edit className="w-3 h-3" />;
+      default: return <Lock className="w-3 h-3" />;
     }
   };
 
@@ -53,12 +78,13 @@ export const WelcomeScreen: React.FC<Props> = ({ inputValue, setInputValue, hand
       <FileUploadArea files={fileUpload.selectedFiles} onRemoveFile={fileUpload.removeFile} formatFileSize={fileUpload.formatFileSize} />
       <div className="relative">
         <textarea 
+          ref={textareaRef}
           value={inputValue} 
           onChange={e => setInputValue(e.target.value)} 
           onKeyDown={handleKeyDown} 
           placeholder={`How can I help you today? [${getModeLabel()}] (Shift+Tab to change mode)`} 
           className="w-full px-4 py-3 pr-20 bg-[#2A2B2E] border border-[#3A3B3E] rounded-xl text-[#E5E5E5] placeholder-[#7E7F82] resize-none focus:outline-none focus:border-[#4A4B4F] transition-colors shadow-sm" 
-          style={{ minHeight: '85px', maxHeight: '220px' }} 
+          style={{ minHeight: '85px' }} 
           rows={1} 
           data-testid="chat-text-area-middle" 
         />
@@ -69,14 +95,13 @@ export const WelcomeScreen: React.FC<Props> = ({ inputValue, setInputValue, hand
         </div>
         
         <div className="absolute right-3 bottom-3 flex items-center space-x-2">
-          {/* Permission mode pill (matches model selector styling) */}
           <button
             onClick={onCyclePermissionMode}
             className="px-3 py-1.5 bg-[#2D2D30] hover:bg-[#252526] rounded-lg transition-colors flex items-center space-x-1"
             title={`Current mode: ${getModeLabel()}. Click or press Shift+Tab to cycle.`}
             data-testid="chat-permission-mode-welcome"
           >
-            <span className="text-sm">{getModeIcon()}</span>
+            {getModeIcon()}
             <span className="text-xs text-[#8B8B8D]">{getModeLabel()}</span>
           </button>
           <button className="px-3 py-1.5 bg-[#2D2D30] hover:bg-[#252526] rounded-lg transition-colors flex items-center space-x-1" data-testid="chat-model-selector-welcome"><span className="text-xs text-[#8B8B8D]">Claude Sonnet 4</span><ChevronUp className="w-3 h-3 text-[#8B8B8D]" /></button>
