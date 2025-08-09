@@ -37,7 +37,8 @@ AI-powered task management designed for seamless integration with Claude Code. B
    ```bash
    git clone <repository-url>
    cd baton
-   docker compose up -d
+   # Start with enhanced Docker management and automatic Prisma sync
+   make docker-up
    ```
 
 2. **Access Baton**
@@ -46,7 +47,43 @@ AI-powered task management designed for seamless integration with Claude Code. B
    - Health Check: http://localhost:3001/health
    - Chat Interface: http://localhost:5173/chat
 
+3. **Check Status**
+   ```bash
+   make status    # Check all services
+   make logs      # View real-time logs
+   ```
+
 That's it! Baton is running with a seeded demo project and tasks.
+
+### 🛠️ Enhanced Development Commands
+
+```bash
+# Complete development setup
+make dev-full              # Install dependencies and start all services
+
+# Docker management with automatic Prisma sync
+make docker-up             # Start containers with Prisma sync
+make docker-restart        # Restart with automatic sync
+make docker-rebuild        # Complete rebuild when needed
+
+# Database operations with sync
+make db-check              # Check database connection and schema
+make db-migrate            # Run migrations with automatic Prisma sync
+make db-reset              # Reset and reseed database
+
+# Prisma client management (fixes sync issues)
+make prisma-sync           # Fix Prisma client sync issues instantly
+make prisma-generate       # Generate Prisma client only
+
+# Service monitoring
+make status                # Check status of all services
+make logs                  # View real-time logs from all services
+make clean                 # Stop services and clean up
+
+# Integration testing
+make test-integration      # Test Claude Code connectivity
+make test-claude-permissions  # Test permission system
+```
 
 ## 🔧 Claude Code Integration
 
@@ -157,7 +194,7 @@ Baton includes a powerful AI chat assistant that uses your local Claude Code ins
 - **Session Continuation** - Maintain context across multiple interactions
 - **Tool Integration** - Full access to Write, Edit, Read, Web Search, and MCP tools
 
-### 🚀 Quick Setup with Makefile
+### 🚀 Quick Setup with Enhanced Makefile
 
 #### Prerequisites
 - Claude Code installed: `npm install -g @anthropic-ai/claude-code`
@@ -165,11 +202,15 @@ Baton includes a powerful AI chat assistant that uses your local Claude Code ins
 
 #### One-Command Setup
 ```bash
-# Start everything (database, backend, frontend, chat bridge, and handler)
+# Complete setup with automatic Prisma sync
 make dev-full
 
 # Or if you already have Baton running:
 make dev
+
+# Check everything is working
+make status
+make db-check
 ```
 
 #### Manual Setup Steps
@@ -201,11 +242,17 @@ make dev
 # View status of all services
 make status
 
+# Check database connection and schema
+make db-check
+
 # View real-time logs
 make logs
 
 # Test integration
 make test-integration
+
+# Test permission system
+make test-claude-permissions
 ```
 
 ### 📝 Using the Chat Agent
@@ -282,6 +329,9 @@ The chat agent uses an enterprise-grade bridge architecture with comprehensive p
 # Check status of all services
 make status
 
+# Check database connection and schema
+make db-check
+
 # View real-time logs from all services
 make logs
 
@@ -290,18 +340,24 @@ make test-integration
 
 # Test permission handling specifically
 make test-claude-permissions
+
+# Fix Prisma client sync issues
+make prisma-sync
 ```
 
 #### Chat not responding?
 ```bash
-# Restart chat services
+# Restart chat services with automatic Prisma sync
 make restart
 
-# Or manually check processes
-ps aux | grep bridge.ts
+# Or restart Docker containers
+make docker-restart
 
-# View handler logs specifically
-make logs-handler
+# Check all service statuses
+make status
+
+# View backend logs specifically
+make logs-backend
 
 # View bridge logs specifically
 make logs-bridge
@@ -336,14 +392,20 @@ claude --help | grep permission-mode
 # Check all services are running
 make status
 
+# Check database connection and schema
+make db-check
+
 # Check backend health
 curl http://localhost:3001/health
 
 # View Docker container logs
-make logs-docker
+make logs-backend
 
-# Restart everything
-make stop && make dev
+# Fix Prisma sync issues
+make prisma-sync
+
+# Complete restart with cleanup
+make clean && make dev-full
 ```
 
 ## 🪝 Claude Code Hooks Integration
@@ -622,17 +684,17 @@ VITE_API_URL=http://localhost:3001
 ### Database Configuration
 
 ```bash
-# Reset database
-npm run db:reset
+# Enhanced database management with automatic Prisma sync
+make db-reset              # Reset database with sync
+make db-migrate            # Run migrations with sync  
+make db-seed               # Seed sample data
+make db-check              # Check database connection and schema
+make prisma-sync           # Fix Prisma client sync issues
 
-# Run migrations
-npm run db:migrate
-
-# Seed sample data
-npm run db:seed
-
-# Open Prisma Studio
-npx prisma studio
+# Manual operations (if needed)
+cd backend
+npx prisma studio          # Open Prisma Studio
+npx prisma generate        # Generate Prisma client manually
 ```
 
 ## 🔍 Troubleshooting
@@ -641,25 +703,26 @@ npx prisma studio
 
 #### Docker Issues
 ```bash
-# Check container status
-docker ps
+# Enhanced Docker management with automatic Prisma sync
+make status                # Check all container statuses
+make docker-restart        # Restart with Prisma sync
+make docker-rebuild        # Complete rebuild when needed
 
-# Check logs
-docker logs baton-backend
-docker logs baton-postgres
-
-# Restart services
-docker compose restart
+# Manual Docker operations (if needed)
+docker ps                  # Check container status
+make logs-backend          # Check backend logs
+docker logs baton-postgres # Check database logs
 ```
 
 #### Database Connection Errors
 ```bash
-# Reset database
-cd backend
-npm run db:reset
+# Enhanced database troubleshooting
+make db-check              # Check database connection and schema
+make db-reset              # Reset database with automatic sync
+make prisma-sync           # Fix Prisma client sync issues
 
-# Check PostgreSQL is running
-docker logs baton-postgres
+# Manual operations (if needed)
+docker logs baton-postgres # Check PostgreSQL logs
 ```
 
 #### Claude Code Integration Issues
@@ -692,10 +755,18 @@ If you encounter port conflicts, update these ports in `docker-compose.yml`:
 
 ### Getting Help
 
-1. Check the logs: `docker logs baton-backend`
-2. Verify all services are running: `docker ps`
-3. Test the health endpoint: `curl http://localhost:3001/health`
-4. Check Claude Code MCP connection: `claude mcp get baton`
+1. **Quick Status Check**: `make status && make db-check`
+2. **View Logs**: `make logs`
+3. **Test Health**: `curl http://localhost:3001/health`
+4. **Fix Common Issues**: `make prisma-sync`
+5. **Check Claude Code**: `claude mcp get baton`
+6. **Complete Reset**: `make clean && make dev-full`
+
+**Most Common Solutions:**
+- **Prisma sync issues**: `make prisma-sync`
+- **Service restart**: `make docker-restart`
+- **Database problems**: `make db-check && make db-reset`
+- **Complete reset**: `make clean && make dev-full`
 
 ## 📚 Documentation
 

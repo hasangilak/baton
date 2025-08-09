@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Baton is an AI-powered task management system built for seamless integration with AI code agents via Model Context Protocol (MCP). It combines a React frontend with a Node.js backend and includes a fully compliant MCP server for AI agent interaction.
 
+**Important**: This project includes a comprehensive solution for Prisma client sync issues in Docker development. All database operations automatically handle Prisma client synchronization. See the enhanced Makefile commands below.
+
 ## Key Architecture Components
 
 ### Model Context Protocol (MCP) Server
@@ -57,22 +59,42 @@ Baton includes a complete Claude Code WebUI integration with professional chat i
 
 ### Development Setup
 ```bash
-# Quick Docker setup (recommended)
-docker compose up -d
+# Quick Docker setup (recommended) - includes automatic Prisma sync
+make docker-up
 
-# Local development
-cd backend && npm install && npm run dev
-cd frontend && npm install && npm run dev
+# Full development environment with all services
+make dev-full
+
+# Alternative: Manual Docker setup
+docker compose -f docker-compose.dev.yml up -d
+```
+
+### Prisma Client Management
+```bash
+# Fix Prisma client sync issues (most common usage)
+make prisma-sync
+
+# Generate Prisma client only
+make prisma-generate
+
+# Check database connection and schema status
+make db-check
 ```
 
 ### Database Operations
 ```bash
+# Run migrations with automatic Prisma sync
+make db-migrate
+
+# Reset and reseed database with sync
+make db-reset
+
+# Seed database with sample data
+make db-seed
+
+# Manual database operations (if needed)
 cd backend
-npm run db:migrate          # Run migrations
-npm run db:seed            # Seed with sample data
-npm run db:reset           # Reset and reseed database
 npx prisma studio          # Database GUI
-npx prisma generate        # Regenerate client after schema changes
 ```
 
 ### Claude Code WebUI Testing
@@ -118,10 +140,23 @@ npm run lint               # ESLint checking
 
 ### Docker Operations
 ```bash
-docker-compose build                    # Build all images
-docker-compose up -d                    # Production mode
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml up  # Development mode
-docker-compose logs -f mcp-server       # View MCP server logs
+# Enhanced Docker management with automatic Prisma sync
+make docker-up          # Start development containers with Prisma sync
+make docker-down        # Stop Docker containers
+make docker-restart     # Restart containers with automatic Prisma sync
+make docker-rebuild     # Complete rebuild when needed
+
+# Service management and monitoring
+make status             # Check status of all services  
+make logs               # View real-time logs from all services
+make logs-backend       # View backend Docker logs only
+make logs-bridge        # View chat bridge logs only
+make clean              # Stop services and clean up temporary files
+
+# Manual Docker operations (if needed)
+docker compose -f docker-compose.dev.yml build
+docker compose -f docker-compose.dev.yml up -d
+docker compose -f docker-compose.dev.yml logs -f
 ```
 
 ## MCP Integration Architecture
@@ -169,8 +204,13 @@ curl "http://localhost:3001/api/mcp/connection?projectName=My Project"
 ### Prisma Integration
 All database operations use Prisma with full type safety. When making schema changes:
 1. Modify `prisma/schema.prisma`
-2. Run `npx prisma migrate dev --name descriptive-name`
-3. Run `npx prisma generate` to update types
+2. Run `make db-migrate` (includes automatic Prisma client sync)
+3. Or use manual commands: `npx prisma migrate dev --name descriptive-name` then `make prisma-sync`
+
+**Important**: Prisma client sync issues are automatically resolved in Docker development through:
+- Automatic client regeneration on container startup
+- `make prisma-sync` command for instant fixes
+- Enhanced Makefile commands that include sync operations
 
 ### API Route Pattern
 Routes follow RESTful patterns with comprehensive error handling:
