@@ -45,7 +45,10 @@ services:
       - /app/.git
       - /app/dist
     user: root
-    command: ["./scripts/dev-setup.sh", "npm", "run", "dev"]
+    command: [
+      "sh", "-c", 
+      "echo '🚀 Starting Baton Backend Development Setup' && echo '📦 Installing dependencies...' && npm install && echo '🔧 Generating Prisma client...' && npx prisma generate && echo '✅ Setup complete!' && npm run dev"
+    ]
     depends_on:
       postgres:
         condition: service_healthy
@@ -74,7 +77,10 @@ services:
       - /app/.git
       - /app/dist
     user: root
-    command: ["./scripts/dev-setup.sh", "npm", "run", "mcp:dev:websocket"]
+    command: [
+      "sh", "-c", 
+      "echo '🚀 Starting Baton MCP Server Development Setup' && echo '📦 Installing dependencies...' && npm install && echo '🔧 Generating Prisma client...' && npx prisma generate && echo '✅ Setup complete!' && npm run mcp:dev:websocket"
+    ]
     depends_on:
       postgres:
         condition: service_healthy

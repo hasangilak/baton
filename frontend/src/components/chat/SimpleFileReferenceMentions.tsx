@@ -200,8 +200,11 @@ export const SimpleFileReferenceMentions: React.FC<SimpleFileReferenceMentionsPr
       {showSuggestions && filteredFiles.length > 0 && (
         <div
           ref={suggestionsRef}
-          className="absolute z-50 w-full max-w-md bg-[#1F2937] border border-[#374151] rounded-lg shadow-lg max-h-60 overflow-y-auto mt-1"
-          style={{ top: '100%' }}
+          className="absolute z-[9999] w-full max-w-md bg-[#1F2937] border border-[#374151] rounded-lg shadow-xl max-h-60 overflow-y-auto mb-1 scrollbar-thin scrollbar-track-gray-800 scrollbar-thumb-gray-600 hover:scrollbar-thumb-gray-500"
+          style={{ 
+            bottom: '100%',
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.2)'
+          }}
         >
           {filteredFiles.slice(0, 10).map((file, index) => (
             <div

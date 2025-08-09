@@ -53,28 +53,28 @@ dev-full: setup dev ## Complete setup and start development environment
 # Docker Services
 docker-up: ## Start Docker containers (database, backend, frontend)
 	@echo "$(YELLOW)Starting Docker containers...$(RESET)"
-	@docker compose up -d --remove-orphans
+	@docker compose -f docker-compose.dev.yml up -d --remove-orphans
 	@sleep 5
 	@echo "$(GREEN)✓ Docker containers started$(RESET)"
 	@make db-check
 
 docker-down: ## Stop Docker containers
 	@echo "$(YELLOW)Stopping Docker containers...$(RESET)"
-	@docker compose down
+	@docker compose -f docker-compose.dev.yml down
 	@echo "$(GREEN)✓ Docker containers stopped$(RESET)"
 
 docker-restart: ## Restart Docker containers
 	@echo "$(YELLOW)Restarting Docker containers...$(RESET)"
-	@docker compose restart
+	@docker compose -f docker-compose.dev.yml restart
 	@sleep 3
 	@make prisma-sync
 	@echo "$(GREEN)✓ Docker containers restarted$(RESET)"
 
 docker-rebuild: ## Rebuild and restart Docker containers
 	@echo "$(YELLOW)Rebuilding Docker containers...$(RESET)"
-	@docker compose down
-	@docker compose build --no-cache
-	@docker compose up -d --remove-orphans
+	@docker compose -f docker-compose.dev.yml down
+	@docker compose -f docker-compose.dev.yml build --no-cache
+	@docker compose -f docker-compose.dev.yml up -d --remove-orphans
 	@sleep 5
 	@make prisma-sync
 	@echo "$(GREEN)✓ Docker containers rebuilt and started$(RESET)"
@@ -199,7 +199,7 @@ prisma-generate: ## Generate Prisma client only
 db-check: ## Check database connection and schema status
 	@echo "$(YELLOW)Checking database status...$(RESET)"
 	@cd backend && npx prisma migrate status || true
-	@cd backend && npx prisma db execute --stdin <<< "SELECT 1;" >/dev/null 2>&1 && \
+	@cd backend && echo "SELECT 1;" | npx prisma db execute --stdin >/dev/null 2>&1 && \
 		echo "$(GREEN)✓ Database connection successful$(RESET)" || \
 		echo "$(RED)✗ Database connection failed$(RESET)"
 
@@ -232,7 +232,7 @@ build: ## Build production assets
 clean: stop ## Stop services and clean up temporary files
 	@echo "$(YELLOW)Cleaning up...$(RESET)"
 	@rm -f baton-*.pid logs/*.log
-	@docker compose down -v 2>/dev/null || true
+	@docker compose -f docker-compose.dev.yml down -v 2>/dev/null || true
 	@echo "$(GREEN)✓ Cleanup complete$(RESET)"
 
 # Claude Code Integration Help

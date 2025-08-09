@@ -21,17 +21,19 @@ In Docker development workflows, the Prisma client often gets out of sync with d
 Updated `docker-compose.dev.yml` to automatically regenerate Prisma client on startup:
 
 ```yaml
-command: ["./scripts/dev-setup.sh", "npm", "run", "dev"]
+command: [
+  "sh", "-c", 
+  "echo '🚀 Starting Development' && npm install && npx prisma generate && npm run dev"
+]
 ```
 
-### 2. Development Setup Script
+### 2. Inline Setup Commands
 
-Created `backend/scripts/dev-setup.sh` that:
-- Checks and installs dependencies 
+Updated Docker compose commands to inline the setup process:
+- Installs dependencies on container startup
 - **Always regenerates Prisma client** to ensure sync
-- Validates database connection
-- Checks migration status
-- Starts the application
+- Starts the application with fresh client
+- No external script dependencies
 
 ### 3. Enhanced Makefile Commands
 
@@ -128,9 +130,8 @@ make prisma-sync
 
 ## File Changes Made
 
-1. **`docker-compose.dev.yml`** - Updated startup commands
-2. **`backend/scripts/dev-setup.sh`** - New setup script  
-3. **`Makefile`** - Enhanced with Prisma management commands
+1. **`docker-compose.dev.yml`** - Updated startup commands with inline Prisma generation
+2. **`Makefile`** - Enhanced with Prisma management commands and dev compose file references
 
 ## Quick Reference
 
