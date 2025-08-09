@@ -11,6 +11,7 @@ import { AssistantMessage } from './AssistantMessage';
 import { UserMessage } from './UserMessage';
 import { SystemMessageComponent } from './SystemMessage';
 import { ToolMessageComponent } from './ToolMessage';
+import { TodoWriteComponent } from './TodoWriteComponent';
 import { ResultMessage } from './ResultMessage';
 import { ErrorMessage } from './ErrorMessage';
 import { AbortMessage } from './AbortMessage';
@@ -146,6 +147,15 @@ export const MessageTypeRenderer: React.FC<MessageTypeRendererProps> = ({
       return <SystemMessageComponent {...commonProps} message={message as StreamingSystemMessage} />;
       
     case 'tool':
+      // Check if this is a TodoWrite tool and render specialized component
+      const toolName = message.metadata?.toolName || message.name || '';
+      const isTodoWrite = toolName.toLowerCase() === 'todowrite';
+      const todosData = message.metadata?.toolInput?.todos || message.input?.todos;
+      
+      if (isTodoWrite && todosData) {
+        return <TodoWriteComponent todos={todosData} />;
+      }
+      
       return <ToolMessageComponent {...commonProps} message={message as StreamingToolMessage} />;
       
     case 'result':
