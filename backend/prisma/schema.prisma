@@ -11,19 +11,12 @@ datasource db {
 }
 
 model User {
-  id                      String    @id @default(cuid())
-  email                   String    @unique
-  name                    String
-  avatar                  String?
-  password                String
-  emailVerified           Boolean   @default(false)
-  emailVerificationToken  String?   @unique
-  passwordResetToken      String?   @unique
-  passwordResetExpiry     DateTime?
-  isActive                Boolean   @default(true)
-  lastLoginAt             DateTime?
-  createdAt               DateTime  @default(now())
-  updatedAt               DateTime  @updatedAt
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
   ownedProjects Project[]
@@ -31,8 +24,6 @@ model User {
   createdTasks  Task[]     @relation("TaskCreator")
   comments      Comment[]
   conversations Conversation[]
-  sessions      UserSession[]
-  refreshTokens RefreshToken[]
 
   @@map("users")
 }

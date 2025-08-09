@@ -15,8 +15,20 @@ async function main() {
     },
   });
 
-  // Demo project creation removed to keep development environment clean
-  // Only one project (baton) should exist for simplified development
+  // Create baton project for development
+  const batonProject = await prisma.project.upsert({
+    where: { id: 'cmdxumi04000k4yhw92fvsqqa' },
+    update: {},
+    create: {
+      id: 'cmdxumi04000k4yhw92fvsqqa',
+      name: 'baton',
+      description: 'Auto-created from Claude Code workspace',
+      color: '#3b82f6',
+      ownerId: defaultUser.id,
+    },
+  });
+  
+  // Old demo project creation removed to keep development environment clean
   /*
   const demoProject = await prisma.project.upsert({
     where: { id: 'demo-project-1' },
@@ -110,7 +122,7 @@ async function main() {
       description: 'Add dark mode toggle and theme switching functionality',
       agentId: sampleAgent.id,
       agentName: sampleAgent.name,
-      projectId: demoProject.id,
+      projectId: batonProject.id, // Use baton project
       status: 'pending',
       tasks: {
         create: [
@@ -139,8 +151,7 @@ async function main() {
 
   console.log('✅ Database seeded successfully!');
   console.log(`👤 Created user: ${defaultUser.name} (${defaultUser.email})`);
-  console.log(`📁 Created project: ${demoProject.name}`);
-  console.log(`📝 Created ${tasks.length} sample tasks`);
+  console.log(`📁 Created project: ${batonProject.name}`);
   console.log(`🤖 Created MCP agent: ${sampleAgent.name}`);
 }
 
