@@ -45,10 +45,7 @@ services:
       - /app/.git
       - /app/dist
     user: root
-    command: [
-      "sh", "-c", 
-      "echo '📦 Installing dependencies...' && npm install && echo '✅ Dependencies installed!' && npm run dev"
-    ]
+    command: ["./scripts/dev-setup.sh", "npm", "run", "dev"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -77,10 +74,7 @@ services:
       - /app/.git
       - /app/dist
     user: root
-    command: [
-      "sh", "-c", 
-      "echo '📦 Installing dependencies...' && npm install && echo '✅ Dependencies installed!' && npm run mcp:dev:websocket"
-    ]
+    command: ["./scripts/dev-setup.sh", "npm", "run", "mcp:dev:websocket"]
     depends_on:
       postgres:
         condition: service_healthy

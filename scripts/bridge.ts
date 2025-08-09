@@ -12,6 +12,8 @@
  */
 
 import { query, type PermissionResult, type SDKUserMessage, type PermissionMode} from "@anthropic-ai/claude-code";
+import * as fs from 'fs';
+import * as path from 'path';
 
 interface BridgeRequest {
   message: string;
@@ -852,6 +854,172 @@ class ClaudeCodeBridge {
     }
   }
 
+  private async handleFileListRequest(request: Request): Promise<Response> {
+    try {
+      const url = new URL(request.url);
+      const workingDir = url.searchParams.get('workingDirectory') || process.cwd();
+      const search = url.searchParams.get('search') || '';
+      
+      console.log(`📁 File list request for directory: ${workingDir}`);
+      
+      // Check if directory exists and is accessible
+      if (!fs.existsSync(workingDir) || !fs.statSync(workingDir).isDirectory()) {
+        return new Response(JSON.stringify({
+          error: 'Directory not found or not accessible',
+          files: []
+        }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      const files = await this.scanDirectory(workingDir, search);
+      
+      return new Response(JSON.stringify({
+        files,
+        workingDirectory: workingDir,
+        count: files.length
+      }), {
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      });
+      
+    } catch (error) {
+      console.error('❌ File list request error:', error);
+      return new Response(JSON.stringify({
+        error: error instanceof Error ? error.message : String(error),
+        files: []
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  }
+
+  private async handleFileContentRequest(request: Request): Promise<Response> {
+    try {
+      const body = await request.json();
+      const { filePath, workingDirectory } = body;
+      
+      if (!filePath) {
+        return new Response(JSON.stringify({
+          error: 'File path is required'
+        }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      const baseDir = workingDirectory || process.cwd();
+      const fullPath = path.resolve(baseDir, filePath);
+      
+      // Security: Ensure file is within working directory
+      if (!fullPath.startsWith(path.resolve(baseDir))) {
+        return new Response(JSON.stringify({
+          error: 'File path outside working directory'
+        }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      console.log(`📄 Reading file: ${fullPath}`);
+      
+      if (!fs.existsSync(fullPath)) {
+        return new Response(JSON.stringify({
+          error: 'File not found'
+        }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+
+      const content = fs.readFileSync(fullPath, 'utf-8');
+      const stats = fs.statSync(fullPath);
+      
+      return new Response(JSON.stringify({
+        content,
+        path: filePath,
+        fullPath,
+        size: stats.size,
+        lastModified: stats.mtime
+      }), {
+        headers: { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      });
+      
+    } catch (error) {
+      console.error('❌ File content request error:', error);
+      return new Response(JSON.stringify({
+        error: error instanceof Error ? error.message : String(error)
+      }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+  }
+
+  private async scanDirectory(dirPath: string, search: string = ''): Promise<Array<{path: string, name: string, type: 'file' | 'directory'}>> {
+    const files: Array<{path: string, name: string, type: 'file' | 'directory'}> = [];
+    const excludeDirs = ['node_modules', '.git', 'dist', 'build', '.next', 'coverage', '.vscode', '.idea'];
+    const includeExtensions = ['.ts', '.tsx', '.js', '.jsx', '.md', '.json', '.yml', '.yaml', '.txt', '.py', '.go', '.rs', '.java', '.cpp', '.c', '.h'];
+    
+    const scanRecursive = (currentPath: string, relativePath: string = '') => {
+      try {
+        const items = fs.readdirSync(currentPath);
+        
+        for (const item of items) {
+          const itemPath = path.join(currentPath, item);
+          const relativeItemPath = relativePath ? path.join(relativePath, item) : item;
+          
+          try {
+            const stat = fs.statSync(itemPath);
+            
+            if (stat.isDirectory()) {
+              // Skip excluded directories
+              if (excludeDirs.includes(item) || item.startsWith('.')) {
+                continue;
+              }
+              
+              // Recursively scan subdirectories (limit depth to avoid performance issues)
+              if (relativePath.split(path.sep).length < 5) {
+                scanRecursive(itemPath, relativeItemPath);
+              }
+            } else if (stat.isFile()) {
+              const ext = path.extname(item).toLowerCase();
+              
+              // Filter by extension and search term
+              if (includeExtensions.includes(ext)) {
+                if (!search || item.toLowerCase().includes(search.toLowerCase())) {
+                  files.push({
+                    path: relativeItemPath,
+                    name: item,
+                    type: 'file'
+                  });
+                }
+              }
+            }
+          } catch (itemError) {
+            // Skip files/directories that can't be accessed
+            console.warn(`⚠️ Skipping ${itemPath}:`, itemError);
+          }
+        }
+      } catch (dirError) {
+        console.warn(`⚠️ Error scanning ${currentPath}:`, dirError);
+      }
+    };
+    
+    scanRecursive(dirPath);
+    
+    // Sort files by name and limit results
+    files.sort((a, b) => a.name.localeCompare(b.name));
+    return files.slice(0, 100); // Limit to 100 files for performance
+  }
+
   async start(): Promise<void> {
     const server = (Bun as any).serve({
       port: this.port,
@@ -898,6 +1066,14 @@ class ClaudeCodeBridge {
           }), {
             headers: { 'Content-Type': 'application/json' }
           });
+        }
+        
+        if (url.pathname === '/files/list' && request.method === 'GET') {
+          return bridge.handleFileListRequest(request);
+        }
+        
+        if (url.pathname === '/files/content' && request.method === 'POST') {
+          return bridge.handleFileContentRequest(request);
         }
         
         return new Response('Not Found', { status: 404 });

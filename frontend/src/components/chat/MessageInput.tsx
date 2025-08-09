@@ -1,6 +1,7 @@
 import React, { useState, useRef, type KeyboardEvent } from 'react';
 import { Send, Paperclip, X, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
+import { FileReferenceMentions } from './FileReferenceMentions';
 import type { MessageAttachment } from '../../types';
 
 interface MessageInputProps {
@@ -9,6 +10,7 @@ interface MessageInputProps {
   isStreaming?: boolean;
   disabled?: boolean;
   onAbort?: () => Promise<void>;
+  workingDirectory?: string;
 }
 
 export const MessageInput: React.FC<MessageInputProps> = ({
@@ -17,11 +19,11 @@ export const MessageInput: React.FC<MessageInputProps> = ({
   isStreaming = false,
   disabled = false,
   onAbort: _onAbort,
+  workingDirectory,
 }) => {
   const [message, setMessage] = useState('');
   const [attachments, setAttachments] = useState<MessageAttachment[]>([]);
   const [isUploading, setIsUploading] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = (e?: React.FormEvent) => {
@@ -31,11 +33,6 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       onSendMessage(message.trim(), attachments.length > 0 ? attachments : undefined);
       setMessage('');
       setAttachments([]);
-      
-      // Reset textarea height
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
-      }
     }
   };
 
@@ -46,13 +43,8 @@ export const MessageInput: React.FC<MessageInputProps> = ({
     }
   };
 
-  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setMessage(e.target.value);
-    
-    // Auto-resize textarea
-    const textarea = e.target;
-    textarea.style.height = 'auto';
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
+  const handleMessageChange = (newValue: string) => {
+    setMessage(newValue);
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -106,22 +98,14 @@ export const MessageInput: React.FC<MessageInputProps> = ({
       {/* Input form */}
       <form onSubmit={handleSubmit} className="flex items-end gap-2">
         <div className="flex-1 relative">
-          <textarea
-            ref={textareaRef}
+          <FileReferenceMentions
             value={message}
-            onChange={handleTextareaChange}
+            onChange={handleMessageChange}
             onKeyDown={handleKeyDown}
             placeholder={isStreaming ? "Claude is responding..." : "Type your message..."}
             disabled={disabled || isStreaming}
-            rows={1}
-            className="
-              w-full px-4 py-3 pr-12
-              bg-gray-100 text-black 
-              rounded-lg border border-gray-700 
-              focus:border-gray-600 focus:outline-none
-              resize-none overflow-hidden
-              disabled:opacity-50 disabled:cursor-not-allowed
-            "
+            workingDirectory={workingDirectory}
+            className="pr-12"
           />
           
           {/* File upload button */}

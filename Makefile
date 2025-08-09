@@ -15,7 +15,7 @@ RED := \033[31m
 BLUE := \033[34m
 RESET := \033[0m
 
-.PHONY: help setup dev dev-full clean logs status bridge handler test-integration docker-up docker-down
+.PHONY: help setup dev dev-full clean logs status bridge handler test-integration docker-up docker-down prisma-sync prisma-generate db-check
 
 # Default target
 help: ## Show this help message
@@ -53,22 +53,39 @@ dev-full: setup dev ## Complete setup and start development environment
 # Docker Services
 docker-up: ## Start Docker containers (database, backend, frontend)
 	@echo "$(YELLOW)Starting Docker containers...$(RESET)"
-	@docker-compose up -d
-	@sleep 3
+	@docker compose up -d --remove-orphans
+	@sleep 5
 	@echo "$(GREEN)✓ Docker containers started$(RESET)"
+	@make db-check
 
 docker-down: ## Stop Docker containers
 	@echo "$(YELLOW)Stopping Docker containers...$(RESET)"
-	@docker-compose down
+	@docker compose down
 	@echo "$(GREEN)✓ Docker containers stopped$(RESET)"
+
+docker-restart: ## Restart Docker containers
+	@echo "$(YELLOW)Restarting Docker containers...$(RESET)"
+	@docker compose restart
+	@sleep 3
+	@make prisma-sync
+	@echo "$(GREEN)✓ Docker containers restarted$(RESET)"
+
+docker-rebuild: ## Rebuild and restart Docker containers
+	@echo "$(YELLOW)Rebuilding Docker containers...$(RESET)"
+	@docker compose down
+	@docker compose build --no-cache
+	@docker compose up -d --remove-orphans
+	@sleep 5
+	@make prisma-sync
+	@echo "$(GREEN)✓ Docker containers rebuilt and started$(RESET)"
 
 # Claude Code Integration
 bridge: ## Start chat bridge (connects frontend to Claude Code)
 	@echo "$(YELLOW)Starting chat bridge...$(RESET)"
-	@echo "$(BLUE)Bridge log:$(RESET) $(BRIDGE_LOG)"
-	@BACKEND_URL=$(BACKEND_URL) nohup node scripts/chat-bridge.js > $(BRIDGE_LOG) 2>&1 &
-	@echo $$! > /home/hassan/work/baton/baton-bridge.pid
-	@echo "$(GREEN)✓ Chat bridge started (PID: $$(cat /home/hassan/work/baton/baton-bridge.pid))$(RESET)"
+	@echo "$(BLUE)Bridge log:$(RESET) logs/bridge.log"
+	@cd scripts && bun run bridge.ts > ../logs/bridge.log 2>&1 &
+	@echo $$! > baton-bridge.pid
+	@echo "$(GREEN)✓ Chat bridge started (PID: $$(cat baton-bridge.pid))$(RESET)"
 
 handler: ## Start chat handler (processes Claude Code interactions)
 	@echo "$(YELLOW)Starting chat handler...$(RESET)"
@@ -80,18 +97,18 @@ handler: ## Start chat handler (processes Claude Code interactions)
 # Process Management
 stop: ## Stop all Baton processes
 	@echo "$(YELLOW)Stopping Baton processes...$(RESET)"
-	@if [ -f /home/hassan/work/baton/baton-bridge.pid ]; then \
-		kill $$(cat /home/hassan/work/baton/baton-bridge.pid) 2>/dev/null || true; \
-		rm -f /home/hassan/work/baton/baton-bridge.pid; \
+	@if [ -f baton-bridge.pid ]; then \
+		kill $$(cat baton-bridge.pid) 2>/dev/null || true; \
+		rm -f baton-bridge.pid; \
 		echo "$(GREEN)✓ Bridge stopped$(RESET)"; \
 	fi
-	@if [ -f /home/hassan/work/baton/baton-chat-handler.pid ]; then \
-		kill $$(cat /home/hassan/work/baton/baton-chat-handler.pid) 2>/dev/null || true; \
-		rm -f /home/hassan/work/baton/baton-chat-handler.pid; \
+	@if [ -f baton-chat-handler.pid ]; then \
+		kill $$(cat baton-chat-handler.pid) 2>/dev/null || true; \
+		rm -f baton-chat-handler.pid; \
 		echo "$(GREEN)✓ Handler stopped$(RESET)"; \
 	fi
-	@pkill -f "chat-bridge.js" 2>/dev/null || true
-	@pkill -f "chat-handler.js" 2>/dev/null || true
+	@pkill -f "bridge.ts" 2>/dev/null || true
+	@pkill -f "chat-handler" 2>/dev/null || true
 
 restart: stop dev ## Restart all services
 
@@ -113,28 +130,28 @@ status: ## Check status of all services
 	else \
 		echo "$(RED)✗ Frontend:$(RESET) Stopped"; \
 	fi
-	@if [ -f /home/hassan/work/baton/baton-bridge.pid ] && kill -0 $$(cat /home/hassan/work/baton/baton-bridge.pid) 2>/dev/null; then \
-		echo "$(GREEN)✓ Chat Bridge:$(RESET) Running (PID: $$(cat /home/hassan/work/baton/baton-bridge.pid))"; \
+	@if [ -f baton-bridge.pid ] && kill -0 $$(cat baton-bridge.pid) 2>/dev/null; then \
+		echo "$(GREEN)✓ Chat Bridge:$(RESET) Running (PID: $$(cat baton-bridge.pid))"; \
 	else \
 		echo "$(RED)✗ Chat Bridge:$(RESET) Stopped"; \
 	fi
-	@if [ -f /home/hassan/work/baton/baton-chat-handler.pid ] && kill -0 $$(cat /home/hassan/work/baton/baton-chat-handler.pid) 2>/dev/null; then \
-		echo "$(GREEN)✓ Chat Handler:$(RESET) Running (PID: $$(cat /home/hassan/work/baton/baton-chat-handler.pid))"; \
+	@if pgrep -f "bridge.ts" > /dev/null; then \
+		echo "$(GREEN)✓ Bridge Service:$(RESET) Running"; \
 	else \
-		echo "$(RED)✗ Chat Handler:$(RESET) Stopped"; \
+		echo "$(RED)✗ Bridge Service:$(RESET) Stopped"; \
 	fi
 
 # Logging and Debugging
 logs: ## Show real-time logs from all services
 	@echo "$(BLUE)Viewing Baton logs (Ctrl+C to exit):$(RESET)"
 	@echo "----------------------------------------"
-	@tail -f $(CHAT_HANDLER_LOG) $(BRIDGE_LOG) docker-compose.log 2>/dev/null || true
+	@tail -f logs/docker.log logs/bridge.log 2>/dev/null || true
 
-logs-handler: ## Show chat handler logs only
-	@tail -f $(CHAT_HANDLER_LOG)
+logs-backend: ## Show backend Docker logs only
+	@tail -f logs/docker.log
 
 logs-bridge: ## Show chat bridge logs only  
-	@tail -f $(BRIDGE_LOG)
+	@tail -f logs/bridge.log
 
 logs-docker: ## Show Docker container logs
 	@docker-compose logs -f
@@ -164,14 +181,40 @@ test-claude-permissions: ## Test Claude Code permission modes
 		echo "$(YELLOW)⚠ File not created - check handler logs$(RESET)"; \
 	fi
 
-# Database Management
+# Prisma Management
+prisma-sync: ## Fix Prisma client sync issues (run this when schema changes)
+	@echo "$(YELLOW)Fixing Prisma client sync...$(RESET)"
+	@echo "$(BLUE)Generating Prisma client...$(RESET)"
+	@cd backend && npx prisma generate
+	@echo "$(BLUE)Restarting backend services...$(RESET)"
+	@docker restart baton-backend-dev baton-mcp-server-dev 2>/dev/null || true
+	@sleep 3
+	@echo "$(GREEN)✓ Prisma client synced and services restarted$(RESET)"
+
+prisma-generate: ## Generate Prisma client only
+	@echo "$(YELLOW)Generating Prisma client...$(RESET)"
+	@cd backend && npx prisma generate
+	@echo "$(GREEN)✓ Prisma client generated$(RESET)"
+
+db-check: ## Check database connection and schema status
+	@echo "$(YELLOW)Checking database status...$(RESET)"
+	@cd backend && npx prisma migrate status || true
+	@cd backend && npx prisma db execute --stdin <<< "SELECT 1;" >/dev/null 2>&1 && \
+		echo "$(GREEN)✓ Database connection successful$(RESET)" || \
+		echo "$(RED)✗ Database connection failed$(RESET)"
+
+# Database Management  
 db-reset: ## Reset and reseed database
 	@echo "$(YELLOW)Resetting database...$(RESET)"
 	@cd backend && npm run db:reset
+	@make prisma-sync
 	@echo "$(GREEN)✓ Database reset complete$(RESET)"
 
-db-migrate: ## Run database migrations
+db-migrate: ## Run database migrations and sync Prisma
+	@echo "$(YELLOW)Running database migrations...$(RESET)"
 	@cd backend && npm run db:migrate
+	@make prisma-sync
+	@echo "$(GREEN)✓ Migrations complete$(RESET)"
 
 db-seed: ## Seed database with sample data
 	@cd backend && npm run db:seed
@@ -188,8 +231,8 @@ build: ## Build production assets
 # Cleanup
 clean: stop ## Stop services and clean up temporary files
 	@echo "$(YELLOW)Cleaning up...$(RESET)"
-	@rm -f /home/hassan/work/baton/baton-*.pid /home/hassan/work/baton/baton-*.log
-	@docker-compose down -v 2>/dev/null || true
+	@rm -f baton-*.pid logs/*.log
+	@docker compose down -v 2>/dev/null || true
 	@echo "$(GREEN)✓ Cleanup complete$(RESET)"
 
 # Claude Code Integration Help

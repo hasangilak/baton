@@ -1,6 +1,7 @@
 import React from 'react';
 import { Paperclip, Send, Lock, FileText, Edit } from 'lucide-react';
 import { FileUploadArea } from '../FileUploadArea';
+import { SimpleFileReferenceMentions } from '../SimpleFileReferenceMentions';
 
 interface Props { 
   inputValue: string; 
@@ -11,9 +12,10 @@ interface Props {
   isDisabled: boolean;
   permissionMode: 'default' | 'plan' | 'acceptEdits';
   onCyclePermissionMode: () => void;
+  workingDirectory?: string;
 }
 
-export const ConversationInputArea: React.FC<Props> = ({ inputValue, setInputValue, handleKeyPress, handleSendMessage, fileUpload, isDisabled, permissionMode, onCyclePermissionMode }) => {
+export const ConversationInputArea: React.FC<Props> = ({ inputValue, setInputValue, handleKeyPress, handleSendMessage, fileUpload, isDisabled, permissionMode, onCyclePermissionMode, workingDirectory = '/home/hassan/work/baton' }) => {
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Handle Shift+Tab for permission mode cycling
     if (e.shiftKey && e.key === 'Tab') {
@@ -47,17 +49,14 @@ export const ConversationInputArea: React.FC<Props> = ({ inputValue, setInputVal
     <div className="max-w-3xl mx-auto px-3 md:px-4 py-2.5 md:py-4">
       <FileUploadArea files={fileUpload.selectedFiles} onRemoveFile={fileUpload.removeFile} formatFileSize={fileUpload.formatFileSize} />
       <div className="relative">
-        <textarea 
-          data-testid="chat-text-area-bottom" 
-          value={inputValue} 
-          onChange={e => setInputValue(e.target.value)} 
-          onKeyDown={handleKeyDown} 
-          onFocus={() => { setTimeout(() => { try { const el = document.querySelector('[data-testid=\"chat-text-area-bottom\"]'); if (el && 'scrollIntoView' in el) (el as HTMLElement).scrollIntoView({ block: 'nearest' }); } catch {} }, 50); }} 
-          placeholder={`Reply... [${getModeLabel()}] (Shift+Tab to change mode)`} 
-          disabled={isDisabled} 
-          className="w-full px-4 py-3 pr-28 bg-[#2A2B2E] border border-[#3A3B3E] rounded-xl text-[#E5E5E5] placeholder-[#7E7F82] resize-none focus:outline-none focus:border-[#4A4B4F] transition-colors disabled:opacity-50 shadow-sm" 
-          style={{ minHeight: '64px', maxHeight: '200px' }} 
-          rows={1} 
+        <SimpleFileReferenceMentions
+          value={inputValue}
+          onChange={setInputValue}
+          onKeyDown={handleKeyDown}
+          placeholder={`Reply... [${getModeLabel()}] (Shift+Tab to change mode)`}
+          disabled={isDisabled}
+          workingDirectory={workingDirectory}
+          className="w-full pr-28"
         />
         <div className="absolute left-3 bottom-3 flex items-center space-x-2">
           <button onClick={fileUpload.openFileDialog} className="p-1.5 hover:bg-[#2D2D30] rounded-lg transition-colors" title="Attach files" data-testid="chat-attach-files-conversation"><Paperclip className="w-4 h-4 text-[#8B8B8D]" /></button>

@@ -17,6 +17,7 @@ import type {
   ChatRequest 
 } from '../types/streaming';
 import { generateRequestId } from '../utils/id';
+import { processFileReferences, hasFileReferences } from '../utils/fileReferences';
 
 interface ClaudeStreamingOptions {
   conversationId?: string;
@@ -131,9 +132,17 @@ export function useClaudeStreaming(options: ClaudeStreamingOptions = {}) {
     setIsStreaming(true);
 
     try {
+      // Process file references before sending to Claude
+      let processedContent = content;
+      if (hasFileReferences(content)) {
+        console.log('📁 Processing file references in message');
+        processedContent = await processFileReferences(content, workingDirectory);
+        console.log('✅ File references processed');
+      }
+
       // Build request payload
       const requestPayload: ChatRequest = {
-        message: content,
+        message: processedContent,
         requestId,
         conversationId: targetId,
         allowedTools,
