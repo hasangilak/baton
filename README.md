@@ -817,7 +817,24 @@ Baton includes comprehensive documentation for all integration approaches:
 
 ## 📝 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the **Baton Non-Commercial Open Source License**.
+
+### ✅ Permitted Uses
+- **Personal Projects** - Individual use for learning and development
+- **Educational Use** - Academic institutions, courses, and research  
+- **Open Source Projects** - Projects that are made freely available
+- **Non-Profit Organizations** - Registered non-profits for their mission
+- **Government & Public Sector** - Use by government entities
+
+### 🚫 Prohibited Uses  
+- **Commercial Use** - Cannot be used for commercial purposes or revenue generation
+- **Enterprise Use** - Cannot be used by for-profit companies for business operations
+- **Paid Services** - Cannot be offered as a paid service or subscription
+
+### 💼 Commercial Licensing
+For commercial use, enterprise licensing, or any business application, please contact the project maintainers for licensing terms.
+
+See the [LICENSE](./LICENSE) file for complete details.
 
 ## 🙏 Acknowledgments
 

@@ -1,4 +1,12 @@
 {
+  "name": "baton",
+  "version": "1.0.0",
+  "description": "AI-powered task management system with Claude Code integration",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hasangilak/baton.git"
+  },
   "dependencies": {
     "@anthropic-ai/claude-code": "^1.0.70",
     "@types/react-syntax-highlighter": "^15.5.13",

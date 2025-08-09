@@ -1,7 +1,9 @@
 {
-  "name": "frontend",
+  "name": "baton-frontend",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Frontend for Baton AI-powered task management system",
+  "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "scripts": {
     "dev": "vite",
