@@ -83,7 +83,7 @@ export const WelcomeScreen: React.FC<Props> = ({ inputValue, setInputValue, hand
           onChange={e => setInputValue(e.target.value)} 
           onKeyDown={handleKeyDown} 
           placeholder={`How can I help you today? [${getModeLabel()}] (Shift+Tab to change mode)`} 
-          className="w-full px-4 py-3 pr-20 bg-[#2A2B2E] border border-[#3A3B3E] rounded-xl text-[#E5E5E5] placeholder-[#7E7F82] resize-none focus:outline-none focus:border-[#4A4B4F] transition-colors shadow-sm" 
+          className="w-full px-4 py-3 pr-20 pb-12 bg-[#2A2B2E] border border-[#3A3B3E] rounded-xl text-[#E5E5E5] placeholder-[#7E7F82] resize-none focus:outline-none focus:border-[#4A4B4F] transition-colors shadow-sm" 
           style={{ minHeight: '85px' }} 
           rows={1} 
           data-testid="chat-text-area-middle" 
