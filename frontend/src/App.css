@@ -32,6 +32,30 @@
   background: #9ca3af;
 }
 
+/* Custom scrollbar for dark dropdown suggestions */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #1f2937;
+  border-radius: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #4b5563;
+  border-radius: 8px;
+  border: 2px solid #1f2937;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:active {
+  background: #9ca3af;
+}
+
 /* Smooth transitions for drag and drop */
 .sortable-item {
   transition: transform 0.2s ease-in-out;

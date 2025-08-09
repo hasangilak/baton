@@ -34,6 +34,7 @@ export const SimpleFileReferenceMentions: React.FC<SimpleFileReferenceMentionsPr
   const [selectedIndex, setSelectedIndex] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
+  const selectedItemRef = useRef<HTMLDivElement>(null);
 
   // Fetch files from bridge service
   const fetchFiles = useCallback(async (search: string = '') => {
@@ -121,15 +122,13 @@ export const SimpleFileReferenceMentions: React.FC<SimpleFileReferenceMentionsPr
       switch (e.key) {
         case 'ArrowDown':
           e.preventDefault();
-          setSelectedIndex(prev => 
-            prev < filteredFiles.length - 1 ? prev + 1 : 0
-          );
+          const nextIndex = selectedIndex < filteredFiles.length - 1 ? selectedIndex + 1 : 0;
+          setSelectedIndex(nextIndex);
           break;
         case 'ArrowUp':
           e.preventDefault();
-          setSelectedIndex(prev => 
-            prev > 0 ? prev - 1 : filteredFiles.length - 1
-          );
+          const prevIndex = selectedIndex > 0 ? selectedIndex - 1 : filteredFiles.length - 1;
+          setSelectedIndex(prevIndex);
           break;
         case 'Enter':
           if (filteredFiles[selectedIndex]) {
@@ -182,6 +181,16 @@ export const SimpleFileReferenceMentions: React.FC<SimpleFileReferenceMentionsPr
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Scroll selected item into view when selectedIndex changes
+  useEffect(() => {
+    if (selectedItemRef.current) {
+      selectedItemRef.current.scrollIntoView({
+        behavior: 'smooth',
+        block: 'nearest',
+      });
+    }
+  }, [selectedIndex]);
+
   return (
     <div className={`relative ${className}`}>
       <textarea
@@ -200,15 +209,18 @@ export const SimpleFileReferenceMentions: React.FC<SimpleFileReferenceMentionsPr
       {showSuggestions && filteredFiles.length > 0 && (
         <div
           ref={suggestionsRef}
-          className="absolute z-[9999] w-full max-w-md bg-[#1F2937] border border-[#374151] rounded-lg shadow-xl max-h-60 overflow-y-auto mb-1 scrollbar-thin scrollbar-track-gray-800 scrollbar-thumb-gray-600 hover:scrollbar-thumb-gray-500"
+          className="absolute z-[9999] w-full max-w-md bg-[#1F2937] border border-[#374151] rounded-lg shadow-xl max-h-60 overflow-y-auto mb-1 custom-scrollbar"
           style={{ 
             bottom: '100%',
-            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.2)'
+            boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 10px 10px -5px rgba(0, 0, 0, 0.2)',
+            scrollbarWidth: 'thin',
+            scrollbarColor: '#4B5563 #1F2937'
           }}
         >
           {filteredFiles.slice(0, 10).map((file, index) => (
             <div
               key={file.path}
+              ref={index === selectedIndex ? selectedItemRef : null}
               className={`flex items-center gap-2 px-3 py-2 text-sm cursor-pointer transition-colors ${
                 index === selectedIndex
                   ? 'bg-orange-600 text-white'
