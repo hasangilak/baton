@@ -2140,6 +2140,239 @@ router.post('/analytics/track-event', async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/chat/conversations/:conversationId/plan-review
+ * Create a plan review prompt for ExitPlanMode handling
+ */
+router.post('/conversations/:conversationId/plan-review', async (req: Request, res: Response) => {
+  try {
+    const conversationId = req.params.conversationId;
+    const { type, title, message, planContent, options, context } = req.body;
+
+    if (!conversationId || !planContent || !options) {
+      return res.status(400).json({
+        error: 'Conversation ID, plan content, and options are required',
+      });
+    }
+
+    // Generate unique plan review ID
+    const planReviewId = `plan_${conversationId.slice(-8)}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+
+    // Store plan review in database using the existing interactive_prompt table
+    const planReview = await prisma.interactivePrompt.create({
+      data: {
+        id: planReviewId,
+        conversationId,
+        type: type || 'plan_review',
+        title: title || 'Plan Review Required',
+        message: message || 'Claude Code has generated an implementation plan for your review.',
+        options: options || [],
+        context: {
+          ...context,
+          planContent,
+          planLength: planContent.length,
+          planType: 'implementation_plan',
+          timestamp: Date.now()
+        },
+        metadata: {
+          planReview: true,
+          createdByHandler: 'bridge-service',
+          riskLevel: 'PLAN'
+        },
+        status: 'pending'
+      }
+    });
+
+    console.log(`📋 Created plan review ${planReviewId} for conversation ${conversationId}`);
+
+    // Emit plan review event to frontend via WebSocket
+    ioInstance?.to(`conversation-${conversationId}`).emit('plan_review', {
+      planReviewId,
+      conversationId,
+      type: type || 'plan_review',
+      title: title || 'Plan Review Required',
+      message: message || 'Claude Code has generated an implementation plan for your review.',
+      planContent,
+      options,
+      context,
+      timestamp: Date.now()
+    });
+
+    // Also emit to project room if available
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { projectId: true }
+    });
+    
+    if (conversation?.projectId) {
+      ioInstance?.to(`project-${conversation.projectId}`).emit('plan_review_project', {
+        planReviewId,
+        conversationId,
+        projectId: conversation.projectId,
+        planLength: planContent.length,
+        timestamp: Date.now()
+      });
+    }
+
+    return res.json({
+      success: true,
+      prompt: {
+        id: planReviewId,
+        conversationId,
+        type: type || 'plan_review',
+        title: title || 'Plan Review Required',
+        message: message || 'Claude Code has generated an implementation plan for your review.',
+        planContent,
+        options,
+        context,
+        status: 'pending'
+      },
+      delivery: {
+        success: true,
+        channels: ['websocket'],
+        createdAt: Date.now()
+      }
+    });
+
+  } catch (error) {
+    console.error('Error creating plan review:', error);
+    return res.status(500).json({
+      error: 'Failed to create plan review',
+      details: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+/**
+ * GET /api/chat/plan-review/:planReviewId
+ * Get plan review status (used by bridge for polling)
+ */
+router.get('/plan-review/:planReviewId', async (req: Request, res: Response) => {
+  try {
+    const planReviewId = req.params.planReviewId;
+
+    if (!planReviewId) {
+      return res.status(400).json({
+        error: 'Plan review ID is required',
+      });
+    }
+
+    const planReview = await prisma.interactivePrompt.findUnique({
+      where: { id: planReviewId }
+    });
+
+    if (!planReview) {
+      return res.status(404).json({
+        error: 'Plan review not found',
+      });
+    }
+
+    // Check if plan review is completed
+    const isCompleted = planReview.status === 'answered';
+    let decision = null;
+    let feedback = null;
+    let editedPlan = null;
+
+    if (isCompleted && planReview.selectedOption) {
+      const options = planReview.options as any[];
+      const selectedOption = options.find((o: any) => o.id === planReview.selectedOption);
+      decision = selectedOption?.value || planReview.selectedOption;
+      
+      // Extract additional data from metadata
+      const metadata = planReview.metadata as any;
+      feedback = metadata?.feedback;
+      editedPlan = metadata?.editedPlan;
+    }
+
+    return res.json({
+      success: true,
+      planReview: {
+        id: planReview.id,
+        conversationId: planReview.conversationId,
+        status: planReview.status,
+        decision,
+        feedback,
+        editedPlan,
+        createdAt: planReview.createdAt,
+        respondedAt: planReview.respondedAt,
+        planContent: (planReview.context as any)?.planContent
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching plan review:', error);
+    return res.status(500).json({
+      error: 'Failed to fetch plan review',
+      details: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+/**
+ * POST /api/chat/plan-review/:planReviewId/respond
+ * Handle plan review response from user
+ */
+router.post('/plan-review/:planReviewId/respond', async (req: Request, res: Response) => {
+  try {
+    const planReviewId = req.params.planReviewId;
+    const { decision, feedback, editedPlan } = req.body;
+
+    if (!planReviewId || !decision) {
+      return res.status(400).json({
+        error: 'Plan review ID and decision are required',
+      });
+    }
+
+    // Update plan review with user response
+    const updatedPlanReview = await prisma.interactivePrompt.update({
+      where: { id: planReviewId },
+      data: {
+        status: 'completed',
+        selectedOption: decision,
+        respondedAt: new Date(),
+        metadata: {
+          planReview: true,
+          feedback,
+          editedPlan,
+          decision,
+          responseTime: Date.now(),
+          completedByUser: true
+        }
+      },
+      include: { conversation: true }
+    });
+
+    console.log(`✅ Plan review ${planReviewId} completed with decision: ${decision}`);
+
+    // Emit completion event
+    ioInstance?.to(`conversation-${updatedPlanReview.conversationId}`).emit('plan_review_completed', {
+      planReviewId,
+      decision,
+      feedback,
+      editedPlan,
+      timestamp: Date.now()
+    });
+
+    return res.json({
+      success: true,
+      planReview: {
+        id: updatedPlanReview.id,
+        decision,
+        feedback,
+        editedPlan,
+        completedAt: updatedPlanReview.respondedAt
+      }
+    });
+
+  } catch (error) {
+    console.error('Error responding to plan review:', error);
+    return res.status(500).json({
+      error: 'Failed to respond to plan review',
+      details: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+/**
  * GET /api/chat/conversations/:conversationId/permissions/live
  * Get live permission status with caching
  */

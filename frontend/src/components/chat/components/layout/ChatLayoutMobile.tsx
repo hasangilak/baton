@@ -7,6 +7,7 @@ import { ConversationInputArea } from "../ConversationInputArea";
 import { useChatPageLogic } from "../../../../hooks/useChatPageLogic";
 import { useConversationItems } from "../../../../hooks/useConversationItems";
 import { ConversationItemRenderer } from "../ConversationItem";
+import { usePlanReview, usePlanReviewWebSocket } from "../../../../hooks/usePlanReview";
 
 export const ChatLayoutMobile: React.FC = () => {
   const {
@@ -33,6 +34,17 @@ export const ChatLayoutMobile: React.FC = () => {
     permissionMode,
     cyclePermissionMode,
   } = useChatPageLogic();
+
+  // Plan review functionality
+  const planReview = usePlanReview({
+    conversationId: selectedConversationId || undefined,
+    onPlanReviewResolved: (decision) => {
+      console.log('📋 Plan review resolved:', decision);
+    }
+  });
+
+  // Set up WebSocket listeners for plan reviews
+  usePlanReviewWebSocket();
 
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   const autoScrollRef = React.useRef(true);
@@ -251,6 +263,7 @@ export const ChatLayoutMobile: React.FC = () => {
                       key={item.id}
                       item={item}
                       onPromptResponse={handlePromptResponse}
+                      onPlanReviewDecision={(_planReviewId, decision) => planReview.submitDecision(decision)}
                       isRespondingToPrompt={isRespondingToPrompt}
                     />
                   ))}
@@ -278,6 +291,7 @@ export const ChatLayoutMobile: React.FC = () => {
         accept={fileUpload.supportedExtensions.join(",")}
         style={{ display: "none" }}
       />
+
     </div>
   );
 };

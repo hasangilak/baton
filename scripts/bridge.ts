@@ -132,6 +132,34 @@ class ClaudeCodeBridge {
             claudeOptions.canUseTool = async (toolName: string, parameters: Record<string, any>) => {
               const riskLevel = this.assessRiskLevel(toolName);
               
+              // Special handling for ExitPlanMode
+              if (riskLevel === 'PLAN') {
+                console.log(`📋 Plan mode detected: ${toolName} - initiating plan review`);
+                const planContent = parameters.plan || 'No plan content provided';
+                console.log(`   ↳ Plan preview: ${planContent.substring(0, 200)}...`);
+                
+                try {
+                  const planReviewResult = await this.requestPlanReview(
+                    toolName,
+                    parameters,
+                    conversationId,
+                    planContent
+                  );
+                  
+                  if (planReviewResult.behavior === 'deny') {
+                    console.log(`🚫 Plan rejected by user`);
+                    return { behavior: 'deny', message: planReviewResult.message || 'Plan was rejected' };
+                  }
+                  
+                  console.log(`✅ Plan approved: ${planReviewResult.behavior}`);
+                  return { behavior: 'allow', updatedInput: planReviewResult.updatedInput || parameters };
+                  
+                } catch (error) {
+                  console.error(`❌ Plan review failed:`, error);
+                  return { behavior: 'deny', message: 'Plan review system error' };
+                }
+              }
+              
               if (riskLevel === 'HIGH' || riskLevel === 'MEDIUM') {
                 const previewParams = (() => {
                   try {
@@ -451,14 +479,107 @@ class ClaudeCodeBridge {
     );
   }
 
+  private async requestPlanReview(
+    toolName: string, 
+    parameters: Record<string, any>, 
+    conversationId: string,
+    planContent: string
+  ): Promise<PermissionResult> {
+    try {
+      console.log(`📋 Requesting plan review for ${toolName} in conversation ${conversationId}`);
+      
+      // Ensure conversation exists first
+      await this.ensureConversationExists(conversationId);
+      
+      // Create plan review prompt
+      const promptResponse = await fetch(
+        `${this.backendUrl}/api/chat/conversations/${conversationId}/plan-review`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'plan_review',
+            title: 'Plan Review Required',
+            message: 'Claude Code has generated an implementation plan for your review.',
+            planContent: planContent,
+            options: [
+              { id: 'auto_accept', label: 'Auto Accept', value: 'auto_accept', description: 'Immediately approve and start implementation' },
+              { id: 'review_accept', label: 'Review & Accept', value: 'review_accept', description: 'I have reviewed the plan and approve it' },
+              { id: 'edit_plan', label: 'Edit Plan', value: 'edit_plan', description: 'Let me modify the plan before proceeding' },
+              { id: 'reject', label: 'Reject', value: 'reject', description: 'Decline this plan and provide feedback' }
+            ],
+            context: {
+              toolName,
+              parameters: JSON.stringify(parameters),
+              planLength: planContent.length,
+              timestamp: Date.now()
+            }
+          })
+        }
+      );
+
+      if (!promptResponse.ok) {
+        throw new Error(`Failed to create plan review prompt: ${promptResponse.status}`);
+      }
+
+      const promptData = await promptResponse.json();
+      if (!promptData.success) {
+        throw new Error('Failed to create plan review prompt');
+      }
+
+      // Wait for plan review response with extended timeout for plans
+      const promptId = promptData.prompt.id;
+      console.log(`🔄 Waiting for plan review response for prompt ${promptId}`);
+      
+      const response = await this.waitForPlanReviewResponse(promptId);
+      
+      if (response.value === 'reject') {
+        console.log(`❌ User rejected plan`);
+        return { 
+          behavior: 'deny', 
+          message: response.feedback || 'Plan was rejected by user' 
+        };
+      } else if (response.value === 'edit_plan') {
+        console.log(`✏️ User requested plan edit`);
+        return { 
+          behavior: 'allow', 
+          updatedInput: { ...parameters, plan: response.editedPlan || planContent }
+        };
+      } else if (response.value === 'auto_accept' || response.value === 'review_accept') {
+        console.log(`✅ User approved plan: ${response.value}`);
+        return { 
+          behavior: 'allow', 
+          updatedInput: parameters 
+        };
+      } else {
+        // Timeout or other error - deny for safety
+        return { 
+          behavior: 'deny', 
+          message: 'Plan review timeout or system error' 
+        };
+      }
+      
+    } catch (error) {
+      console.error(`❌ Plan review request failed:`, error);
+      return { 
+        behavior: 'deny', 
+        message: 'Plan review system error - please try again',
+        updatedInput: parameters
+      };
+    }
+  }
+
   private assessRiskLevel(toolName: string): string {
     const dangerousTools = ['Bash', 'Write', 'Edit', 'MultiEdit'];
     const moderateTools = ['WebFetch', 'NotebookEdit'];
+    const planTools = ['ExitPlanMode']; // Special handling for plan mode
     
     if (dangerousTools.includes(toolName)) {
       return 'HIGH';
     } else if (moderateTools.includes(toolName)) {
       return 'MEDIUM';
+    } else if (planTools.includes(toolName)) {
+      return 'PLAN'; // Special risk category for plan review
     } else {
       return 'LOW';
     }
@@ -506,6 +627,76 @@ class ClaudeCodeBridge {
       console.warn(`⚠️ Error ensuring conversation exists:`, error);
       // Continue anyway - maybe the conversation exists but permissions endpoint failed
     }
+  }
+
+  private async waitForPlanReviewResponse(promptId: string): Promise<any> {
+    // Extended timeout for plan reviews (5 minutes total)
+    const timeoutMs = 300000; // 5 minutes
+    const startTime = Date.now();
+    const pollInterval = 1000; // Poll every 1 second for plan reviews
+    let consecutiveErrors = 0;
+    const maxConsecutiveErrors = 10;
+    
+    console.log(`⏱️  Waiting for plan review response (timeout: ${timeoutMs / 1000}s)`);
+    
+    while (Date.now() - startTime < timeoutMs) {
+      try {
+        const fetchAbortController = new AbortController();
+        const timeoutId = setTimeout(() => fetchAbortController.abort(), 8000); // 8 second timeout per request
+        
+        const response = await fetch(`${this.backendUrl}/api/chat/plan-review/${promptId}`, {
+          signal: fetchAbortController.signal,
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          const data = await response.json();
+          const planReview = data.planReview;
+          
+          if (planReview && planReview.status === 'completed') {
+            console.log(`✅ Received plan review response: ${planReview.decision}`);
+            return {
+              value: planReview.decision,
+              feedback: planReview.feedback,
+              editedPlan: planReview.editedPlan
+            };
+          }
+          
+          // Reset error count on successful request
+          consecutiveErrors = 0;
+        } else if (response.status === 404) {
+          console.warn(`❓ Plan review ${promptId} not found`);
+          return { value: 'reject', feedback: 'Plan review session not found' };
+        } else {
+          consecutiveErrors++;
+          console.warn(`⚠️  HTTP ${response.status} for plan review ${promptId} (errors: ${consecutiveErrors})`);
+        }
+        
+        // Wait before next poll
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        
+      } catch (error) {
+        consecutiveErrors++;
+        
+        if (consecutiveErrors <= 3) {
+          console.log(`⏳ Polling for plan review response ${promptId}... (${Math.floor((Date.now() - startTime) / 1000)}s)`);
+        } else if (consecutiveErrors >= maxConsecutiveErrors) {
+          console.error(`❌ Too many consecutive errors (${consecutiveErrors}) for plan review ${promptId}`);
+          return { value: 'reject', feedback: 'Plan review system error' };
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+      }
+    }
+    
+    // Timeout reached
+    console.warn(`⏰ Plan review timeout for ${promptId}`);
+    return { value: 'timeout', feedback: 'Plan review timeout' };
   }
 
   private async waitForPermissionResponseProgressive(

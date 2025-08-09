@@ -8,6 +8,7 @@ import { DropdownMenu } from "../DropdownMenu";
 import { useChatPageLogic } from "../../../../hooks/useChatPageLogic";
 import { useConversationItems } from "../../../../hooks/useConversationItems";
 import { ConversationItemRenderer } from "../ConversationItem";
+import { usePlanReview, usePlanReviewWebSocket } from "../../../../hooks/usePlanReview";
 
 export const ChatLayoutDesktop: React.FC = () => {
   const {
@@ -36,6 +37,17 @@ export const ChatLayoutDesktop: React.FC = () => {
     permissionMode,
     cyclePermissionMode,
   } = useChatPageLogic();
+
+  // Plan review functionality
+  const planReview = usePlanReview({
+    conversationId: selectedConversationId || undefined,
+    onPlanReviewResolved: (decision) => {
+      console.log('📋 Plan review resolved:', decision);
+    }
+  });
+
+  // Set up WebSocket listeners for plan reviews
+  usePlanReviewWebSocket();
 
   // Always call hooks at top level - never conditionally
   const conversationItems = useConversationItems({
@@ -189,6 +201,7 @@ export const ChatLayoutDesktop: React.FC = () => {
                       key={item.id}
                       item={item}
                       onPromptResponse={handlePromptResponse}
+                      onPlanReviewDecision={(_planReviewId, decision) => planReview.submitDecision(decision)}
                       isRespondingToPrompt={isRespondingToPrompt}
                     />
                   ))}
@@ -216,6 +229,7 @@ export const ChatLayoutDesktop: React.FC = () => {
         accept={fileUpload.supportedExtensions.join(",")}
         style={{ display: "none" }}
       />
+
     </div>
   );
 };

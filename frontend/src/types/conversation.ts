@@ -45,6 +45,19 @@ export interface PromptConversationItem extends BaseConversationItem {
   data: InteractivePrompt;
 }
 
+// Plan review items
+export interface PlanReviewConversationItem extends BaseConversationItem {
+  type: 'plan_review';
+  data: {
+    id: string;
+    conversationId: string;
+    planContent: string;
+    title?: string;
+    message?: string;
+    status: 'pending' | 'completed' | 'rejected';
+  };
+}
+
 // Loading state item
 export interface LoadingConversationItem extends BaseConversationItem {
   type: 'loading';
@@ -56,6 +69,7 @@ export type ConversationItem =
   | StreamingMessageConversationItem
   | CurrentStreamingConversationItem
   | PromptConversationItem
+  | PlanReviewConversationItem
   | LoadingConversationItem;
 
 // Helper type guards
@@ -64,6 +78,9 @@ export const isMessageItem = (item: ConversationItem): item is MessageConversati
 
 export const isPromptItem = (item: ConversationItem): item is PromptConversationItem => 
   item.type === 'prompt';
+
+export const isPlanReviewItem = (item: ConversationItem): item is PlanReviewConversationItem => 
+  item.type === 'plan_review';
 
 export const isLoadingItem = (item: ConversationItem): item is LoadingConversationItem => 
   item.type === 'loading';

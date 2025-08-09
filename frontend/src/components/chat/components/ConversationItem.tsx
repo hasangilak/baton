@@ -3,12 +3,14 @@ import type { ConversationItem } from '../../../types/conversation';
 import type { Message } from '../../../types';
 import { MessageBubble, LoadingMessage } from './MessageBubble';
 import { InteractivePromptComponent } from '../InteractivePrompt';
+import PlanReviewModal, { type PlanReviewDecision } from '../PlanReviewModal';
 import { extractMessageContent } from './messageUtils';
-import { isMessageItem, isPromptItem, isLoadingItem } from '../../../types/conversation';
+import { isMessageItem, isPromptItem, isPlanReviewItem, isLoadingItem } from '../../../types/conversation';
 
 interface ConversationItemProps {
   item: ConversationItem;
   onPromptResponse?: (promptId: string, optionId: string) => void;
+  onPlanReviewDecision?: (planReviewId: string, decision: PlanReviewDecision) => void;
   isRespondingToPrompt?: boolean;
 }
 
@@ -19,6 +21,7 @@ interface ConversationItemProps {
 export const ConversationItemRenderer: React.FC<ConversationItemProps> = ({
   item,
   onPromptResponse,
+  onPlanReviewDecision,
   isRespondingToPrompt = false
 }) => {
   // Handle loading items
@@ -33,6 +36,22 @@ export const ConversationItemRenderer: React.FC<ConversationItemProps> = ({
         prompt={item.data}
         onOptionSelect={onPromptResponse || (() => {})}
         isResponding={isRespondingToPrompt}
+      />
+    );
+  }
+  
+  // Handle plan review items
+  if (isPlanReviewItem(item)) {
+    return (
+      <PlanReviewModal
+        isOpen={item.data.status === 'pending'}
+        onClose={() => {}} // Handled by parent
+        planReviewId={item.data.id}
+        conversationId={item.data.conversationId}
+        planContent={item.data.planContent}
+        title={item.data.title}
+        message={item.data.message}
+        onDecision={(decision) => onPlanReviewDecision?.(item.data.id, decision)}
       />
     );
   }
