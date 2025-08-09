@@ -63,12 +63,17 @@ export const ConversationInputArea: React.FC<Props> = ({ inputValue, setInputVal
           <button onClick={fileUpload.openFileDialog} className="p-1.5 hover:bg-[#2D2D30] rounded-lg transition-colors" title="Attach files" data-testid="chat-attach-files-conversation"><Paperclip className="w-4 h-4 text-[#8B8B8D]" /></button>
         </div>
         <button onClick={handleSendMessage} disabled={(!inputValue.trim() && fileUpload.selectedFiles.length === 0) || isDisabled} className="absolute right-3 bottom-3 p-1.5 text-[#8B8B8D] hover:text-[#E5E5E5] disabled:opacity-50 transition-colors" data-testid="chat-send-conversation"><Send className="w-4 h-4" /></button>
-        
-        {/* Permission mode indicator */}
-        <div className="absolute right-14 bottom-3 flex items-center space-x-1 text-xs text-[#7E7F82]" title={`Current mode: ${getModeLabel()}. Press Shift+Tab to cycle.`}>
+
+        {/* Permission mode pill (inline, matching model selector styling) */}
+        <button
+          onClick={onCyclePermissionMode}
+          className="absolute right-12 bottom-3 px-3 py-1.5 bg-[#2D2D30] hover:bg-[#252526] rounded-lg transition-colors flex items-center space-x-1"
+          title={`Current mode: ${getModeLabel()}. Click or press Shift+Tab to cycle.`}
+          data-testid="chat-permission-mode-conversation"
+        >
           <span className="text-sm">{getModeIcon()}</span>
-          <span className="hidden sm:inline">{getModeLabel()}</span>
-        </div>
+          <span className="hidden sm:inline text-xs text-[#8B8B8D]">{getModeLabel()}</span>
+        </button>
       </div>
     </div>
   </div>
