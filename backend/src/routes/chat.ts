@@ -190,8 +190,44 @@ router.get('/conversation/:conversationId', async (req: Request, res: Response) 
 });
 
 /**
+ * GET /api/chat/messages/:conversationId/:sessionId
+ * Get messages for a conversation by session ID
+ */
+router.get('/messages/:conversationId/:sessionId', async (req: Request, res: Response) => {
+  try {
+    const conversationId = req.params.conversationId;
+    const sessionId = req.params.sessionId;
+
+    if (!conversationId) {
+      return res.status(400).json({
+        error: 'Conversation ID is required',
+      });
+    }
+
+    if (!sessionId) {
+      return res.status(400).json({
+        error: 'Session ID is required',
+      });
+    }
+
+    const messages = await chatService.getMessages(conversationId, sessionId);
+
+    return res.json({
+      success: true,
+      messages,
+    });
+  } catch (error) {
+    console.error('Error fetching messages:', error);
+    return res.status(500).json({
+      error: 'Failed to fetch messages',
+    });
+  }
+});
+
+/**
  * GET /api/chat/messages/:conversationId
- * Get messages for a conversation
+ * Get messages for a conversation (backwards compatibility - without session validation)
+ * @deprecated Use /messages/:conversationId/:sessionId instead
  */
 router.get('/messages/:conversationId', async (req: Request, res: Response) => {
   try {
@@ -203,6 +239,7 @@ router.get('/messages/:conversationId', async (req: Request, res: Response) => {
       });
     }
 
+    console.warn(`⚠️ Using deprecated endpoint /messages/${conversationId} without session ID`);
     const messages = await chatService.getMessages(conversationId);
 
     return res.json({
@@ -1600,7 +1637,6 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
 
     let fullContent = '';
     let currentSessionId = conversation.claudeSessionId;
-    let hasReceivedFirstContent = false;
 
     try {
       // Forward request to bridge service
@@ -1645,7 +1681,7 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
                   console.log(`🆔 New session ID captured: ${currentSessionId}`);
                   
                   // Use enhanced session storage
-                  messageStorage.updateConversationSession(conversationId, currentSessionId);
+                  messageStorage.updateConversationSession(conversationId, sessionId);
                 }
 
                 // Enhanced content extraction and immediate DB updates
@@ -1662,26 +1698,24 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
                   
                   if (textContent && textContent !== fullContent) {
                     fullContent = textContent;
-                    hasReceivedFirstContent = true;
                     
                     // Hybrid approach: immediate DB update for streaming content
                     messageStorage.updateAssistantMessageStreaming(
                       assistantMessage.id, 
                       fullContent, 
                       false, // not complete yet
-                      currentSessionId
+                      currentSessionId || undefined
                     );
                   }
                 } else if (sdkMessage.type === 'result' && sdkMessage.result) {
                   fullContent = sdkMessage.result;
-                  hasReceivedFirstContent = true;
                   
                   // Update with result content
                   messageStorage.updateAssistantMessageStreaming(
                     assistantMessage.id, 
                     fullContent, 
                     false,
-                    currentSessionId
+                    currentSessionId || undefined
                   );
                 }
               }
@@ -1705,7 +1739,7 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
                     assistantMessage.id, 
                     fullContent, 
                     true, // complete
-                    currentSessionId
+                    currentSessionId || undefined
                   );
                   
                   // Extract code blocks from final content

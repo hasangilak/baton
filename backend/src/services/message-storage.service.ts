@@ -33,9 +33,11 @@ export class MessageStorageService {
           role: 'user',
           content,
           status: 'completed',
-          attachments: attachments ? {
-            create: attachments
-          } : undefined,
+          ...(attachments && {
+            attachments: {
+              create: attachments
+            }
+          }),
         },
         include: {
           attachments: true,

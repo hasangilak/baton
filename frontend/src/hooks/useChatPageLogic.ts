@@ -68,14 +68,14 @@ export const useChatPageLogic = () => {
     }
   });
 
+  // Get session ID from URL parameters for session tuning
+  const urlSessionId = searchParams.get('sessionId');
+
   // Get conversation details including Claude session ID
   const { data: conversationDetails } = useConversation(selectedConversationId);
   
-  // Fetch persisted messages for the selected conversation
-  const { messages: dbMessages, isLoading: isLoadingMessages } = useMessages(selectedConversationId);
-  
-  // Get session ID from URL parameters for session tuning
-  const urlSessionId = searchParams.get('sessionId');
+  // Fetch persisted messages for the selected conversation with session ID
+  const { messages: dbMessages, isLoading: isLoadingMessages } = useMessages(selectedConversationId, urlSessionId || undefined);
 
   // Update URL when conversation changes, including session ID
   useEffect(() => {

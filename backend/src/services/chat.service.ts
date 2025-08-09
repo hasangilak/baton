@@ -51,10 +51,10 @@ export class ChatService extends EventEmitter {
   }
 
   /**
-   * Get conversations for a project
+   * Get conversations for a project, grouped by session ID
    */
   async getConversations(projectId: string, userId: string) {
-    return prisma.conversation.findMany({
+    const conversations = await prisma.conversation.findMany({
       where: {
         projectId,
         userId,
@@ -63,21 +63,74 @@ export class ChatService extends EventEmitter {
       orderBy: {
         updatedAt: 'desc',
       },
-      include: {
+      select: {
+        id: true,
+        title: true,
+        projectId: true,
+        userId: true,
+        claudeSessionId: true,
+        createdAt: true,
+        updatedAt: true,
         messages: {
           take: 1,
           orderBy: {
             createdAt: 'desc',
           },
+          select: {
+            id: true,
+            content: true,
+            role: true,
+            createdAt: true,
+          },
         },
       },
     });
+
+    // Group conversations by session ID
+    const grouped = conversations.reduce((acc, conversation) => {
+      const sessionId = conversation.claudeSessionId || 'no-session';
+      if (!acc[sessionId]) {
+        acc[sessionId] = [];
+      }
+      acc[sessionId].push(conversation);
+      return acc;
+    }, {} as Record<string, typeof conversations>);
+
+    // Flatten back to array, but maintain session grouping order
+    return Object.entries(grouped)
+      .sort(([, a], [, b]) => {
+        // Sort by most recent conversation in each session
+        const aLatest = Math.max(...a.map(c => new Date(c.updatedAt).getTime()));
+        const bLatest = Math.max(...b.map(c => new Date(c.updatedAt).getTime()));
+        return bLatest - aLatest;
+      })
+      .flatMap(([, sessionConversations]) => 
+        sessionConversations.sort((a, b) => 
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        )
+      );
   }
 
   /**
-   * Get messages for a conversation
+   * Get messages for a conversation with optional session ID validation
    */
-  async getMessages(conversationId: string) {
+  async getMessages(conversationId: string, sessionId?: string) {
+    // If sessionId is provided, validate that the conversation belongs to that session
+    if (sessionId) {
+      const conversation = await prisma.conversation.findUnique({
+        where: { id: conversationId },
+        select: { claudeSessionId: true, title: true },
+      });
+
+      if (!conversation) {
+        throw new Error('Conversation not found');
+      }
+
+      if (conversation.claudeSessionId !== sessionId) {
+        throw new Error(`Conversation does not belong to session ${sessionId}. Expected: ${conversation.claudeSessionId}`);
+      }
+    }
+
     return prisma.message.findMany({
       where: {
         conversationId,

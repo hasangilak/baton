@@ -64,7 +64,11 @@ class ChatService {
   }
 
   // Messages
-  async getMessages(conversationId: string): Promise<ApiResponse<Message[]>> {
+  async getMessages(conversationId: string, sessionId?: string): Promise<ApiResponse<Message[]>> {
+    if (sessionId) {
+      return this.request<Message[]>(`/api/chat/messages/${conversationId}/${sessionId}`);
+    }
+    // Fallback to old endpoint for backwards compatibility
     return this.request<Message[]>(`/api/chat/messages/${conversationId}`);
   }
 

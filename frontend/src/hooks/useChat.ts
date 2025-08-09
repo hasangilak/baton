@@ -65,10 +65,10 @@ export function useConversations(projectId: string) {
   };
 }
 
-export function useMessages(conversationId: string | null) {
+export function useMessages(conversationId: string | null, sessionId?: string) {
   const { data, isLoading, error } = useQuery({
     queryKey: chatKeys.messages(conversationId || ''),
-    queryFn: () => chatService.getMessages(conversationId!),
+    queryFn: () => chatService.getMessages(conversationId!, sessionId),
     enabled: !!conversationId,
   });
 

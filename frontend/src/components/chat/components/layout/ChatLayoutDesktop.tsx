@@ -106,6 +106,11 @@ export const ChatLayoutDesktop: React.FC = () => {
                 onClick={() => {
                   setSelectedConversationId(c.id);
                   setShowSidebar(false);
+                  // Update URL with session ID if available
+                  const sessionId = c.claudeSessionId;
+                  if (sessionId) {
+                    window.history.replaceState(null, '', `/chat/${c.id}?sessionId=${sessionId}`);
+                  }
                 }}
                 className={`w-full px-4 py-3 text-left hover:bg-[#242528] transition-colors border-b border-[#2C2D30] ${
                   selectedConversationId === c.id ? "bg-[#242528]" : ""
@@ -116,11 +121,18 @@ export const ChatLayoutDesktop: React.FC = () => {
                     <p className="text-sm text-gray-300 truncate">
                       {c.title || "New conversation"}
                     </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {formatDistanceToNow(new Date(c.updatedAt), {
-                        addSuffix: true,
-                      })}
-                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="text-xs text-gray-500">
+                        {formatDistanceToNow(new Date(c.updatedAt), {
+                          addSuffix: true,
+                        })}
+                      </p>
+                      {c.claudeSessionId && (
+                        <span className="text-xs bg-[#2C2D30] text-gray-400 px-1 py-0.5 rounded">
+                          Session: {c.claudeSessionId.slice(-8)}
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <DropdownMenu
                     conversation={c}
