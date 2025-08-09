@@ -570,7 +570,7 @@ class ClaudeCodeBridge {
   }
 
   private assessRiskLevel(toolName: string): string {
-    const dangerousTools = ['Bash', 'Write', 'Edit', 'MultiEdit'];
+    const dangerousTools = ['Bash', 'Write', 'Edit', 'MultiEdit', 'ExitPlanMode', 'MultiEdit'];
     const moderateTools = ['WebFetch', 'NotebookEdit'];
     const planTools = ['ExitPlanMode']; // Special handling for plan mode
     
