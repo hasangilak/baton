@@ -44,6 +44,14 @@ export const ConversationInputArea: React.FC<Props> = ({ inputValue, setInputVal
     }
   };
 
+  const getPlaceholderText = () => {
+    const baseText = `Reply... [${getModeLabel()}] (Shift+Tab to change mode)`;
+    if (isDisabled) {
+      return `${baseText} - Press ESC to stop`;
+    }
+    return baseText;
+  };
+
   return (
   <div className="border-t border-[#2C2D30] bg-[#18191B]/95 backdrop-blur supports-[backdrop-filter]:bg-[#18191B]/80 md:static fixed left-0 right-0 z-[100]" style={{ bottom: 'calc(var(--app-bottom-nav-height,56px))', paddingBottom: 'env(safe-area-inset-bottom)' }} data-testid="chat-input-container">
     <div className="max-w-5xl mx-auto px-4 md:px-6 py-4 md:py-6">
@@ -53,7 +61,7 @@ export const ConversationInputArea: React.FC<Props> = ({ inputValue, setInputVal
           value={inputValue}
           onChange={setInputValue}
           onKeyDown={handleKeyDown}
-          placeholder={`Reply... [${getModeLabel()}] (Shift+Tab to change mode)`}
+          placeholder={getPlaceholderText()}
           disabled={isDisabled}
           workingDirectory={workingDirectory}
           className="w-full pr-36"

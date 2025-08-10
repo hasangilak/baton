@@ -38,6 +38,9 @@ export const ChatLayoutDesktop: React.FC = () => {
     cyclePermissionMode,
   } = useChatPageLogic();
 
+  // State for ESC key abort feedback
+  const [showAbortFeedback, setShowAbortFeedback] = React.useState(false);
+
   // Plan review functionality
   const planReview = usePlanReview({
     conversationId: selectedConversationId || undefined,
@@ -73,8 +76,60 @@ export const ChatLayoutDesktop: React.FC = () => {
     claudeStreaming.isStreaming,
   ]);
 
+  // ESC key handler for aborting conversations (Claude Code style)
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle ESC key during streaming and not when modal/dropdown is open
+      if (e.key === 'Escape' && claudeStreaming.isStreaming) {
+        // Check if there are any open modals/dropdowns to avoid interference
+        const hasOpenModal = document.querySelector('[role="dialog"]');
+        const hasOpenDropdown = document.querySelector('[role="menu"]');
+        
+        if (!hasOpenModal && !hasOpenDropdown) {
+          e.preventDefault();
+          e.stopPropagation();
+          
+          console.log('🛑 ESC pressed - aborting conversation');
+          
+          // Show immediate feedback (Claude Code style)
+          setShowAbortFeedback(true);
+          
+          // Add abort message to conversation history
+          claudeStreaming.addMessage({
+            type: "abort",
+            subtype: "user_abort",
+            message: "Conversation aborted by user (ESC key)",
+            reason: "User pressed ESC key to stop the conversation",
+            timestamp: Date.now(),
+          });
+          
+          // Abort the conversation
+          claudeStreaming.handleAbort();
+          
+          // Hide feedback after 3 seconds
+          setTimeout(() => {
+            setShowAbortFeedback(false);
+          }, 3000);
+        }
+      }
+    };
+
+    // Add global event listener
+    document.addEventListener('keydown', handleKeyDown, { capture: true });
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, { capture: true });
+    };
+  }, [claudeStreaming.isStreaming, claudeStreaming.handleAbort]);
+
   return (
-    <div className="h-[calc(100vh-90px)] flex flex-col md:flex-row bg-[#1E1F22] text-gray-200">
+    <div className="h-[calc(100vh-90px)] flex flex-col md:flex-row bg-[#1E1F22] text-gray-200 relative">
+      {/* ESC key abort feedback (Claude Code style) */}
+      {showAbortFeedback && (
+        <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-50 px-3 py-1 bg-red-600 text-white text-sm font-medium rounded shadow-lg animate-pulse">
+          Interrupted
+        </div>
+      )}
       <div className="hidden md:flex w-12 bg-[#191A1C] border-r border-[#2C2D30] flex-col items-center">
         <button
           onClick={() => setShowSidebar(!showSidebar)}
