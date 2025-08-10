@@ -239,7 +239,7 @@ class ChatService {
         socket.off('chat:error', handleError);
         socket.off('chat:aborted', handleAborted);
         reject(new Error('WebSocket message request timeout'));
-      }, 60000); // 60 second timeout
+      }, 300000); // 5 minute timeout for longer Claude responses
     });
   }
   

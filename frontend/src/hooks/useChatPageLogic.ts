@@ -153,9 +153,7 @@ export const useChatPageLogic = () => {
       }
     }
 
-    // Now that we have a conversation ID, we need to wait for the useChat hook to re-initialize
-    // For now, let's make a direct WebSocket call instead of using the useChat hook
-    // This is a temporary workaround - we should refactor this properly
+    // Use the proper useChat hook for message sending
     const attachments = fileUpload.files?.map(file => ({
       id: file.id,
       name: file.name,
@@ -166,24 +164,30 @@ export const useChatPageLogic = () => {
 
     if (convId) {
       try {
-        // Use the chat service directly instead of the hook for new conversations
-        const { chatService } = await import('../services/chat.service');
-        await chatService.sendMessage(
-          {
-            conversationId: convId,
-            content: trimmed,
-            attachments: attachments.length > 0 ? attachments : undefined,
-          },
-          (response) => {
-            console.log('📨 Direct message response:', response);
-          }
-        );
-      } catch (error) {
-        console.error('❌ Failed to send message via direct service:', error);
-        // Fallback to the hook method if available
+        // For existing conversations, use the useChat hook
         if (selectedConversationId === convId) {
           await sendMessage(trimmed, attachments.length > 0 ? attachments : undefined);
+          console.log('✅ Message sent via useChat hook for existing conversation');
+        } else {
+          // For new conversations, we need to update the selected conversation ID first
+          // Then the useChat hook will be re-initialized with the new conversation ID
+          console.log('⏳ New conversation created, updating conversation ID and sending message');
+          
+          // Update the conversation ID state immediately
+          setSelectedConversationId(convId);
+          
+          // Wait for the state update to propagate, then send the message
+          setTimeout(async () => {
+            try {
+              await sendMessage(trimmed, attachments.length > 0 ? attachments : undefined);
+              console.log('✅ Message sent via useChat hook for new conversation');
+            } catch (error) {
+              console.error('❌ Failed to send delayed message:', error);
+            }
+          }, 1000); // Slightly longer delay to allow useChat hook to reinitialize
         }
+      } catch (error) {
+        console.error('❌ Failed to send message via useChat hook:', error);
       }
     }
 

@@ -15,6 +15,12 @@ import claudeRoutes from './routes/claude';
 import chatRoutes, { setSocketIOInstance } from './routes/chat';
 import { BatonMCPServer } from './mcp/server/index';
 import { chatService } from './services/chat.service';
+import { PrismaClient } from '@prisma/client';
+import { getMessageStorageService } from './services/message-storage.service';
+
+// Initialize Prisma client and message storage service
+const prisma = new PrismaClient();
+const messageStorage = getMessageStorageService(prisma);
 
 dotenv.config();
 
@@ -159,11 +165,11 @@ io.on('connection', (socket) => {
   });
 
   // New WebSocket handlers for bridge communication
-  // Chat message handling
+  // Chat message handling with database persistence
   socket.on('chat:send-message', async (data) => {
     console.log(`💬 Received chat:send-message from ${socket.id}:`, data.requestId);
     try {
-      const { conversationId, content, requestId, sessionId, allowedTools, workingDirectory, permissionMode } = data;
+      const { conversationId, content, requestId, sessionId, allowedTools, workingDirectory, permissionMode, attachments } = data;
       
       if (!conversationId || !content || !requestId) {
         socket.emit('chat:error', {
@@ -173,7 +179,27 @@ io.on('connection', (socket) => {
         return;
       }
 
-      // Forward to bridge service if connected
+      // 1. Store user message in database
+      console.log(`💾 Storing user message for conversation ${conversationId}`);
+      const userMessage = await messageStorage.createUserMessage(conversationId, content, attachments);
+      console.log(`✅ User message stored with ID: ${userMessage.id}`);
+
+      // 2. Create assistant message placeholder
+      console.log(`💾 Creating assistant message placeholder for conversation ${conversationId}`);
+      const assistantMessage = await messageStorage.createAssistantMessagePlaceholder(conversationId);
+      console.log(`✅ Assistant placeholder created with ID: ${assistantMessage.id}`);
+
+      // 3. Store request mapping for streaming updates
+      if (!global.activeRequests) {
+        global.activeRequests = new Map();
+      }
+      global.activeRequests.set(requestId, {
+        assistantMessageId: assistantMessage.id,
+        conversationId,
+        userMessageId: userMessage.id
+      });
+
+      // 4. Forward to bridge service if connected
       const bridgeSockets = await io.in('claude-bridge').fetchSockets();
       if (bridgeSockets.length > 0) {
         // Forward to bridge service
@@ -207,7 +233,7 @@ io.on('connection', (socket) => {
     try {
       const { conversationId } = data;
       // Get conversation permission mode from database
-      const conversation = await require('@prisma/client').PrismaClient().conversation.findUnique({
+      const conversation = await prisma.conversation.findUnique({
         where: { id: conversationId },
         select: { metadata: true }
       });
@@ -226,7 +252,7 @@ io.on('connection', (socket) => {
     try {
       const { conversationId, toolName } = data;
       // Check if permission exists in database
-      const permission = await require('@prisma/client').PrismaClient().conversationPermission.findFirst({
+      const permission = await prisma.conversationPermission.findFirst({
         where: {
           conversationId,
           toolName,
@@ -323,7 +349,7 @@ io.on('connection', (socket) => {
   socket.on('conversation:check', async (data, callback) => {
     try {
       const { conversationId } = data;
-      const conversation = await require('@prisma/client').PrismaClient().conversation.findUnique({
+      const conversation = await prisma.conversation.findUnique({
         where: { id: conversationId }
       });
       
@@ -337,7 +363,7 @@ io.on('connection', (socket) => {
   socket.on('conversation:create', async (data, callback) => {
     try {
       const { conversationId, projectId, userId } = data;
-      const conversation = await require('@prisma/client').PrismaClient().conversation.create({
+      const conversation = await prisma.conversation.create({
         data: {
           id: conversationId,
           projectId,
@@ -401,20 +427,100 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Handle bridge responses  
-  socket.on('claude:stream', (data) => {
+  // Handle bridge responses with database persistence
+  socket.on('claude:stream', async (data) => {
     console.log(`📡 Received claude:stream from bridge for ${data.requestId}`);
-    // Forward to frontend clients
-    io.emit('chat:stream-response', {
-      requestId: data.requestId,
-      type: data.type,
-      data: data.data,
-      timestamp: data.timestamp
-    });
+    
+    try {
+      // Get request mapping to find message ID
+      const requestInfo = global.activeRequests?.get(data.requestId);
+      if (!requestInfo) {
+        console.warn(`⚠️ No request mapping found for ${data.requestId}`);
+        // Still forward to frontend even without database storage
+        io.emit('chat:stream-response', {
+          requestId: data.requestId,
+          type: data.type,
+          data: data.data,
+          timestamp: data.timestamp
+        });
+        return;
+      }
+
+      // Extract content from Claude response for database storage
+      let content = '';
+      let isComplete = false;
+      
+      if (data.type === 'claude_json' && data.data) {
+        if (data.data.type === 'assistant' && data.data.message) {
+          if (Array.isArray(data.data.message.content)) {
+            content = data.data.message.content
+              .filter((block: any) => block.type === 'text')
+              .map((block: any) => block.text)
+              .join('');
+          } else if (typeof data.data.message.content === 'string') {
+            content = data.data.message.content;
+          }
+        } else if (data.data.type === 'result') {
+          isComplete = true;
+        }
+
+        // Update assistant message in database if we have content
+        if (content || isComplete) {
+          await messageStorage.updateAssistantMessageStreaming(
+            requestInfo.assistantMessageId,
+            content,
+            isComplete,
+            data.data.session_id
+          );
+          console.log(`💾 Updated assistant message ${requestInfo.assistantMessageId} with ${content.length} chars`);
+        }
+      }
+
+      // Forward to frontend clients with message ID
+      io.emit('chat:stream-response', {
+        requestId: data.requestId,
+        messageId: requestInfo.assistantMessageId,
+        conversationId: requestInfo.conversationId,
+        type: data.type,
+        data: data.data,
+        timestamp: data.timestamp
+      });
+    } catch (error) {
+      console.error(`❌ Error handling claude:stream for ${data.requestId}:`, error);
+      // Still forward to frontend even if database update fails
+      io.emit('chat:stream-response', {
+        requestId: data.requestId,
+        type: data.type,
+        data: data.data,
+        timestamp: data.timestamp,
+        error: 'Database storage failed'
+      });
+    }
   });
 
-  socket.on('claude:complete', (data) => {
+  socket.on('claude:complete', async (data) => {
     console.log(`✅ Received claude:complete from bridge for ${data.requestId}`);
+    
+    try {
+      // Get request mapping and clean up
+      const requestInfo = global.activeRequests?.get(data.requestId);
+      if (requestInfo) {
+        console.log(`🏁 Cleaning up request mapping for ${data.requestId}`);
+        global.activeRequests.delete(data.requestId);
+        
+        // Ensure final message state is completed in database
+        await messageStorage.updateAssistantMessageStreaming(
+          requestInfo.assistantMessageId,
+          '', // No additional content
+          true, // Mark as complete
+          data.sessionId
+        );
+        console.log(`✅ Assistant message ${requestInfo.assistantMessageId} marked as completed`);
+      }
+    } catch (error) {
+      console.error(`❌ Error in claude:complete handler for ${data.requestId}:`, error);
+    }
+
     // Forward to frontend clients
     io.emit('chat:message-complete', {
       requestId: data.requestId,
@@ -423,8 +529,24 @@ io.on('connection', (socket) => {
     });
   });
 
-  socket.on('claude:error', (data) => {
+  socket.on('claude:error', async (data) => {
     console.log(`❌ Received claude:error from bridge for ${data.requestId}`);
+    
+    try {
+      // Clean up request mapping and mark message as failed
+      const requestInfo = global.activeRequests?.get(data.requestId);
+      if (requestInfo) {
+        console.log(`🧹 Cleaning up failed request mapping for ${data.requestId}`);
+        global.activeRequests.delete(data.requestId);
+        
+        // Mark assistant message as failed
+        await messageStorage.markMessageFailed(requestInfo.assistantMessageId, data.error);
+        console.log(`❌ Assistant message ${requestInfo.assistantMessageId} marked as failed`);
+      }
+    } catch (error) {
+      console.error(`❌ Error in claude:error handler for ${data.requestId}:`, error);
+    }
+
     // Forward to frontend clients
     io.emit('chat:error', {
       requestId: data.requestId,
@@ -433,8 +555,24 @@ io.on('connection', (socket) => {
     });
   });
 
-  socket.on('claude:aborted', (data) => {
+  socket.on('claude:aborted', async (data) => {
     console.log(`⏹️ Received claude:aborted from bridge for ${data.requestId}`);
+    
+    try {
+      // Clean up request mapping and mark message as failed
+      const requestInfo = global.activeRequests?.get(data.requestId);
+      if (requestInfo) {
+        console.log(`🧹 Cleaning up aborted request mapping for ${data.requestId}`);
+        global.activeRequests.delete(data.requestId);
+        
+        // Mark assistant message as failed due to abort
+        await messageStorage.markMessageFailed(requestInfo.assistantMessageId, 'Request was aborted');
+        console.log(`⏹️ Assistant message ${requestInfo.assistantMessageId} marked as aborted`);
+      }
+    } catch (error) {
+      console.error(`❌ Error in claude:aborted handler for ${data.requestId}:`, error);
+    }
+
     // Forward to frontend clients  
     io.emit('chat:aborted', {
       requestId: data.requestId,
