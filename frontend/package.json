@@ -34,6 +34,7 @@
     "react-router-dom": "^7.7.1",
     "react-syntax-highlighter": "^15.6.1",
     "react-window": "^1.8.11",
+    "remark-gfm": "^4.0.1",
     "remark-parse": "^11.0.0",
     "socket.io-client": "^4.8.1",
     "tailwind-merge": "^3.3.1",
