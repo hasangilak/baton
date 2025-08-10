@@ -110,9 +110,11 @@ export const useChatPageLogic = () => {
   // Fetch persisted messages for the selected conversation with session ID
   const { messages: dbMessages, isLoading: isLoadingMessages } = useMessages(selectedConversationId, urlSessionId || undefined);
 
-  // Compute isNewChat based on whether the conversation has any messages
-  // A conversation is "new" if it has no messages yet (not counting optimistic/streaming)
-  const isNewChat = !selectedConversationId || (!dbMessages || dbMessages.length === 0);
+  // Compute isNewChat based on whether the conversation has any messages (including optimistic)
+  // A conversation is "new" if it has no database messages AND no optimistic user message
+  // This ensures immediate UI transition when user sends first message
+  const isNewChat = !selectedConversationId || 
+    ((!dbMessages || dbMessages.length === 0) && !optimisticUserMessage);
 
   // Update URL when conversation changes and track current conversation globally
   useEffect(() => {
