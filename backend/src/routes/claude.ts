@@ -164,7 +164,7 @@ router.post('/todos', async (req, res) => {
     });
 
     // Emit WebSocket event for real-time updates
-    io.to(`project-${projectId}`).emit('claude:todos-synced', {
+    io.to(`project-${projectId}`).emit('claude-todos-batch-updated', {
       projectId,
       count: result.processedCount,
       deleted: result.deletedCount

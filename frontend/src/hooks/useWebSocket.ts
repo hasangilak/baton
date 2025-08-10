@@ -278,6 +278,17 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
       });
     });
 
+    socket.on('claude:plan-captured', (data) => {
+      console.log('🤖 Claude plan captured:', data);
+      if (!shouldProcessEvent(data.projectId)) {
+        console.log('🚫 Ignoring claude:plan-captured event for inactive project:', data.projectId);
+        return;
+      }
+      queryClient.invalidateQueries({ 
+        queryKey: ['plans', data.projectId]
+      });
+    });
+
     socket.on('plan:updated', (plan) => {
       console.log('📋 Plan updated:', plan);
       if (!shouldProcessEvent(plan.projectId)) {
