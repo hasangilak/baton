@@ -129,7 +129,10 @@ export const ChatLayoutDesktop: React.FC = () => {
   const handleResumeSession = React.useCallback(async () => {
     setIsResuming(true);
     try {
-      const success = await claudeStreaming.resumeSession();
+      // Use URL session ID as fallback if chatState doesn't have it yet
+      const sessionIdToResume = claudeStreaming.currentSessionId || urlSessionId || 
+                               conversationDetails?.claudeSessionId;
+      const success = await claudeStreaming.resumeSession(sessionIdToResume);
       if (success) {
         console.log('✅ Session resumed successfully');
       }
@@ -138,7 +141,7 @@ export const ChatLayoutDesktop: React.FC = () => {
     } finally {
       setIsResuming(false);
     }
-  }, [claudeStreaming]);
+  }, [claudeStreaming, urlSessionId, conversationDetails?.claudeSessionId]);
 
   return (
     <div className="h-[calc(100vh-90px)] flex flex-col md:flex-row bg-[#1E1F22] text-gray-200 relative">
