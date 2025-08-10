@@ -2158,7 +2158,7 @@ router.post('/conversations/:conversationId/plan-review', async (req: Request, r
     const planReviewId = `plan_${conversationId.slice(-8)}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
     // Store plan review in database using the existing interactive_prompt table
-    const planReview = await prisma.interactivePrompt.create({
+    await prisma.interactivePrompt.create({
       data: {
         id: planReviewId,
         conversationId,
@@ -2343,6 +2343,41 @@ router.post('/plan-review/:planReviewId/respond', async (req: Request, res: Resp
 
     console.log(`✅ Plan review ${planReviewId} completed with decision: ${decision}`);
 
+    // If plan is approved, change conversation permission mode to acceptEdits
+    if (decision === 'auto_accept' || decision === 'review_accept') {
+      try {
+        // Update conversation metadata to include permission mode
+        const conversationId = updatedPlanReview.conversationId;
+        const existingMetadata = updatedPlanReview.conversation?.metadata as any || {};
+        
+        await prisma.conversation.update({
+          where: { id: conversationId },
+          data: {
+            metadata: {
+              ...existingMetadata,
+              permissionMode: 'acceptEdits',
+              permissionModeChangedAt: new Date().toISOString(),
+              permissionModeReason: `Plan approved with decision: ${decision}`
+            }
+          }
+        });
+
+        console.log(`🔓 Permission mode changed to 'acceptEdits' for conversation ${conversationId} after plan approval`);
+
+        // Emit permission mode change event for real-time updates
+        ioInstance?.to(`conversation-${conversationId}`).emit('permission_mode_changed', {
+          conversationId,
+          permissionMode: 'acceptEdits',
+          reason: 'plan_approved',
+          planDecision: decision,
+          timestamp: Date.now()
+        });
+      } catch (permissionError) {
+        console.error('Error updating permission mode after plan approval:', permissionError);
+        // Don't fail the entire request if permission mode update fails
+      }
+    }
+
     // Emit completion event
     ioInstance?.to(`conversation-${updatedPlanReview.conversationId}`).emit('plan_review_completed', {
       planReviewId,
@@ -2367,6 +2402,121 @@ router.post('/plan-review/:planReviewId/respond', async (req: Request, res: Resp
     console.error('Error responding to plan review:', error);
     return res.status(500).json({
       error: 'Failed to respond to plan review',
+      details: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+/**
+ * GET /api/chat/conversations/:conversationId/permission-mode
+ * Get conversation permission mode
+ */
+router.get('/conversations/:conversationId/permission-mode', async (req: Request, res: Response) => {
+  try {
+    const conversationId = req.params.conversationId;
+
+    if (!conversationId) {
+      return res.status(400).json({
+        error: 'Conversation ID is required',
+      });
+    }
+
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { metadata: true }
+    });
+
+    if (!conversation) {
+      return res.status(404).json({
+        error: 'Conversation not found',
+      });
+    }
+
+    const metadata = conversation.metadata as any || {};
+    const permissionMode = metadata.permissionMode || 'default';
+
+    return res.json({
+      success: true,
+      permissionMode,
+      changedAt: metadata.permissionModeChangedAt || null,
+      reason: metadata.permissionModeReason || null
+    });
+
+  } catch (error) {
+    console.error('Error getting conversation permission mode:', error);
+    return res.status(500).json({
+      error: 'Failed to get permission mode',
+      details: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+/**
+ * POST /api/chat/conversations/:conversationId/permission-mode
+ * Update conversation permission mode
+ */
+router.post('/conversations/:conversationId/permission-mode', async (req: Request, res: Response) => {
+  try {
+    const conversationId = req.params.conversationId;
+    const { permissionMode, reason } = req.body;
+
+    if (!conversationId) {
+      return res.status(400).json({
+        error: 'Conversation ID is required',
+      });
+    }
+
+    if (!permissionMode || !['default', 'plan', 'acceptEdits'].includes(permissionMode)) {
+      return res.status(400).json({
+        error: 'Valid permission mode is required (default, plan, acceptEdits)',
+      });
+    }
+
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { metadata: true }
+    });
+
+    if (!conversation) {
+      return res.status(404).json({
+        error: 'Conversation not found',
+      });
+    }
+
+    const existingMetadata = conversation.metadata as any || {};
+    
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: {
+        metadata: {
+          ...existingMetadata,
+          permissionMode,
+          permissionModeChangedAt: new Date().toISOString(),
+          permissionModeReason: reason || `Permission mode changed to ${permissionMode}`
+        }
+      }
+    });
+
+    console.log(`🔄 Permission mode changed to '${permissionMode}' for conversation ${conversationId}`);
+
+    // Emit permission mode change event for real-time updates
+    ioInstance?.to(`conversation-${conversationId}`).emit('permission_mode_changed', {
+      conversationId,
+      permissionMode,
+      reason: reason || 'manual_update',
+      timestamp: Date.now()
+    });
+
+    return res.json({
+      success: true,
+      permissionMode,
+      changedAt: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Error updating conversation permission mode:', error);
+    return res.status(500).json({
+      error: 'Failed to update permission mode',
       details: error instanceof Error ? error.message : String(error)
     });
   }

@@ -5,6 +5,7 @@ import { useProjects } from './useProjects';
 import { useInteractivePrompts } from './useInteractivePrompts';
 import { useClaudeStreaming } from './useClaudeStreaming';
 import { useFileUpload } from './useFileUpload';
+import { useWebSocket } from './useWebSocket';
 
 export const useChatPageLogic = () => {
   const navigate = useNavigate();
@@ -36,6 +37,9 @@ export const useChatPageLogic = () => {
     isRespondingToPrompt,
     handlePromptResponse,
   } = useInteractivePrompts({ conversationId: selectedConversationId });
+
+  // WebSocket for real-time permission mode changes
+  const { socket, joinConversation, leaveConversation } = useWebSocket();
 
   // New WebUI-based streaming with enhanced features
   const claudeStreaming = useClaudeStreaming({ 
@@ -91,6 +95,31 @@ export const useChatPageLogic = () => {
       setIsNewChat(true);
     }
   }, [selectedConversationId, conversationDetails?.claudeSessionId, claudeStreaming.currentSessionId, navigate]);
+
+  // WebSocket conversation management and permission mode listener
+  useEffect(() => {
+    if (!selectedConversationId || !socket) {
+      return;
+    }
+
+    // Join conversation room
+    joinConversation(selectedConversationId);
+
+    // Listen for permission mode changes
+    const handlePermissionModeChange = (data: any) => {
+      console.log('🔄 Permission mode changed:', data);
+      if (data.conversationId === selectedConversationId && data.permissionMode) {
+        setPermissionMode(data.permissionMode);
+      }
+    };
+
+    socket.on('permission_mode_changed', handlePermissionModeChange);
+
+    return () => {
+      socket.off('permission_mode_changed', handlePermissionModeChange);
+      leaveConversation(selectedConversationId);
+    };
+  }, [selectedConversationId, socket, joinConversation, leaveConversation]);
 
   // Greeting helper
   const getGreeting = () => {

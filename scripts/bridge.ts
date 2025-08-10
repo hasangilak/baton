@@ -38,10 +38,43 @@ class ClaudeCodeBridge {
   private port: number;
   private backendUrl: string;
   private activeRequests = new Map<string, AbortController>();
+  private permissionModeCache = new Map<string, { mode: string; timestamp: number }>();
 
   constructor(port: number = 8080, backendUrl: string = 'http://localhost:3001') {
     this.port = port;
     this.backendUrl = backendUrl;
+  }
+
+  /**
+   * Check conversation permission mode from backend
+   */
+  private async getConversationPermissionMode(conversationId: string): Promise<string> {
+    try {
+      // Use cached value if recent (within 30 seconds)
+      const cached = this.permissionModeCache.get(conversationId);
+      const now = Date.now();
+      if (cached && (now - cached.timestamp) < 30000) {
+        return cached.mode;
+      }
+
+      const response = await fetch(`${this.backendUrl}/api/chat/conversations/${conversationId}/permission-mode`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        const mode = data.permissionMode || 'default';
+        
+        // Cache the result
+        this.permissionModeCache.set(conversationId, { mode, timestamp: now });
+        
+        return mode;
+      } else {
+        console.warn(`⚠️  Failed to get permission mode for conversation ${conversationId}: ${response.status}`);
+        return 'default';
+      }
+    } catch (error) {
+      console.warn(`⚠️  Error getting permission mode for conversation ${conversationId}:`, error);
+      return 'default';
+    }
   }
 
   private async handleExecuteRequest(request: Request): Promise<Response> {
@@ -92,6 +125,20 @@ class ClaudeCodeBridge {
               contextMessage = `Project: ${projectName}\n\n${message}`;
             }
 
+            // Check for updated permission mode from backend (in case plan was approved)
+            let effectivePermissionMode = permissionMode;
+            if (conversationId) {
+              try {
+                const backendPermissionMode = await this.getConversationPermissionMode(conversationId);
+                if (backendPermissionMode !== permissionMode) {
+                  console.log(`🔄 Permission mode updated from backend: ${permissionMode} → ${backendPermissionMode}`);
+                  effectivePermissionMode = backendPermissionMode;
+                }
+              } catch (error) {
+                console.warn('⚠️  Failed to check backend permission mode, using original:', permissionMode);
+              }
+            }
+
             // Configure Claude Code options using the same pattern as working backend
             const claudeOptions: any = {
               abortController,
@@ -100,7 +147,7 @@ class ClaudeCodeBridge {
               pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_PATH || "/home/hassan/.nvm/versions/node/v22.18.0/bin/claude",
               maxTurns: 20,
               mcpServers: {},
-              permissionMode: permissionMode,
+              permissionMode: effectivePermissionMode,
               // Add session resume if provided
               ...(sessionId && sessionId.trim() !== "" ? { resume: sessionId } : {}),
             };
@@ -117,6 +164,7 @@ class ClaudeCodeBridge {
 
             console.log(`🔧 Claude Code options configured for ${requestId}:`);
             console.log(`   - session: ${sessionId ? 'resuming' : 'new'}`);
+            console.log(`   - permissionMode: ${effectivePermissionMode} ${effectivePermissionMode !== permissionMode ? '(updated from backend)' : ''}`);
             console.log(`   - allowedTools: ${claudeOptions.allowedTools || 'default'}`);
             console.log(`   - maxTurns: ${claudeOptions.maxTurns}`);
 
