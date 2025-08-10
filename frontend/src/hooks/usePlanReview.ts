@@ -66,7 +66,7 @@ export const usePlanReview = (options: UsePlanReviewOptions = {}) => {
     const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
     
     try {
-      console.log(`📋 Submitting plan review decision: ${decision.decision}`);
+      console.log(`📋 Submitting plan review decision: ${decision.decision} for planReviewId: ${state.planReviewId}`);
       
       const response = await fetch(`${API_BASE_URL}/api/chat/plan-review/${state.planReviewId}/respond`, {
         method: 'POST',
@@ -82,6 +82,7 @@ export const usePlanReview = (options: UsePlanReviewOptions = {}) => {
 
       if (!response.ok) {
         const error = await response.json();
+        console.error(`❌ Plan review submission failed: ${error.error || response.statusText}`);
         throw new Error(error.error || `HTTP ${response.status}: ${response.statusText}`);
       }
 
@@ -120,12 +121,50 @@ export const usePlanReview = (options: UsePlanReviewOptions = {}) => {
     });
   }, []);
 
+  // Submit plan decision directly (for ExitPlanMode messages)
+  const submitPlanDecision = useCallback(async (planReviewId: string, decision: PlanReviewDecision): Promise<void> => {
+    const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+    
+    try {
+      console.log(`📋 Submitting direct plan review decision: ${decision.decision} for planReviewId: ${planReviewId}`);
+      
+      const response = await fetch(`${API_BASE_URL}/api/chat/plan-review/${planReviewId}/respond`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          decision: decision.decision,
+          feedback: decision.feedback,
+          editedPlan: decision.editedPlan
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        console.error(`❌ Direct plan review submission failed: ${error.error || response.statusText}`);
+        throw new Error(error.error || `HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ Direct plan review decision submitted successfully:', result);
+
+      // Call callback if provided
+      onPlanReviewResolved?.(decision);
+
+    } catch (error) {
+      console.error('❌ Failed to submit direct plan review decision:', error);
+      throw error;
+    }
+  }, [onPlanReviewResolved]);
+
   return {
     // State
     planReview: state,
     
     // Actions
     submitDecision,
+    submitPlanDecision, // New direct submission method
     closeModal,
     clearState,
     

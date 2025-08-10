@@ -105,18 +105,19 @@ export const useChatPageLogic = () => {
     // Join conversation room
     joinConversation(selectedConversationId);
 
-    // Listen for permission mode changes
-    const handlePermissionModeChange = (data: any) => {
+    // Listen for permission mode changes via custom events (dispatched by useWebSocket)
+    const handlePermissionModeChange = (event: CustomEvent) => {
+      const data = event.detail;
       console.log('🔄 Permission mode changed:', data);
       if (data.conversationId === selectedConversationId && data.permissionMode) {
         setPermissionMode(data.permissionMode);
       }
     };
 
-    socket.on('permission_mode_changed', handlePermissionModeChange);
+    window.addEventListener('permission_mode_changed', handlePermissionModeChange as EventListener);
 
     return () => {
-      socket.off('permission_mode_changed', handlePermissionModeChange);
+      window.removeEventListener('permission_mode_changed', handlePermissionModeChange as EventListener);
       leaveConversation(selectedConversationId);
     };
   }, [selectedConversationId, socket, joinConversation, leaveConversation]);

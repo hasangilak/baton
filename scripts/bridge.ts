@@ -202,7 +202,14 @@ class ClaudeCodeBridge {
                   }
                   
                   console.log(`✅ Plan approved: ${planReviewResult.behavior}`);
-                  return { behavior: 'allow', updatedInput: planReviewResult.updatedInput || parameters };
+                  
+                  // Include plan review ID in the updated input so it gets forwarded to the frontend
+                  const updatedParameters = {
+                    ...parameters,
+                    planReviewId: planReviewResult.planReviewId // Include the plan review ID
+                  };
+                  
+                  return { behavior: 'allow', updatedInput: updatedParameters };
                   
                 } catch (error) {
                   console.error(`❌ Plan review failed:`, error);
@@ -587,25 +594,29 @@ class ClaudeCodeBridge {
         console.log(`❌ User rejected plan`);
         return { 
           behavior: 'deny', 
-          message: response.feedback || 'Plan was rejected by user' 
+          message: response.feedback || 'Plan was rejected by user',
+          planReviewId: promptId 
         };
       } else if (response.value === 'edit_plan') {
         console.log(`✏️ User requested plan edit`);
         return { 
           behavior: 'allow', 
-          updatedInput: { ...parameters, plan: response.editedPlan || planContent }
+          updatedInput: { ...parameters, plan: response.editedPlan || planContent },
+          planReviewId: promptId
         };
       } else if (response.value === 'auto_accept' || response.value === 'review_accept') {
         console.log(`✅ User approved plan: ${response.value}`);
         return { 
           behavior: 'allow', 
-          updatedInput: parameters 
+          updatedInput: parameters,
+          planReviewId: promptId
         };
       } else {
         // Timeout or other error - deny for safety
         return { 
           behavior: 'deny', 
-          message: 'Plan review timeout or system error' 
+          message: 'Plan review timeout or system error',
+          planReviewId: promptId 
         };
       }
       

@@ -279,7 +279,7 @@ export const ChatLayoutDesktop: React.FC = () => {
                       key={item.id}
                       item={item}
                       onPromptResponse={handlePromptResponse}
-                      onPlanReviewDecision={(_planReviewId, decision) => planReview.submitDecision(decision)}
+                      onPlanReviewDecision={(planReviewId, decision) => planReview.submitPlanDecision(planReviewId, decision)}
                       isRespondingToPrompt={isRespondingToPrompt}
                     />
                   ))}

@@ -161,18 +161,20 @@ export const MessageTypeRenderer: React.FC<MessageTypeRendererProps> = ({
       }
       
       if (isExitPlanMode) {
+        // Check if we have a valid plan review ID from the bridge service
+        const planReviewId = message.metadata?.planReviewId || message.planReviewId;
+        
         // Create wrapper function to handle plan decisions for ExitPlanMode
-        const handlePlanDecision = (decision: 'auto_accept' | 'review_accept' | 'edit_plan' | 'reject') => {
+        const handlePlanDecision = planReviewId ? (decision: 'auto_accept' | 'review_accept' | 'edit_plan' | 'reject') => {
           if (onPlanReviewDecision) {
-            // For ExitPlanMode, we use the message ID as the plan review ID since 
-            // the plan is embedded in the message itself
-            onPlanReviewDecision(message.id || 'exit-plan-mode', {
+            // Use the actual plan review ID created by the bridge service
+            onPlanReviewDecision(planReviewId, {
               decision,
               feedback: undefined,
               editedPlan: undefined
             });
           }
-        };
+        } : undefined;
         
         return <ExitPlanModeMessage {...commonProps} message={message as StreamingToolMessage} onPlanDecision={handlePlanDecision} />;
       }

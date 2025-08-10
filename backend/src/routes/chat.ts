@@ -2343,11 +2343,52 @@ router.post('/plan-review/:planReviewId/respond', async (req: Request, res: Resp
 
     console.log(`✅ Plan review ${planReviewId} completed with decision: ${decision}`);
 
-    // If plan is approved, change conversation permission mode to acceptEdits
+    // If plan is approved, change conversation permission mode to acceptEdits and create claudeCodePlan
     if (decision === 'auto_accept' || decision === 'review_accept') {
       try {
-        // Update conversation metadata to include permission mode
+        // Get conversation and project info
         const conversationId = updatedPlanReview.conversationId;
+        const conversation = await prisma.conversation.findUnique({
+          where: { id: conversationId },
+          select: { id: true, projectId: true }
+        });
+
+        if (!conversation?.projectId) {
+          throw new Error('Conversation project not found');
+        }
+
+        // Create claudeCodePlan record for approved plan
+        const planContent = updatedPlanReview.metadata?.planContent || 'No plan content available';
+        const planTitle = planContent.split('\n')[0]?.replace(/^#\s*/, '').substring(0, 100) || 
+                         `Plan approved on ${new Date().toLocaleDateString()}`;
+
+        const claudeCodePlan = await prisma.claudeCodePlan.create({
+          data: {
+            title: planTitle,
+            content: planContent,
+            status: 'accepted',
+            projectId: conversation.projectId,
+            sessionId: updatedPlanReview.sessionId,
+            capturedAt: new Date(),
+            metadata: {
+              approvedVia: 'plan_review',
+              planReviewId,
+              originalPromptId: planReviewId,
+              approvalDecision: decision,
+              feedback: feedback || null
+            }
+          }
+        });
+
+        // Link the plan review to the created plan
+        await prisma.interactivePrompt.update({
+          where: { id: planReviewId },
+          data: { linkedPlanId: claudeCodePlan.id }
+        });
+
+        console.log(`📋 Created ClaudeCodePlan record: ${claudeCodePlan.id}`);
+        
+        // Update conversation metadata to include permission mode
         const existingMetadata = updatedPlanReview.conversation?.metadata as any || {};
         
         await prisma.conversation.update({
@@ -2357,7 +2398,8 @@ router.post('/plan-review/:planReviewId/respond', async (req: Request, res: Resp
               ...existingMetadata,
               permissionMode: 'acceptEdits',
               permissionModeChangedAt: new Date().toISOString(),
-              permissionModeReason: `Plan approved with decision: ${decision}`
+              permissionModeReason: `Plan approved with decision: ${decision}`,
+              linkedPlanId: claudeCodePlan.id
             }
           }
         });
@@ -2372,6 +2414,10 @@ router.post('/plan-review/:planReviewId/respond', async (req: Request, res: Resp
           planDecision: decision,
           timestamp: Date.now()
         });
+
+        // Emit plan created event for real-time updates
+        ioInstance?.to(`project-${conversation.projectId}`).emit('plan:created', claudeCodePlan);
+
       } catch (permissionError) {
         console.error('Error updating permission mode after plan approval:', permissionError);
         // Don't fail the entire request if permission mode update fails

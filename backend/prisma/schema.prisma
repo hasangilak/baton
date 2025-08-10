@@ -188,20 +188,21 @@ model WorkspaceMapping {
 }
 
 model ClaudeCodePlan {
-  id          String   @id @default(cuid())
-  title       String
-  content     String   @db.Text
-  status      String   @default("accepted") // accepted, implemented, archived
-  projectId   String
-  sessionId   String?
-  capturedAt  DateTime @default(now())
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  metadata    Json?    // Store transcript path, cwd, etc.
+  id               String             @id @default(cuid())
+  title            String
+  content          String             @db.Text
+  status           String             @default("accepted") // accepted, implemented, archived
+  projectId        String
+  sessionId        String?
+  capturedAt       DateTime           @default(now())
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  metadata         Json?              // Store transcript path, cwd, etc.
 
   // Relations
-  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  linkedTodos ClaudeTodo[] @relation("PlanTodos")
+  project          Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  linkedTodos      ClaudeTodo[]       @relation("PlanTodos")
+  reviewPrompts    InteractivePrompt[] @relation("PlanReview")
 
   @@map("claude_code_plans")
   @@index([projectId])
@@ -322,7 +323,7 @@ model InteractivePrompt {
   id               String    @id @default(cuid())
   conversationId   String
   sessionId        String?
-  type             String    // permission, tool_usage, multiple_choice, three_option
+  type             String    // permission, tool_usage, multiple_choice, three_option, plan_review
   title            String?
   message          String    @db.Text
   options          Json      // Array of PromptOption objects
@@ -334,9 +335,11 @@ model InteractivePrompt {
   createdAt        DateTime  @default(now())
   respondedAt      DateTime?
   metadata         Json?     // Enhanced analytics and metadata for permission tracking
+  linkedPlanId     String?   // Link to created claudeCodePlan after approval
 
   // Relations
-  conversation     Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversation     Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  linkedPlan       ClaudeCodePlan? @relation("PlanReview", fields: [linkedPlanId], references: [id], onDelete: SetNull)
 
   @@map("interactive_prompts")
   @@index([conversationId])

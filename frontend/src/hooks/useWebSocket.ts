@@ -496,6 +496,36 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
         queryKey: ['chat', 'messages', conversationId] 
       });
     });
+
+    // Plan review events
+    socket.on('plan_review', (data) => {
+      console.log('📋 Plan review received via WebSocket:', data);
+      
+      // Emit custom event for the plan review hook to catch
+      const event = new CustomEvent('plan_review', { detail: data });
+      window.dispatchEvent(event);
+    });
+
+    socket.on('plan_review_completed', (data) => {
+      console.log('✅ Plan review completed via WebSocket:', data);
+      
+      // Emit custom event for completion
+      const event = new CustomEvent('plan_review_completed', { detail: data });
+      window.dispatchEvent(event);
+    });
+
+    socket.on('permission_mode_changed', (data) => {
+      console.log('🔄 Permission mode changed via WebSocket:', data);
+      
+      // Emit custom event for permission mode changes
+      const event = new CustomEvent('permission_mode_changed', { detail: data });
+      window.dispatchEvent(event);
+      
+      // Invalidate conversation queries to refetch with updated permission mode
+      queryClient.invalidateQueries({ 
+        queryKey: ['chat', 'conversation', data.conversationId]
+      });
+    });
   }, [queryClient, shouldProcessEvent]);
 
   const disconnect = useCallback(() => {
