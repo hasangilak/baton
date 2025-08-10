@@ -347,6 +347,71 @@ export function useClaudeStreaming(options: ClaudeStreamingOptions = {}) {
     handleAbort();
   }, [handleAbort]);
 
+  // Resume/Reattach to existing session
+  const resumeSession = useCallback(async (sessionId?: string) => {
+    const targetSessionId = sessionId || chatState.currentSessionId;
+    if (!targetSessionId || isStreaming) {
+      console.warn('🔄 Cannot resume: no session ID or currently streaming');
+      return false;
+    }
+
+    console.log('🔄 Attempting to resume session:', targetSessionId);
+
+    try {
+      // Send a minimal message to test session connection
+      const requestId = generateRequestId();
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      
+      // Use a system-level ping message to test session connectivity
+      const response = await fetch(`${API_BASE_URL}/api/chat/messages/stream-bridge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversationId: conversationId || 'session-test',
+          content: 'Session connectivity test - please confirm you can see this message.',
+          requestId,
+          sessionId: targetSessionId,
+          permissionMode: 'default',
+          isSessionResume: true,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Session resume failed: HTTP ${response.status}`);
+      }
+
+      // If we get here, the session resume was successful
+      console.log('✅ Session resumed successfully:', targetSessionId);
+      
+      // Update session state to ensure it's current
+      chatState.updateSessionId(targetSessionId);
+      onSessionId?.(targetSessionId);
+
+      // Add a system message to indicate successful resume
+      chatState.addMessage({
+        type: "system",
+        subtype: "session_resumed",
+        message: `Session resumed: ${targetSessionId}`,
+        timestamp: Date.now(),
+      });
+
+      return true;
+
+    } catch (error) {
+      console.error('❌ Session resume failed:', error);
+      
+      // Add error message to chat
+      chatState.addMessage({
+        type: "error",
+        subtype: "session_resume_failed",
+        message: `Failed to resume session: ${error instanceof Error ? error.message : String(error)}`,
+        timestamp: Date.now(),
+      });
+
+      return false;
+    }
+  }, [chatState, isStreaming, conversationId, onSessionId]);
+
   // Get current streaming status
   const getStreamingStatus = useCallback(() => {
     return {
@@ -369,6 +434,7 @@ export function useClaudeStreaming(options: ClaudeStreamingOptions = {}) {
     // Actions
     sendMessage,
     handleAbort,
+    resumeSession,
     
     // Permission system
     allowedTools,

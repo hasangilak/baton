@@ -78,7 +78,9 @@ export interface ToolResultMessage {
 
 export interface AbortMessage {
   type: "abort";
+  subtype?: "user_abort" | "timeout" | "error";
   message: string;
+  reason?: string;
   timestamp: number;
   id?: string;
 }

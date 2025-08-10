@@ -40,6 +40,9 @@ export const ChatLayoutDesktop: React.FC = () => {
 
   // State for ESC key abort feedback
   const [showAbortFeedback, setShowAbortFeedback] = React.useState(false);
+  
+  // State for session resume
+  const [isResuming, setIsResuming] = React.useState(false);
 
   // Plan review functionality
   const planReview = usePlanReview({
@@ -121,6 +124,21 @@ export const ChatLayoutDesktop: React.FC = () => {
       document.removeEventListener('keydown', handleKeyDown, { capture: true });
     };
   }, [claudeStreaming.isStreaming, claudeStreaming.handleAbort]);
+
+  // Handle session resume
+  const handleResumeSession = React.useCallback(async () => {
+    setIsResuming(true);
+    try {
+      const success = await claudeStreaming.resumeSession();
+      if (success) {
+        console.log('✅ Session resumed successfully');
+      }
+    } catch (error) {
+      console.error('❌ Session resume error:', error);
+    } finally {
+      setIsResuming(false);
+    }
+  }, [claudeStreaming]);
 
   return (
     <div className="h-[calc(100vh-90px)] flex flex-col md:flex-row bg-[#1E1F22] text-gray-200 relative">
@@ -237,6 +255,8 @@ export const ChatLayoutDesktop: React.FC = () => {
                 claudeStreaming.currentSessionId
               }
               contextTokens={conversationDetails?.contextTokens ?? null}
+              onResumeSession={handleResumeSession}
+              isResuming={isResuming}
             />
             <div
               ref={scrollContainerRef}

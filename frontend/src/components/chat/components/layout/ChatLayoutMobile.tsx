@@ -37,6 +37,9 @@ export const ChatLayoutMobile: React.FC = () => {
 
   // State for ESC key abort feedback
   const [showAbortFeedback, setShowAbortFeedback] = React.useState(false);
+  
+  // State for session resume
+  const [isResuming, setIsResuming] = React.useState(false);
 
   // Plan review functionality
   const planReview = usePlanReview({
@@ -189,6 +192,21 @@ export const ChatLayoutMobile: React.FC = () => {
     };
   }, [claudeStreaming.isStreaming, claudeStreaming.handleAbort]);
 
+  // Handle session resume
+  const handleResumeSession = React.useCallback(async () => {
+    setIsResuming(true);
+    try {
+      const success = await claudeStreaming.resumeSession();
+      if (success) {
+        console.log('✅ Session resumed successfully');
+      }
+    } catch (error) {
+      console.error('❌ Session resume error:', error);
+    } finally {
+      setIsResuming(false);
+    }
+  }, [claudeStreaming]);
+
   return (
     <div className="h-full min-h-screen flex flex-col bg-[#1E1F22] text-gray-200 relative">
       {/* ESC key abort feedback (Claude Code style) */}
@@ -296,6 +314,8 @@ export const ChatLayoutMobile: React.FC = () => {
                 claudeStreaming.currentSessionId
               }
               contextTokens={conversationDetails?.contextTokens ?? null}
+              onResumeSession={handleResumeSession}
+              isResuming={isResuming}
             />
             {/* Single dedicated scroll container */}
             <div
