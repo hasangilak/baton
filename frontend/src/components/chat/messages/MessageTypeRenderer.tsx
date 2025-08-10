@@ -14,7 +14,8 @@ import { ToolMessageComponent } from './ToolMessage';
 import { ResultMessage } from './ResultMessage';
 import { ErrorMessage } from './ErrorMessage';
 import { AbortMessage } from './AbortMessage';
-import { TodoWriteTimeline } from './TodoWriteTimeline'
+import { TodoWriteTimeline } from './TodoWriteTimeline';
+import ExitPlanModeMessage from './ExitPlanModeMessage';
 
 interface MessageTypeRendererProps {
   message: Message | any; // Support both new and legacy message types
@@ -147,13 +148,18 @@ export const MessageTypeRenderer: React.FC<MessageTypeRendererProps> = ({
       return <SystemMessageComponent {...commonProps} message={message as StreamingSystemMessage} />;
       
     case 'tool':
-      // Check if this is a TodoWrite tool and render specialized component
+      // Check for specialized tool components
       const toolName = message.metadata?.toolName || message.name || '';
       const isTodoWrite = toolName.toLowerCase() === 'todowrite';
+      const isExitPlanMode = toolName.toLowerCase() === 'exitplanmode';
       const todosData = message.metadata?.toolInput?.todos || message.input?.todos;
       
       if (isTodoWrite && todosData) {
         return <TodoWriteTimeline todos={todosData} />;
+      }
+      
+      if (isExitPlanMode) {
+        return <ExitPlanModeMessage {...commonProps} message={message as StreamingToolMessage} />;
       }
       
       return <ToolMessageComponent {...commonProps} message={message as StreamingToolMessage} />;
