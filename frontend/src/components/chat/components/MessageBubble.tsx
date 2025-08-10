@@ -2,10 +2,16 @@ import React from 'react';
 import { Sparkles } from 'lucide-react';
 import { MessageTypeRenderer } from '../messages/MessageTypeRenderer';
 import type { Message } from '../../../types';
+import type { PlanReviewDecision } from '../PlanReviewModal';
 
-interface Props { message: Message; isStreaming?: boolean; streamingMessage?: any }
+interface Props { 
+  message: Message; 
+  isStreaming?: boolean; 
+  streamingMessage?: any;
+  onPlanReviewDecision?: (planReviewId: string, decision: PlanReviewDecision) => void;
+}
 
-export const MessageBubble: React.FC<Props> = ({ message, isStreaming, streamingMessage }) => {
+export const MessageBubble: React.FC<Props> = ({ message, isStreaming, streamingMessage, onPlanReviewDecision }) => {
   let processedMessage = message;
   if (streamingMessage) {
     processedMessage = {
@@ -25,7 +31,13 @@ export const MessageBubble: React.FC<Props> = ({ message, isStreaming, streaming
   const handleRetry = (messageId: string) => { console.log('Retry message:', messageId); };
   return (
     <div className="mb-6" data-testid={`message-${message.id}`} data-testid-role={`message-role-${message.role}`} data-testid-status={message.status}>
-  <MessageTypeRenderer message={processedMessage} isStreaming={isStreaming} onCopy={(c) => handleCopy(c)} onRetry={handleRetry} />
+  <MessageTypeRenderer 
+    message={processedMessage} 
+    isStreaming={isStreaming} 
+    onCopy={(c) => handleCopy(c)} 
+    onRetry={handleRetry}
+    onPlanReviewDecision={onPlanReviewDecision}
+  />
     </div>
   );
 };

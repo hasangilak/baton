@@ -25,6 +25,7 @@ interface MessageTypeRendererProps {
   showTimestamp?: boolean;
   compact?: boolean;
   virtualizedIndex?: number; // For virtual scrolling optimization
+  onPlanReviewDecision?: (planReviewId: string, decision: any) => void;
 }
 
 /**
@@ -118,6 +119,7 @@ export const MessageTypeRenderer: React.FC<MessageTypeRendererProps> = ({
   showTimestamp = true,
   compact = false,
   virtualizedIndex,
+  onPlanReviewDecision,
 }) => {
   const messageType = getMessageType(message);
   
@@ -159,7 +161,20 @@ export const MessageTypeRenderer: React.FC<MessageTypeRendererProps> = ({
       }
       
       if (isExitPlanMode) {
-        return <ExitPlanModeMessage {...commonProps} message={message as StreamingToolMessage} />;
+        // Create wrapper function to handle plan decisions for ExitPlanMode
+        const handlePlanDecision = (decision: 'auto_accept' | 'review_accept' | 'edit_plan' | 'reject') => {
+          if (onPlanReviewDecision) {
+            // For ExitPlanMode, we use the message ID as the plan review ID since 
+            // the plan is embedded in the message itself
+            onPlanReviewDecision(message.id || 'exit-plan-mode', {
+              decision,
+              feedback: undefined,
+              editedPlan: undefined
+            });
+          }
+        };
+        
+        return <ExitPlanModeMessage {...commonProps} message={message as StreamingToolMessage} onPlanDecision={handlePlanDecision} />;
       }
       
       return <ToolMessageComponent {...commonProps} message={message as StreamingToolMessage} />;

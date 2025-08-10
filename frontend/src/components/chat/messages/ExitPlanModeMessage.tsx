@@ -8,11 +8,16 @@
  * - Seamless integration with chat flow
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   FileText,
   EyeIcon,
-  Timer
+  Timer,
+  Check,
+  X,
+  Edit,
+  Zap,
+  Loader2
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -27,12 +32,35 @@ interface ExitPlanModeMessageProps {
   onRetry?: (messageId: string) => void;
   showTimestamp?: boolean;
   compact?: boolean;
+  onPlanDecision?: (decision: 'auto_accept' | 'review_accept' | 'edit_plan' | 'reject') => void;
 }
 
 const ExitPlanModeMessage: React.FC<ExitPlanModeMessageProps> = ({
   message,
   showTimestamp = true,
+  onPlanDecision,
 }) => {
+  const [selectedDecision, setSelectedDecision] = useState<string | null>(null);
+  const [isResponding, setIsResponding] = useState(false);
+
+  // Handle plan decision
+  const handleDecision = async (decision: 'auto_accept' | 'review_accept' | 'edit_plan' | 'reject') => {
+    if (isResponding || selectedDecision !== null || !onPlanDecision) return;
+    
+    setSelectedDecision(decision);
+    setIsResponding(true);
+    
+    try {
+      await onPlanDecision(decision);
+    } catch (error) {
+      console.error('Error processing plan decision:', error);
+      // Reset state on error
+      setSelectedDecision(null);
+    } finally {
+      setIsResponding(false);
+    }
+  };
+
   // Extract plan content from message
   const planContent = message.metadata?.toolInput?.plan || message.input?.plan || 'No plan content available';
   const title = "Implementation Plan";
@@ -240,6 +268,111 @@ const ExitPlanModeMessage: React.FC<ExitPlanModeMessageProps> = ({
             </ReactMarkdown>
           </div>
         </div>
+
+        {/* Plan approval actions */}
+        {onPlanDecision && (
+          <div className="pt-3 border-t border-gray-800/50 mt-2">
+            <div className="text-xs text-gray-400 mb-3">
+              Review the implementation plan above and choose your preferred action:
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {/* Auto Accept */}
+              <button
+                onClick={() => handleDecision('auto_accept')}
+                disabled={isResponding || selectedDecision !== null}
+                className="relative select-none rounded-sm border px-3 h-8 text-sm font-medium flex items-center gap-2 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed hover:bg-green-500/10 text-green-300 border-green-800 bg-green-900/30"
+              >
+                {selectedDecision === 'auto_accept' && isResponding ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-green-500" />
+                ) : (
+                  <Zap className="w-4 h-4" />
+                )}
+                <span>Auto Accept & Start</span>
+                {selectedDecision === 'auto_accept' && !isResponding && (
+                  <Check className="w-4 h-4 text-green-500" />
+                )}
+              </button>
+
+              {/* Review Accept */}
+              <button
+                onClick={() => handleDecision('review_accept')}
+                disabled={isResponding || selectedDecision !== null}
+                className="relative select-none rounded-sm border px-3 h-8 text-sm font-medium flex items-center gap-2 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed hover:bg-blue-500/10 text-blue-300 border-blue-800 bg-blue-900/30"
+              >
+                {selectedDecision === 'review_accept' && isResponding ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                ) : (
+                  <Check className="w-4 h-4" />
+                )}
+                <span>Approve Plan</span>
+                {selectedDecision === 'review_accept' && !isResponding && (
+                  <Check className="w-4 h-4 text-blue-500" />
+                )}
+              </button>
+
+              {/* Edit Plan */}
+              <button
+                onClick={() => handleDecision('edit_plan')}
+                disabled={isResponding || selectedDecision !== null}
+                className="relative select-none rounded-sm border px-3 h-8 text-sm font-medium flex items-center gap-2 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed hover:bg-amber-500/10 text-amber-300 border-amber-800 bg-amber-900/30"
+              >
+                {selectedDecision === 'edit_plan' && isResponding ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
+                ) : (
+                  <Edit className="w-4 h-4" />
+                )}
+                <span>Edit Plan</span>
+                {selectedDecision === 'edit_plan' && !isResponding && (
+                  <Check className="w-4 h-4 text-amber-500" />
+                )}
+              </button>
+
+              {/* Reject */}
+              <button
+                onClick={() => handleDecision('reject')}
+                disabled={isResponding || selectedDecision !== null}
+                className="relative select-none rounded-sm border px-3 h-8 text-sm font-medium flex items-center gap-2 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors disabled:opacity-60 disabled:cursor-not-allowed hover:bg-red-500/10 text-red-300 border-red-800 bg-red-900/30"
+              >
+                {selectedDecision === 'reject' && isResponding ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-red-500" />
+                ) : (
+                  <X className="w-4 h-4" />
+                )}
+                <span>Reject</span>
+                {selectedDecision === 'reject' && !isResponding && (
+                  <Check className="w-4 h-4 text-red-500" />
+                )}
+              </button>
+            </div>
+
+            {/* Status info */}
+            <div className="flex items-center gap-4 text-xs text-gray-500 mt-3">
+              <div className="flex items-center gap-1">
+                <Timer size={12} />
+                <span>30s timeout</span>
+              </div>
+              {selectedDecision ? (
+                <div className="flex items-center gap-1">
+                  {isResponding ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      <span className="text-gray-400">Processing decision...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3 h-3 text-green-500" />
+                      <span className="text-gray-400">Decision sent</span>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="flex items-center gap-1 text-gray-500">
+                  <span>Awaiting your decision</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

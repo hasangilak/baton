@@ -93,6 +93,7 @@ export const ConversationItemRenderer: React.FC<ConversationItemProps> = ({
         message={message}
         streamingMessage={streamingMessage}
         isStreaming={isStreaming}
+        onPlanReviewDecision={onPlanReviewDecision}
       />
     );
   }
