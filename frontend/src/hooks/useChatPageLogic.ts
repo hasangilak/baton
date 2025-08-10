@@ -15,7 +15,6 @@ export const useChatPageLogic = () => {
   );
   const [inputValue, setInputValue] = useState('');
   const [showSidebar, setShowSidebar] = useState(false);
-  const [isNewChat, setIsNewChat] = useState(true);
   const [permissionMode, setPermissionMode] = useState<'default' | 'plan' | 'acceptEdits'>('default');
 
   // Get current project
@@ -68,7 +67,7 @@ export const useChatPageLogic = () => {
   // Auto-create conversation when visiting /chat without a conversation ID
   useEffect(() => {
     // Only auto-create if we're on the base /chat route (no conversationId) and we have a project
-    if (!conversationId && !selectedConversationId && currentProjectId && isNewChat) {
+    if (!conversationId && !selectedConversationId && currentProjectId) {
       const autoCreateConversation = async () => {
         try {
           console.log('🚀 Auto-creating conversation for project:', currentProjectId);
@@ -90,10 +89,14 @@ export const useChatPageLogic = () => {
       
       autoCreateConversation();
     }
-  }, [conversationId, selectedConversationId, currentProjectId, createConversation, setSelectedConversationId, isNewChat]);
+  }, [conversationId, selectedConversationId, currentProjectId, createConversation, setSelectedConversationId]);
   
   // Fetch persisted messages for the selected conversation with session ID
   const { messages: dbMessages, isLoading: isLoadingMessages } = useMessages(selectedConversationId, urlSessionId || undefined);
+
+  // Compute isNewChat based on whether the conversation has any messages
+  // A conversation is "new" if it has no messages yet (not counting optimistic/streaming)
+  const isNewChat = !selectedConversationId || (!dbMessages || dbMessages.length === 0);
 
   // Update URL when conversation changes and track current conversation globally
   useEffect(() => {
@@ -106,11 +109,9 @@ export const useChatPageLogic = () => {
         ? `/chat/${selectedConversationId}?sessionId=${sessionId}`
         : `/chat/${selectedConversationId}`;
       navigate(url, { replace: true });
-      setIsNewChat(false);
     } else {
       (window as any).__currentConversationId = null;
       navigate('/chat', { replace: true });
-      setIsNewChat(true);
     }
   }, [selectedConversationId, conversationDetails?.claudeSessionId, navigate]);
 
@@ -182,11 +183,10 @@ export const useChatPageLogic = () => {
 
     // Use the proper useChat hook for message sending
     const attachments = fileUpload.selectedFiles?.map(fileItem => ({
-      id: fileItem.id,
-      name: fileItem.file.name,
-      type: fileItem.file.type,
+      filename: fileItem.file.name,
+      mimeType: fileItem.file.type,
       size: fileItem.file.size,
-      url: fileItem.url || fileItem.localUrl,
+      url: fileItem.preview || `file://${fileItem.file.name}`,
     })) || [];
 
     if (convId) {
