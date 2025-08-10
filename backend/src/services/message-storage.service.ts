@@ -7,6 +7,7 @@
 
 import { PrismaClient, Message, Conversation } from '@prisma/client';
 import { logger } from '../utils/logger';
+import { StreamResponse } from '../types/claude-sdk';
 
 export class MessageStorageService {
   private prisma: PrismaClient;
@@ -74,6 +75,97 @@ export class MessageStorageService {
     } catch (error) {
       logger.storage?.error('❌ Failed to create assistant placeholder', { error, conversationId });
       throw new Error(`Failed to prepare response: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
+   * Store Claude Code SDK message with rich metadata
+   * Handles the new StreamResponse format with SDKMessage data
+   */
+  async createClaudeSDKMessage(
+    conversationId: string,
+    streamResponse: StreamResponse
+  ): Promise<Message> {
+    logger.storage?.info('Creating Claude Code SDK message', { 
+      conversationId, 
+      type: streamResponse.data.type,
+      sessionId: streamResponse.data.session_id,
+      requestId: streamResponse.requestId,
+      messageModel: streamResponse.data.message?.model 
+    });
+
+    try {
+      let content = '';
+      let role = 'assistant'; // Default role
+
+      // Extract content based on SDKMessage type
+      if (streamResponse.data.type === 'assistant') {
+        // SDKAssistantMessage
+        const assistantData = streamResponse.data;
+        if (assistantData.message?.content) {
+          if (Array.isArray(assistantData.message.content)) {
+            content = assistantData.message.content
+              .filter((block: any) => block.type === 'text')
+              .map((block: any) => block.text)
+              .join('');
+          } else if (typeof assistantData.message.content === 'string') {
+            content = assistantData.message.content;
+          }
+        }
+        role = 'assistant';
+      } else if (streamResponse.data.type === 'user') {
+        // SDKUserMessage
+        const userData = streamResponse.data;
+        if (userData.message?.content) {
+          content = Array.isArray(userData.message.content) 
+            ? JSON.stringify(userData.message.content)
+            : String(userData.message.content);
+        }
+        role = 'user';
+      } else if (streamResponse.data.type === 'result') {
+        // SDKResultMessage
+        const resultData = streamResponse.data;
+        if (resultData.subtype === 'success') {
+          content = resultData.result || `Execution completed successfully`;
+        } else {
+          content = `Execution ${resultData.subtype}: ${resultData.result || 'No details'}`;
+        }
+        role = 'system';
+      } else if (streamResponse.data.type === 'system') {
+        // SDKSystemMessage
+        const systemData = streamResponse.data;
+        content = `Claude Code initialized - Model: ${systemData.model}, Tools: ${systemData.tools?.length || 0}, MCP: ${systemData.mcp_servers?.length || 0}`;
+        role = 'system';
+      }
+
+      const message = await this.prisma.message.create({
+        data: {
+          conversationId,
+          role,
+          content,
+          type: streamResponse.type,
+          claudeData: streamResponse as any, // Store full StreamResponse
+          claudeMessageId: streamResponse.data.message?.id,
+          model: streamResponse.data.message?.model,
+          sessionId: streamResponse.data.session_id,
+          usage: streamResponse.data.message?.usage || streamResponse.data.usage,
+          timestamp: BigInt(streamResponse.timestamp),
+          status: 'completed',
+        },
+      });
+
+      logger.storage?.info('✅ Claude Code SDK message created successfully', { 
+        messageId: message.id,
+        claudeMessageId: message.claudeMessageId,
+        model: message.model,
+        contentLength: content.length,
+        role
+      });
+
+      return message;
+    } catch (error) {
+      logger.storage?.error('❌ Failed to create Claude Code SDK message', { error, conversationId });
+      throw new Error(`Failed to save Claude response: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 

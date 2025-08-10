@@ -266,13 +266,23 @@ model Message {
   conversationId String
   role           String    // user, assistant, system
   content        String    @db.Text
-  model          String?   // Model used for this specific message (if different)
-  tokenCount     Int?      // Token count for the message
+  
+  // Claude WebSocket format fields
+  type           String?   // claude_json, etc.
+  claudeData     Json?     // Full Claude WebSocket data structure
+  claudeMessageId String?  // data.message.id from Claude
+  model          String?   // data.message.model
+  sessionId      String?   // data.session_id
+  usage          Json?     // data.message.usage (tokens, etc.)
+  
+  // Legacy/fallback fields
+  tokenCount     Int?      // Fallback token count
   status         String    @default("completed") // sending, completed, failed
   error          String?   // Error message if failed
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
-  metadata       Json?     // Store tool calls, citations, etc.
+  metadata       Json?     // Additional metadata
+  timestamp      BigInt?   // WebSocket timestamp
 
   // Relations
   conversation   Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -283,6 +293,7 @@ model Message {
   @@index([conversationId])
   @@index([role])
   @@index([createdAt])
+  @@index([sessionId])
 }
 
 model MessageAttachment {

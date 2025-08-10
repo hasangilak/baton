@@ -190,10 +190,10 @@ io.on('connection', (socket) => {
       console.log(`✅ Assistant placeholder created with ID: ${assistantMessage.id}`);
 
       // 3. Store request mapping for streaming updates
-      if (!global.activeRequests) {
-        global.activeRequests = new Map();
+      if (!(global as any).activeRequests) {
+        (global as any).activeRequests = new Map();
       }
-      global.activeRequests.set(requestId, {
+      (global as any).activeRequests.set(requestId, {
         assistantMessageId: assistantMessage.id,
         conversationId,
         userMessageId: userMessage.id
@@ -201,7 +201,7 @@ io.on('connection', (socket) => {
 
       // 4. Forward to bridge service if connected
       const bridgeSockets = await io.in('claude-bridge').fetchSockets();
-      if (bridgeSockets.length > 0) {
+      if (bridgeSockets && bridgeSockets.length > 0) {
         // Forward to bridge service
         bridgeSockets[0].emit('claude:execute', {
           message: content,
@@ -321,8 +321,8 @@ io.on('connection', (socket) => {
     console.log(`📝 Received permission response from frontend:`, data.promptId);
     // Forward to bridge service
     const bridgeSockets = await io.in('claude-bridge').fetchSockets();
-    if (bridgeSockets.length > 0) {
-      bridgeSockets[0].emit('permission:response', {
+    if (bridgeSockets && bridgeSockets.length > 0) {
+      bridgeSockets[0]?.emit('permission:response', {
         promptId: data.promptId,
         selectedOption: data.selectedOption,
         label: data.label,
@@ -335,8 +335,8 @@ io.on('connection', (socket) => {
     console.log(`📋 Received plan review response from frontend:`, data.promptId);
     // Forward to bridge service  
     const bridgeSockets = await io.in('claude-bridge').fetchSockets();
-    if (bridgeSockets.length > 0) {
-      bridgeSockets[0].emit('plan:review-response', {
+    if (bridgeSockets && bridgeSockets.length > 0) {
+      bridgeSockets[0]?.emit('plan:review-response', {
         promptId: data.promptId,
         decision: data.decision,
         feedback: data.feedback,
@@ -445,79 +445,49 @@ io.on('connection', (socket) => {
     console.log(`📡 Received claude:stream from bridge for ${data.requestId}`);
     
     try {
-      // Get request mapping to find message ID
-      const requestInfo = global.activeRequests?.get(data.requestId);
+      // Get request mapping to find conversation
+      const requestInfo = (global as any).activeRequests?.get(data.requestId);
       if (!requestInfo) {
         console.warn(`⚠️ No request mapping found for ${data.requestId}`);
         // Still forward to frontend even without database storage
-        io.emit('chat:stream-response', {
-          requestId: data.requestId,
-          type: data.type,
-          data: data.data,
-          timestamp: data.timestamp
-        });
+        io.emit('chat:stream-response', data);
         return;
       }
 
-      // Extract content from Claude response for database storage
-      let content = '';
-      let isComplete = false;
-      
+      // Store Claude Code SDK message directly in database with new format
       if (data.type === 'claude_json' && data.data) {
-        if (data.data.type === 'assistant' && data.data.message) {
-          if (Array.isArray(data.data.message.content)) {
-            content = data.data.message.content
-              .filter((block: any) => block.type === 'text')
-              .map((block: any) => block.text)
-              .join('');
-          } else if (typeof data.data.message.content === 'string') {
-            content = data.data.message.content;
+        // For assistant messages, create new database entry
+        if (data.data.type === 'assistant') {
+          console.log(`💾 Storing Claude assistant message for conversation ${requestInfo.conversationId}`);
+          
+          // Create new message with Claude SDK format
+          await messageStorage.createClaudeSDKMessage(requestInfo.conversationId, data);
+          console.log(`✅ Claude assistant message stored successfully`);
+          
+          // Update conversation session ID if provided
+          if (data.data.session_id) {
+            await messageStorage.updateConversationSession(requestInfo.conversationId, data.data.session_id);
           }
-        } else if (data.data.type === 'result') {
-          isComplete = true;
         }
-
-        // Update assistant message in database if we have content
-        if (content || isComplete) {
-          await messageStorage.updateAssistantMessageStreaming(
-            requestInfo.assistantMessageId,
-            content,
-            isComplete,
-            data.data.session_id
-          );
-          console.log(`💾 Updated assistant message ${requestInfo.assistantMessageId} with ${content.length} chars`);
-        }
-
-        // Emit session ID immediately when first detected (don't wait for completion)
-        if (data.data.session_id) {
-          io.emit('chat:session-id-available', {
-            requestId: data.requestId,
-            conversationId: requestInfo.conversationId,
-            sessionId: data.data.session_id,
-            timestamp: data.timestamp
-          });
-          console.log(`🔗 Session ID available for ${requestInfo.conversationId}: ${data.data.session_id}`);
+        // For result messages, also store them for completeness
+        else if (data.data.type === 'result') {
+          console.log(`💾 Storing Claude result message for conversation ${requestInfo.conversationId}`);
+          await messageStorage.createClaudeSDKMessage(requestInfo.conversationId, data);
+          console.log(`✅ Claude result message stored successfully`);
         }
       }
 
-      // Forward to frontend clients with message ID
-      io.emit('chat:stream-response', {
-        requestId: data.requestId,
-        messageId: requestInfo.assistantMessageId,
-        conversationId: requestInfo.conversationId,
-        type: data.type,
-        data: data.data,
-        timestamp: data.timestamp
-      });
+      // Always forward to frontend for real-time updates
+      io.emit('chat:stream-response', data);
+      console.log(`📤 Forwarded claude:stream to frontend clients`);
+
     } catch (error) {
-      console.error(`❌ Error handling claude:stream for ${data.requestId}:`, error);
-      // Still forward to frontend even if database update fails
-      io.emit('chat:stream-response', {
+      console.error(`❌ Error in claude:stream handler for ${data.requestId}:`, error);
+      
+      // Forward error to frontend
+      io.emit('chat:error', {
         requestId: data.requestId,
-        type: data.type,
-        data: data.data,
-        timestamp: data.timestamp,
-        error: 'Database storage failed'
+        error: error instanceof Error ? error.message : 'Stream processing error'
       });
     }
   });
@@ -527,29 +497,24 @@ io.on('connection', (socket) => {
     
     try {
       // Get request mapping and clean up
-      const requestInfo = global.activeRequests?.get(data.requestId);
+      const requestInfo = (global as any).activeRequests?.get(data.requestId);
       if (requestInfo) {
         console.log(`🏁 Cleaning up request mapping for ${data.requestId}`);
-        global.activeRequests.delete(data.requestId);
+        (global as any).activeRequests.delete(data.requestId);
         
-        // Ensure final message state is completed in database
-        await messageStorage.updateAssistantMessageStreaming(
-          requestInfo.assistantMessageId,
-          '', // No additional content
-          true, // Mark as complete
-          data.sessionId
-        );
-        console.log(`✅ Assistant message ${requestInfo.assistantMessageId} marked as completed`);
+        // For Claude Code SDK format, we don't need to update the message
+        // as it's already been stored via the claude:stream handler
+        console.log(`✅ Request ${data.requestId} completed successfully`);
       }
     } catch (error) {
       console.error(`❌ Error in claude:complete handler for ${data.requestId}:`, error);
     }
 
-    // Forward to frontend clients
+    // Forward completion event to frontend clients
     io.emit('chat:message-complete', {
       requestId: data.requestId,
-      sessionId: data.sessionId,
-      timestamp: data.timestamp
+      sessionId: data.sessionId || data.data?.session_id,
+      timestamp: data.timestamp || Date.now()
     });
   });
 
@@ -558,10 +523,10 @@ io.on('connection', (socket) => {
     
     try {
       // Clean up request mapping and mark message as failed
-      const requestInfo = global.activeRequests?.get(data.requestId);
+      const requestInfo = (global as any).activeRequests?.get(data.requestId);
       if (requestInfo) {
         console.log(`🧹 Cleaning up failed request mapping for ${data.requestId}`);
-        global.activeRequests.delete(data.requestId);
+        (global as any).activeRequests.delete(data.requestId);
         
         // Mark assistant message as failed
         await messageStorage.markMessageFailed(requestInfo.assistantMessageId, data.error);
@@ -584,10 +549,10 @@ io.on('connection', (socket) => {
     
     try {
       // Clean up request mapping and mark message as failed
-      const requestInfo = global.activeRequests?.get(data.requestId);
+      const requestInfo = (global as any).activeRequests?.get(data.requestId);
       if (requestInfo) {
         console.log(`🧹 Cleaning up aborted request mapping for ${data.requestId}`);
-        global.activeRequests.delete(data.requestId);
+        (global as any).activeRequests.delete(data.requestId);
         
         // Mark assistant message as failed due to abort
         await messageStorage.markMessageFailed(requestInfo.assistantMessageId, 'Request was aborted');

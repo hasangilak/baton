@@ -92,9 +92,9 @@ class ClaudeCodeBridge {
         const timeout = setTimeout(() => {
           console.warn(`⚠️  Permission mode request timeout for conversation ${conversationId}`);
           resolve('default');
-        }, 5000);
+        }, 10000);
 
-        this.backendSocket.emit('permission:get-mode', { conversationId }, (response: any) => {
+        this.backendSocket?.emit('permission:get-mode', { conversationId }, (response: any) => {
           clearTimeout(timeout);
           const mode = response?.permissionMode || 'default';
           
@@ -587,28 +587,24 @@ class ClaudeCodeBridge {
         return { 
           behavior: 'deny', 
           message: response.feedback || 'Plan was rejected by user',
-          planReviewId: promptId 
         };
       } else if (response.value === 'edit_plan') {
         console.log(`✏️ User requested plan edit`);
         return { 
           behavior: 'allow', 
           updatedInput: { ...parameters, plan: response.editedPlan || planContent },
-          planReviewId: promptId
         };
       } else if (response.value === 'auto_accept' || response.value === 'review_accept') {
         console.log(`✅ User approved plan: ${response.value}`);
         return { 
           behavior: 'allow', 
           updatedInput: parameters,
-          planReviewId: promptId
         };
       } else {
         // Timeout or other error - deny for safety
         return { 
           behavior: 'deny', 
           message: 'Plan review timeout or system error',
-          planReviewId: promptId 
         };
       }
       
@@ -617,7 +613,6 @@ class ClaudeCodeBridge {
       return { 
         behavior: 'deny', 
         message: 'Plan review system error - please try again',
-        updatedInput: parameters
       };
     }
   }
@@ -654,7 +649,7 @@ class ClaudeCodeBridge {
           resolve(false);
         }, 5000);
 
-        this.backendSocket.emit('conversation:check', { conversationId }, (response: any) => {
+        this.backendSocket?.emit('conversation:check', { conversationId }, (response: any) => {
           clearTimeout(timeout);
           resolve(response?.exists || false);
         });
@@ -672,7 +667,7 @@ class ClaudeCodeBridge {
           resolve(false);
         }, 5000);
 
-        this.backendSocket.emit('conversation:create', {
+        this.backendSocket?.emit('conversation:create', {
           conversationId,
           message: 'Bridge conversation initialized',
           projectId: 'cmdxumi04000k4yhw92fvsqqa', // Use baton project
