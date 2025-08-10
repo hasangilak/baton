@@ -235,49 +235,52 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
       // No need for additional processing here
     });
 
+    // Listen for session ID availability (immediate, not waiting for completion)
+    socket.on('chat:session-id-available', async (data) => {
+      console.log('🔗 Session ID available:', data.sessionId, 'for conversation:', data.conversationId);
+      
+      // Find the conversation ID from the current URL or global state
+      const currentConversationId = (window as any).__currentConversationId || 
+                                   window.location.pathname.split('/chat/')[1]?.split('?')[0];
+      
+      // Only update if this is for the current conversation
+      if (currentConversationId === data.conversationId) {
+        try {
+          // Update the conversation record with the session ID
+          const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+          const response = await fetch(`${API_BASE_URL}/api/chat/conversations/${currentConversationId}/session`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ claudeSessionId: data.sessionId })
+          });
+          
+          if (response.ok) {
+            console.log('✅ Conversation updated with session ID immediately');
+            
+            // Update the browser URL with session ID
+            const currentUrl = new URL(window.location.href);
+            currentUrl.searchParams.set('sessionId', data.sessionId);
+            window.history.replaceState({}, '', currentUrl.toString());
+            
+            console.log('🔄 Updated URL with session ID immediately:', currentUrl.toString());
+            
+            // Invalidate conversation details to refetch with new session ID
+            queryClient.invalidateQueries({ 
+              queryKey: ['chat', 'conversation', currentConversationId]
+            });
+          } else {
+            console.error('❌ Failed to update conversation with session ID');
+          }
+        } catch (error) {
+          console.error('❌ Error updating session ID:', error);
+        }
+      }
+    });
+
     socket.on('chat:message-complete', async (data) => {
       console.log('✅ Chat message complete:', data.requestId, 'Session ID:', data.sessionId);
       
-      // If we have a session ID, update the conversation record and URL
-      if (data.sessionId && data.requestId) {
-        console.log('🔗 Updating conversation with Claude session ID:', data.sessionId);
-        
-        // Find the conversation ID from the current URL or global state
-        const currentConversationId = (window as any).__currentConversationId || 
-                                     window.location.pathname.split('/chat/')[1]?.split('?')[0];
-        
-        if (currentConversationId) {
-          try {
-            // Update the conversation record with the session ID
-            const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-            const response = await fetch(`${API_BASE_URL}/api/chat/conversations/${currentConversationId}/session`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ claudeSessionId: data.sessionId })
-            });
-            
-            if (response.ok) {
-              console.log('✅ Conversation updated with session ID');
-              
-              // Update the browser URL with session ID
-              const currentUrl = new URL(window.location.href);
-              currentUrl.searchParams.set('sessionId', data.sessionId);
-              window.history.replaceState({}, '', currentUrl.toString());
-              
-              console.log('🔄 Updated URL with session ID:', currentUrl.toString());
-              
-              // Invalidate conversation details to refetch with new session ID
-              queryClient.invalidateQueries({ 
-                queryKey: ['chat', 'conversation', currentConversationId]
-              });
-            } else {
-              console.warn('⚠️ Failed to update conversation with session ID');
-            }
-          } catch (error) {
-            console.error('❌ Error updating conversation with session ID:', error);
-          }
-        }
-      }
+      // Session ID handling is now done immediately via chat:session-id-available event
       
       // Invalidate conversation-specific message queries
       if (data.conversationId) {

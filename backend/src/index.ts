@@ -474,6 +474,17 @@ io.on('connection', (socket) => {
           );
           console.log(`💾 Updated assistant message ${requestInfo.assistantMessageId} with ${content.length} chars`);
         }
+
+        // Emit session ID immediately when first detected (don't wait for completion)
+        if (data.data.session_id) {
+          io.emit('chat:session-id-available', {
+            requestId: data.requestId,
+            conversationId: requestInfo.conversationId,
+            sessionId: data.data.session_id,
+            timestamp: data.timestamp
+          });
+          console.log(`🔗 Session ID available for ${requestInfo.conversationId}: ${data.data.session_id}`);
+        }
       }
 
       // Forward to frontend clients with message ID
