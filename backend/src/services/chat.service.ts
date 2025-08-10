@@ -131,7 +131,7 @@ export class ChatService extends EventEmitter {
       }
     }
 
-    return prisma.message.findMany({
+    const messages = await prisma.message.findMany({
       where: {
         conversationId,
       },
@@ -143,6 +143,12 @@ export class ChatService extends EventEmitter {
         codeBlocks: true,
       },
     });
+
+    // Convert BigInt timestamp to number for JSON serialization
+    return messages.map(message => ({
+      ...message,
+      timestamp: message.timestamp ? Number(message.timestamp) : null,
+    }));
   }
 
   /**
