@@ -289,6 +289,31 @@ class ChatService {
     return this.ensureSocketConnection();
   }
   
+  // Create conversation via WebSocket
+  async createConversationWS(data: CreateConversationRequest): Promise<ApiResponse<Conversation>> {
+    const socket = this.ensureSocketConnection();
+    
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        reject(new Error('WebSocket conversation creation timeout'));
+      }, 10000); // 10 second timeout
+      
+      socket.emit('conversation:create', data, (response: any) => {
+        clearTimeout(timeout);
+        
+        if (response.success && response.conversation) {
+          resolve({
+            success: true,
+            conversation: response.conversation,
+            data: response.conversation
+          });
+        } else {
+          reject(new Error(response.error || 'Failed to create conversation'));
+        }
+      });
+    });
+  }
+  
   // Clean up WebSocket connection
   disconnect(): void {
     if (this.socket) {

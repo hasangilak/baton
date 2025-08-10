@@ -65,6 +65,33 @@ export const useChatPageLogic = () => {
   // Get conversation details including Claude session ID
   const { data: conversationDetails } = useConversation(selectedConversationId);
   
+  // Auto-create conversation when visiting /chat without a conversation ID
+  useEffect(() => {
+    // Only auto-create if we're on the base /chat route (no conversationId) and we have a project
+    if (!conversationId && !selectedConversationId && currentProjectId && isNewChat) {
+      const autoCreateConversation = async () => {
+        try {
+          console.log('🚀 Auto-creating conversation for project:', currentProjectId);
+          const result = await createConversation.mutateAsync('New Chat');
+          
+          const newConversationId = (result as { id?: string; conversation?: { id?: string } })?.id || 
+                                   (result as { id?: string; conversation?: { id?: string } })?.conversation?.id;
+          
+          if (newConversationId) {
+            console.log('✅ Auto-created conversation:', newConversationId);
+            setSelectedConversationId(newConversationId);
+          } else {
+            console.error('❌ Failed to get conversation ID from auto-creation result');
+          }
+        } catch (error) {
+          console.error('❌ Failed to auto-create conversation:', error);
+        }
+      };
+      
+      autoCreateConversation();
+    }
+  }, [conversationId, selectedConversationId, currentProjectId, createConversation, setSelectedConversationId, isNewChat]);
+  
   // Fetch persisted messages for the selected conversation with session ID
   const { messages: dbMessages, isLoading: isLoadingMessages } = useMessages(selectedConversationId, urlSessionId || undefined);
 
@@ -154,12 +181,12 @@ export const useChatPageLogic = () => {
     }
 
     // Use the proper useChat hook for message sending
-    const attachments = fileUpload.files?.map(file => ({
-      id: file.id,
-      name: file.name,
-      type: file.type,
-      size: file.size,
-      url: file.url || file.localUrl,
+    const attachments = fileUpload.selectedFiles?.map(fileItem => ({
+      id: fileItem.id,
+      name: fileItem.file.name,
+      type: fileItem.file.type,
+      size: fileItem.file.size,
+      url: fileItem.url || fileItem.localUrl,
     })) || [];
 
     if (convId) {

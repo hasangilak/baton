@@ -28,7 +28,7 @@ export function useConversations(projectId: string) {
 
   const createConversation = useMutation({
     mutationFn: (title?: string) => 
-      chatService.createConversation({ projectId, title }),
+      chatService.createConversationWS({ projectId, title }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: chatKeys.conversations(projectId) });
       success('Success', 'New conversation created');

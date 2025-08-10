@@ -362,20 +362,33 @@ io.on('connection', (socket) => {
 
   socket.on('conversation:create', async (data, callback) => {
     try {
-      const { conversationId, projectId, userId } = data;
+      const { projectId, userId, title } = data;
+      
+      if (!projectId) {
+        callback({ success: false, error: 'Project ID is required' });
+        return;
+      }
+      
       const conversation = await prisma.conversation.create({
         data: {
-          id: conversationId,
           projectId,
-          userId,
-          title: 'Bridge conversation'
-        }
+          userId: userId || 'user_default',
+          title: title || 'New Conversation',
+          model: 'claude-code-headless',
+        },
+        include: {
+          project: true,
+        },
       });
       
-      callback({ success: !!conversation });
+      // Emit event for real-time updates
+      socket.to(`project-${projectId}`).emit('conversation:created', conversation);
+      
+      console.log(`✅ Created conversation ${conversation.id} for project ${projectId} via WebSocket`);
+      callback({ success: true, conversation });
     } catch (error) {
-      console.error('❌ Error creating conversation:', error);
-      callback({ success: false });
+      console.error('❌ Error creating conversation via WebSocket:', error);
+      callback({ success: false, error: error instanceof Error ? error.message : 'Unknown error' });
     }
   });
 
