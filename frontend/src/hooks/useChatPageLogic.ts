@@ -167,15 +167,51 @@ export const useChatPageLogic = () => {
   };
 
   // Permission mode cycling function
-  const cyclePermissionMode = () => {
-    setPermissionMode(current => {
-      switch (current) {
+  const cyclePermissionMode = async () => {
+    if (!selectedConversationId) {
+      console.warn('Cannot cycle permission mode: no conversation selected');
+      return;
+    }
+
+    const newMode = (() => {
+      switch (permissionMode) {
         case 'default': return 'plan';
         case 'plan': return 'acceptEdits';
         case 'acceptEdits': return 'default';
         default: return 'default';
       }
-    });
+    })();
+
+    // Update local state immediately for responsiveness
+    setPermissionMode(newMode);
+
+    // Persist to database
+    try {
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const response = await fetch(`${API_BASE_URL}/api/chat/conversations/${selectedConversationId}/permission-mode`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          permissionMode: newMode,
+          reason: 'manual_user_cycle'
+        })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        console.error('Failed to update permission mode:', error.error);
+        // Revert local state on error
+        setPermissionMode(permissionMode);
+      } else {
+        console.log(`✅ Permission mode updated to '${newMode}' and persisted to database`);
+      }
+    } catch (error) {
+      console.error('Error updating permission mode:', error);
+      // Revert local state on error
+      setPermissionMode(permissionMode);
+    }
   };
 
   return {
