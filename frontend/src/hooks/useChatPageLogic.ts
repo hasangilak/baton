@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useConversations, useConversation, useMessages, useChat } from './useChat';
 import { useProjects } from './useProjects';
@@ -16,6 +16,9 @@ export const useChatPageLogic = () => {
   const [inputValue, setInputValue] = useState('');
   const [showSidebar, setShowSidebar] = useState(false);
   const [permissionMode, setPermissionMode] = useState<'default' | 'plan' | 'acceptEdits'>('default');
+  
+  // Ref to track if conversation creation is already in progress
+  const isCreatingConversationRef = useRef(false);
 
   // Get current project
   const { data: projects } = useProjects();
@@ -67,7 +70,10 @@ export const useChatPageLogic = () => {
   // Auto-create conversation when visiting /chat without a conversation ID
   useEffect(() => {
     // Only auto-create if we're on the base /chat route (no conversationId) and we have a project
-    if (!conversationId && !selectedConversationId && currentProjectId) {
+    // AND we're not already creating a conversation
+    if (!conversationId && !selectedConversationId && currentProjectId && !isCreatingConversationRef.current) {
+      isCreatingConversationRef.current = true;
+      
       const autoCreateConversation = async () => {
         try {
           console.log('🚀 Auto-creating conversation for project:', currentProjectId);
@@ -84,12 +90,22 @@ export const useChatPageLogic = () => {
           }
         } catch (error) {
           console.error('❌ Failed to auto-create conversation:', error);
+        } finally {
+          // Reset the flag regardless of success or failure
+          isCreatingConversationRef.current = false;
         }
       };
       
       autoCreateConversation();
     }
-  }, [conversationId, selectedConversationId, currentProjectId, createConversation, setSelectedConversationId]);
+  }, [conversationId, selectedConversationId, currentProjectId]);
+  
+  // Reset creation flag when conversation ID changes (for cleanup)
+  useEffect(() => {
+    if (selectedConversationId) {
+      isCreatingConversationRef.current = false;
+    }
+  }, [selectedConversationId]);
   
   // Fetch persisted messages for the selected conversation with session ID
   const { messages: dbMessages, isLoading: isLoadingMessages } = useMessages(selectedConversationId, urlSessionId || undefined);
