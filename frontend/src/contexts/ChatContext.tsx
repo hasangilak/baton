@@ -198,26 +198,36 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     conversationId: state.selectedConversationId
   });
 
-  // Sync hook state with context state
+  // Sync hook state with context state - only dispatch if values actually changed
   useEffect(() => {
-    dispatch({ type: 'SET_MESSAGES', payload: messages });
-  }, [messages]);
+    if (JSON.stringify(state.messages) !== JSON.stringify(messages)) {
+      dispatch({ type: 'SET_MESSAGES', payload: messages });
+    }
+  }, [messages, state.messages]);
 
   useEffect(() => {
-    dispatch({ type: 'SET_STREAMING_STATE', payload: { isStreaming, message: streamingMessage } });
-  }, [isStreaming, streamingMessage]);
+    if (state.isStreaming !== isStreaming || state.streamingMessage !== streamingMessage) {
+      dispatch({ type: 'SET_STREAMING_STATE', payload: { isStreaming, message: streamingMessage } });
+    }
+  }, [isStreaming, streamingMessage, state.isStreaming, state.streamingMessage]);
 
   useEffect(() => {
-    dispatch({ type: 'SET_OPTIMISTIC_MESSAGE', payload: optimisticUserMessage });
-  }, [optimisticUserMessage]);
+    if (state.optimisticUserMessage !== optimisticUserMessage) {
+      dispatch({ type: 'SET_OPTIMISTIC_MESSAGE', payload: optimisticUserMessage });
+    }
+  }, [optimisticUserMessage, state.optimisticUserMessage]);
 
   useEffect(() => {
-    dispatch({ type: 'SET_CONNECTION_STATE', payload: isConnected });
-  }, [isConnected]);
+    if (state.isConnected !== isConnected) {
+      dispatch({ type: 'SET_CONNECTION_STATE', payload: isConnected });
+    }
+  }, [isConnected, state.isConnected]);
 
   useEffect(() => {
-    dispatch({ type: 'SET_CONVERSATION_DETAILS', payload: conversationDetails });
-  }, [conversationDetails]);
+    if (state.conversationDetails !== conversationDetails) {
+      dispatch({ type: 'SET_CONVERSATION_DETAILS', payload: conversationDetails });
+    }
+  }, [conversationDetails, state.conversationDetails]);
 
   // Action handlers
   const createConversation = useCallback(async (title?: string) => {

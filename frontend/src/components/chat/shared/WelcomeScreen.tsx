@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { ChevronUp, MoreHorizontal, Paperclip, Search, Send, Sparkles, Edit3, BookOpen, Code2, Lock, FileText, Edit } from 'lucide-react';
-import { FileUploadArea } from '../FileUploadArea';
+import { FileUploadArea } from '../input/FileUpload';
 import { ActionButton } from './ActionButton';
 
 interface Props { 

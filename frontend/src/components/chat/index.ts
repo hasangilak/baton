@@ -1,8 +1,7 @@
-// ChatPage is deprecated - use ChatLayoutDesktop and ChatLayoutMobile directly
-export { ChatLayoutDesktop } from './components/layout/ChatLayoutDesktop';
-export { ChatLayoutMobile } from './components/layout/ChatLayoutMobile';
-export { ConversationList } from './ConversationList';
-export { FileUploadArea } from './FileUploadArea';
-export { InteractivePromptComponent } from './InteractivePrompt';
-export { MessageInput } from './MessageInput';
-export { PermissionAnalyticsDashboard } from './PermissionAnalyticsDashboard';
+// Refactored chat components - use new layout structure
+export { ChatPageDesktop } from './layouts/ChatPageDesktop';
+export { ChatPageMobile } from './layouts/ChatPageMobile';
+export { SimpleMessageRenderer } from './messages/SimpleMessageRenderer';
+export { FileUploadArea } from './input/FileUpload';
+export { ConversationInputArea } from './input/ConversationInputArea';
+export { WelcomeScreen } from './shared/WelcomeScreen';

@@ -6,7 +6,7 @@
 
 import React from 'react';
 import { X, FileText, Image, Code2, FileType } from 'lucide-react';
-import type { FileUploadItem } from '../../hooks/useFileUpload';
+import type { FileUploadItem } from '../../../hooks/useFileUpload';
 
 interface FileUploadAreaProps {
   files: FileUploadItem[];

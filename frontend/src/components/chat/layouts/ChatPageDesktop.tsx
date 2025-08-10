@@ -246,13 +246,13 @@ export const ChatPageDesktop: React.FC = () => {
       <div className="flex-1 flex flex-col min-h-0">
         {isNewChat ? (
           <WelcomeScreen
-            inputValue={inputValue}
+            inputValue={state.inputValue}
             setInputValue={setInputValue}
             handleKeyPress={handleKeyPress}
             handleSendMessage={handleSendMessage}
             fileUpload={fileUpload}
             getGreeting={getGreeting}
-            permissionMode={permissionMode}
+            permissionMode={state.permissionMode}
             onCyclePermissionMode={cyclePermissionMode}
           />
         ) : (
