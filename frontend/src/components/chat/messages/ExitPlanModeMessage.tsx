@@ -41,43 +41,94 @@ const ExitPlanModeMessage: React.FC<ExitPlanModeMessageProps> = ({
   // Custom components for ReactMarkdown with dark theme styling
   const markdownComponents = {
     // Headings with proper hierarchy and colors
-    h1: ({ children }: any) => (
-      <h1 className="text-lg font-bold mt-4 mb-2 text-blue-300 border-b border-blue-800 pb-1">{children}</h1>
-    ),
-    h2: ({ children }: any) => (
-      <h2 className="text-base font-semibold mt-3 mb-2 text-blue-400">{children}</h2>
-    ),
-    h3: ({ children }: any) => (
-      <h3 className="text-sm font-semibold mt-3 mb-1 text-gray-200">{children}</h3>
-    ),
-    h4: ({ children }: any) => (
-      <h4 className="text-sm font-medium mt-2 mb-1 text-gray-300">{children}</h4>
-    ),
-    h5: ({ children }: any) => (
-      <h5 className="text-xs font-medium mt-1 mb-1 text-gray-400">{children}</h5>
-    ),
-    h6: ({ children }: any) => (
-      <h6 className="text-xs font-medium mt-1 mb-1 text-gray-500">{children}</h6>
-    ),
+    h1: (props: React.HTMLAttributes<HTMLHeadingElement>) => {
+      const { children, ...rest } = props;
+      return (
+        <h1 className="text-lg font-bold mt-4 mb-2 text-blue-300 border-b border-blue-800 pb-1" {...rest}>
+          {children}
+        </h1>
+      );
+    },
+    h2: (props: React.HTMLAttributes<HTMLHeadingElement>) => {
+      const { children, ...rest } = props;
+      return (
+        <h2 className="text-base font-semibold mt-3 mb-2 text-blue-400" {...rest}>
+          {children}
+        </h2>
+      );
+    },
+    h3: (props: React.HTMLAttributes<HTMLHeadingElement>) => {
+      const { children, ...rest } = props;
+      return (
+        <h3 className="text-sm font-semibold mt-3 mb-1 text-gray-200" {...rest}>
+          {children}
+        </h3>
+      );
+    },
+    h4: (props: React.HTMLAttributes<HTMLHeadingElement>) => {
+      const { children, ...rest } = props;
+      return (
+        <h4 className="text-sm font-medium mt-2 mb-1 text-gray-300" {...rest}>
+          {children}
+        </h4>
+      );
+    },
+    h5: (props: React.HTMLAttributes<HTMLHeadingElement>) => {
+      const { children, ...rest } = props;
+      return (
+        <h5 className="text-xs font-medium mt-1 mb-1 text-gray-400" {...rest}>
+          {children}
+        </h5>
+      );
+    },
+    h6: (props: React.HTMLAttributes<HTMLHeadingElement>) => {
+      const { children, ...rest } = props;
+      return (
+        <h6 className="text-xs font-medium mt-1 mb-1 text-gray-500" {...rest}>
+          {children}
+        </h6>
+      );
+    },
     
     // Paragraphs
-    p: ({ children }: any) => (
-      <p className="text-xs text-gray-300 leading-relaxed mb-2">{children}</p>
-    ),
+    p: (props: React.HTMLAttributes<HTMLParagraphElement>) => {
+      const { children, ...rest } = props;
+      return (
+        <p className="text-xs text-gray-300 leading-relaxed mb-2" {...rest}>
+          {children}
+        </p>
+      );
+    },
     
     // Lists
-    ul: ({ children }: any) => (
-      <ul className="text-xs text-gray-300 ml-4 mb-2 list-disc space-y-1">{children}</ul>
-    ),
-    ol: ({ children }: any) => (
-      <ol className="text-xs text-gray-300 ml-4 mb-2 list-decimal space-y-1">{children}</ol>
-    ),
-    li: ({ children }: any) => (
-      <li className="text-xs text-gray-300">{children}</li>
-    ),
+    ul: (props: React.HTMLAttributes<HTMLUListElement>) => {
+      const { children, ...rest } = props;
+      return (
+        <ul className="text-xs text-gray-300 ml-4 mb-2 list-disc space-y-1" {...rest}>
+          {children}
+        </ul>
+      );
+    },
+    ol: (props: React.HTMLAttributes<HTMLOListElement>) => {
+      const { children, ...rest } = props;
+      return (
+        <ol className="text-xs text-gray-300 ml-4 mb-2 list-decimal space-y-1" {...rest}>
+          {children}
+        </ol>
+      );
+    },
+    li: (props: React.HTMLAttributes<HTMLLIElement>) => {
+      const { children, ...rest } = props;
+      return (
+        <li className="text-xs text-gray-300" {...rest}>
+          {children}
+        </li>
+      );
+    },
     
     // Code blocks with syntax highlighting
-    code: ({ inline, className, children, ...props }: any) => {
+    code: (props: React.HTMLAttributes<HTMLElement> & { inline?: boolean }) => {
+      const { inline, className, children, ...rest } = props;
       const match = /language-(\w+)/.exec(className || '');
       return !inline && match ? (
         <SyntaxHighlighter
@@ -85,45 +136,67 @@ const ExitPlanModeMessage: React.FC<ExitPlanModeMessageProps> = ({
           language={match[1]}
           PreTag="div"
           className="rounded text-xs my-2"
-          {...props}
         >
           {String(children).replace(/\n$/, '')}
         </SyntaxHighlighter>
       ) : (
-        <code className="bg-gray-800 text-blue-300 px-1 py-0.5 rounded text-xs font-mono" {...props}>
+        <code className="bg-gray-800 text-blue-300 px-1 py-0.5 rounded text-xs font-mono" {...rest}>
           {children}
         </code>
       );
     },
     
     // Blockquotes
-    blockquote: ({ children }: any) => (
-      <blockquote className="border-l-2 border-blue-500 pl-3 ml-2 text-xs text-gray-400 italic my-2">
-        {children}
-      </blockquote>
-    ),
+    blockquote: (props: React.HTMLAttributes<HTMLQuoteElement>) => {
+      const { children, ...rest } = props;
+      return (
+        <blockquote className="border-l-2 border-blue-500 pl-3 ml-2 text-xs text-gray-400 italic my-2" {...rest}>
+          {children}
+        </blockquote>
+      );
+    },
     
     // Strong/bold text
-    strong: ({ children }: any) => (
-      <strong className="font-semibold text-gray-200">{children}</strong>
-    ),
+    strong: (props: React.HTMLAttributes<HTMLElement>) => {
+      const { children, ...rest } = props;
+      return (
+        <strong className="font-semibold text-gray-200" {...rest}>
+          {children}
+        </strong>
+      );
+    },
     
     // Emphasis/italic text
-    em: ({ children }: any) => (
-      <em className="italic text-gray-300">{children}</em>
-    ),
+    em: (props: React.HTMLAttributes<HTMLElement>) => {
+      const { children, ...rest } = props;
+      return (
+        <em className="italic text-gray-300" {...rest}>
+          {children}
+        </em>
+      );
+    },
     
     // Horizontal rule
-    hr: () => (
-      <hr className="border-gray-700 my-3" />
-    ),
+    hr: (props: React.HTMLAttributes<HTMLHRElement>) => {
+      const { ...rest } = props;
+      return <hr className="border-gray-700 my-3" {...rest} />;
+    },
     
     // Links
-    a: ({ children, href }: any) => (
-      <a href={href} className="text-blue-400 hover:text-blue-300 underline text-xs" target="_blank" rel="noopener noreferrer">
-        {children}
-      </a>
-    ),
+    a: (props: React.AnchorHTMLAttributes<HTMLAnchorElement>) => {
+      const { children, href, ...rest } = props;
+      return (
+        <a 
+          href={href} 
+          className="text-blue-400 hover:text-blue-300 underline text-xs" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          {...rest}
+        >
+          {children}
+        </a>
+      );
+    },
   };
 
   const planLines = planContent.split('\n').length;
@@ -162,7 +235,6 @@ const ExitPlanModeMessage: React.FC<ExitPlanModeMessageProps> = ({
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={markdownComponents}
-              className="prose prose-sm max-w-none"
             >
               {planContent}
             </ReactMarkdown>
