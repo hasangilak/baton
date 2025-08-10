@@ -8,7 +8,7 @@ interface Props {
   isResuming?: boolean;
 }
 
-export const SessionInfoBar: React.FC<Props> = ({ sessionId, contextTokens, onResumeSession, isResuming = false }) => {
+export const SessionInfo: React.FC<Props> = ({ sessionId, contextTokens, onResumeSession, isResuming = false }) => {
   if (!sessionId) return null;
   return (
     <div className="bg-[#202123] border-b border-[#2C2D30] px-3 md:px-4 py-2 flex items-center justify-between text-[11px]">

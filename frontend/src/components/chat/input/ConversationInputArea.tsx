@@ -1,7 +1,7 @@
 import React from 'react';
 import { Paperclip, Send, Lock, FileText, Edit } from 'lucide-react';
-import { FileUploadArea } from '../FileUploadArea';
-import { SimpleFileReferenceMentions } from '../SimpleFileReferenceMentions';
+import { FileUploadArea } from './FileUpload';
+import { SimpleFileReferenceMentions } from './FileMentions';
 
 interface Props { 
   inputValue: string; 

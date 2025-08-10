@@ -51,7 +51,7 @@ const riskAccentMap: Record<string, { badge: string; bar: string; icon: string }
 
 // Legacy helpers (variant, icon) removed for minimal design; inline logic below.
 
-export const InteractivePromptComponent: React.FC<InteractivePromptComponentProps> = ({
+export const PermissionPrompt: React.FC<InteractivePromptComponentProps> = ({
   prompt,
   onOptionSelect,
   isResponding = false

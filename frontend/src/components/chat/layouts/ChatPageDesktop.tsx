@@ -1,45 +1,41 @@
 import React from "react";
 import { Menu, Plus } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import { WelcomeScreen } from "../WelcomeScreen";
-import { SessionInfoBar } from "../SessionInfoBar";
-import { ConversationInputArea } from "../ConversationInputArea";
-import { DropdownMenu } from "../DropdownMenu";
-import { useChatPageLogic } from "../../../../hooks/useChatPageLogic";
-import { useConversationItems } from "../../../../hooks/useConversationItems";
-import { ConversationItemRenderer } from "../ConversationItem";
-import { usePlanReview, usePlanReviewWebSocket } from "../../../../hooks/usePlanReview";
+import { WelcomeScreen } from "../shared/WelcomeScreen";
+import { SessionInfo } from "../shared/SessionInfo";
+import { ConversationInputArea } from "../input/ConversationInputArea";
+import { DropdownMenu } from "../sidebar/DropdownMenu";
+import { SimpleMessageRenderer } from "../messages/SimpleMessageRenderer";
+import { useChatContext } from "../../../contexts/ChatContext";
+import { useFileUpload } from "../../../hooks/useFileUpload";
+import { useInteractivePrompts } from "../../../hooks/useInteractivePrompts";
 
-export const ChatLayoutDesktop: React.FC = () => {
+export const ChatPageDesktop: React.FC = () => {
   const {
-    isNewChat,
-    inputValue,
-    setInputValue,
-    handleKeyPress,
-    handleSendMessage,
-    fileUpload,
-    getGreeting,
-    conversationDetails,
-    urlSessionId,
-    streamingMessage,
-    optimisticUserMessage,
-    isStreaming,
+    state,
+    conversations,
+    selectConversation,
+    sendMessage,
     stopStreaming,
+    setInputValue,
+    setSidebarVisible,
+    setPermissionMode,
+    archiveConversation,
+    deleteConversation,
+    isNewChat,
+  } = useChatContext();
+
+  const fileUpload = useFileUpload({
+    maxFiles: 5,
+    maxSizeBytes: 25 * 1024 * 1024,
+    onError: (err) => console.error('File upload error:', err)
+  });
+
+  const {
     pendingPrompts,
     isRespondingToPrompt,
     handlePromptResponse,
-    displayConversations,
-    selectedConversationId,
-    setSelectedConversationId,
-    showSidebar,
-    setShowSidebar,
-    isLoadingMessages,
-    dbMessages,
-    archiveConversation,
-    deleteConversation,
-    permissionMode,
-    cyclePermissionMode,
-  } = useChatPageLogic();
+  } = useInteractivePrompts({ conversationId: state.selectedConversationId });
 
   // State for ESC key abort feedback
   const [showAbortFeedback, setShowAbortFeedback] = React.useState(false);
@@ -47,26 +43,51 @@ export const ChatLayoutDesktop: React.FC = () => {
   // State for session resume
   const [isResuming, setIsResuming] = React.useState(false);
 
-  // Plan review functionality
-  const planReview = usePlanReview({
-    conversationId: selectedConversationId || undefined,
-    onPlanReviewResolved: (decision) => {
-      console.log('📋 Plan review resolved:', decision);
+  // Helper functions
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 18) return 'Good afternoon';
+    return 'Good evening';
+  };
+
+  const handleSendMessage = async () => {
+    const trimmed = state.inputValue.trim();
+    if (!trimmed) return;
+
+    const attachments = fileUpload.selectedFiles?.map(fileItem => ({
+      filename: fileItem.file.name,
+      mimeType: fileItem.file.type,
+      size: fileItem.file.size,
+      url: fileItem.preview || `file://${fileItem.file.name}`,
+    })) || [];
+
+    try {
+      await sendMessage(trimmed, attachments.length > 0 ? attachments : undefined);
+      fileUpload.clearFiles();
+    } catch (error) {
+      console.error('Failed to send message:', error);
     }
-  });
+  };
 
-  // Set up WebSocket listeners for plan reviews
-  usePlanReviewWebSocket();
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
 
-  // Always call hooks at top level - never conditionally
-  const conversationItems = useConversationItems({
-    dbMessages,
-    streamingMessage,
-    optimisticUserMessage,
-    isStreaming,
-    pendingPrompts,
-    selectedConversationId
-  });
+  const cyclePermissionMode = () => {
+    const newMode = (() => {
+      switch (state.permissionMode) {
+        case 'default': return 'plan';
+        case 'plan': return 'acceptEdits';
+        case 'acceptEdits': return 'default';
+        default: return 'default';
+      }
+    })();
+    setPermissionMode(newMode);
+  };
 
   const scrollContainerRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
@@ -80,15 +101,15 @@ export const ChatLayoutDesktop: React.FC = () => {
       }
     });
   }, [
-    conversationItems.length,
-    isStreaming,
+    state.messages.length,
+    state.isStreaming,
   ]);
 
   // ESC key handler for aborting conversations (Claude Code style)
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Only handle ESC key during streaming and not when modal/dropdown is open
-      if (e.key === 'Escape' && isStreaming) {
+      if (e.key === 'Escape' && state.isStreaming) {
         // Check if there are any open modals/dropdowns to avoid interference
         const hasOpenModal = document.querySelector('[role="dialog"]');
         const hasOpenDropdown = document.querySelector('[role="menu"]');
@@ -119,7 +140,7 @@ export const ChatLayoutDesktop: React.FC = () => {
     return () => {
       document.removeEventListener('keydown', handleKeyDown, { capture: true });
     };
-  }, [isStreaming]);
+  }, [state.isStreaming, stopStreaming]);
 
   // Handle session resume - WebSocket approach doesn't need explicit session resume
   const handleResumeSession = React.useCallback(async () => {
@@ -144,7 +165,7 @@ export const ChatLayoutDesktop: React.FC = () => {
       )}
       <div className="hidden md:flex w-12 bg-[#191A1C] border-r border-[#2C2D30] flex-col items-center">
         <button
-          onClick={() => setShowSidebar(!showSidebar)}
+          onClick={() => setSidebarVisible(!state.showSidebar)}
           className="p-2 hover:bg-[#242528] rounded-lg transition-colors"
           data-testid="chat-toggle-sidebar"
           aria-label="Toggle conversations sidebar"
@@ -155,7 +176,7 @@ export const ChatLayoutDesktop: React.FC = () => {
           <button
             onClick={() => {
               stopStreaming();
-              setSelectedConversationId(null);
+              selectConversation(null);
             }}
             className="p-2 hover:bg-[#242528] rounded-lg transition-colors"
             data-testid="chat-new-conversation"
@@ -165,12 +186,12 @@ export const ChatLayoutDesktop: React.FC = () => {
           </button>
         </div>
       </div>
-      {showSidebar && (
+      {state.showSidebar && (
         <div className="hidden md:flex w-64 bg-[#1F2022] border-r border-[#2C2D30] flex-col">
           <div className="p-4 border-b border-[#3E3E42] flex items-center justify-between">
             <h2 className="text-sm font-medium text-gray-300">Conversations</h2>
             <button
-              onClick={() => setShowSidebar(false)}
+              onClick={() => setSidebarVisible(false)}
               className="p-1 hover:bg-[#2D2D30] rounded transition-colors"
               data-testid="chat-close-sidebar"
             >
@@ -178,20 +199,15 @@ export const ChatLayoutDesktop: React.FC = () => {
             </button>
           </div>
           <div className="flex-1 overflow-y-auto">
-            {displayConversations.map((c) => (
+            {conversations.map((c) => (
               <button
                 key={c.id}
                 onClick={() => {
-                  setSelectedConversationId(c.id);
-                  setShowSidebar(false);
-                  // Update URL with session ID if available
-                  const sessionId = c.claudeSessionId;
-                  if (sessionId) {
-                    window.history.replaceState(null, '', `/chat/${c.id}?sessionId=${sessionId}`);
-                  }
+                  selectConversation(c.id);
+                  setSidebarVisible(false);
                 }}
                 className={`w-full px-4 py-3 text-left hover:bg-[#242528] transition-colors border-b border-[#2C2D30] ${
-                  selectedConversationId === c.id ? "bg-[#242528]" : ""
+                  state.selectedConversationId === c.id ? "bg-[#242528]" : ""
                 }`}
               >
                 <div className="flex items-start justify-between">
@@ -214,11 +230,11 @@ export const ChatLayoutDesktop: React.FC = () => {
                   </div>
                   <DropdownMenu
                     conversation={c}
-                    onArchive={() => archiveConversation.mutate(c.id)}
+                    onArchive={() => archiveConversation(c.id)}
                     onDelete={() => {
-                      deleteConversation.mutate(c.id);
-                      if (selectedConversationId === c.id)
-                        setSelectedConversationId(null);
+                      deleteConversation(c.id);
+                      if (state.selectedConversationId === c.id)
+                        selectConversation(null);
                     }}
                   />
                 </div>
@@ -241,12 +257,9 @@ export const ChatLayoutDesktop: React.FC = () => {
           />
         ) : (
           <>
-            <SessionInfoBar
-              sessionId={
-                conversationDetails?.claudeSessionId ||
-                urlSessionId
-              }
-              contextTokens={conversationDetails?.contextTokens ?? null}
+            <SessionInfo
+              sessionId={state.conversationDetails?.claudeSessionId}
+              contextTokens={state.conversationDetails?.contextTokens ?? null}
               onResumeSession={handleResumeSession}
               isResuming={isResuming}
             />
@@ -256,33 +269,34 @@ export const ChatLayoutDesktop: React.FC = () => {
               data-testid="chat-messages-scroll"
             >
               <div className="max-w-3xl mx-auto px-3 md:px-4 py-3 md:py-6">
-                {isLoadingMessages && selectedConversationId && (
+                {state.isLoadingMessages && state.selectedConversationId && (
                   <div className="flex items-center justify-center py-8">
                     <div className="text-sm text-gray-500">
                       Loading conversation history...
                     </div>
                   </div>
                 )}
-{conversationItems.map((item) => (
-                    <ConversationItemRenderer
-                      key={item.id}
-                      item={item}
-                      onPromptResponse={handlePromptResponse}
-                      onPlanReviewDecision={(planReviewId, decision) => planReview.submitPlanDecision(planReviewId, decision)}
-                      isRespondingToPrompt={isRespondingToPrompt}
-                    />
-                  ))}
+                {state.messages.map((message) => (
+                  <SimpleMessageRenderer
+                    key={message.id}
+                    message={message}
+                    isStreaming={state.isStreaming && message.id === state.streamingMessage?.id}
+                    onCopy={(content, messageId) => {
+                      navigator.clipboard.writeText(content);
+                    }}
+                  />
+                ))}
                 <div style={{ height: 1 }} />
               </div>
             </div>
             <ConversationInputArea
-              inputValue={inputValue}
+              inputValue={state.inputValue}
               setInputValue={setInputValue}
               handleKeyPress={handleKeyPress}
               handleSendMessage={handleSendMessage}
               fileUpload={fileUpload}
-              isDisabled={isStreaming}
-              permissionMode={permissionMode}
+              isDisabled={state.isStreaming}
+              permissionMode={state.permissionMode}
               onCyclePermissionMode={cyclePermissionMode}
             />
           </>

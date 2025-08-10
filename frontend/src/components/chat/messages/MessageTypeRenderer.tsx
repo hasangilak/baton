@@ -80,10 +80,18 @@ function getMessageType(message: any): string {
   if (message.type === 'claude_json' && message.data) {
     const sdkData = message.data;
     
-    // Map SDK message types to component types
+    // Special handling for assistant messages with tool usage
+    if (sdkData.type === 'assistant' && sdkData.message?.content) {
+      const content = sdkData.message.content;
+      // Check if this assistant message contains tool_use
+      if (Array.isArray(content) && content.some(block => block.type === 'tool_use')) {
+        return 'tool';
+      }
+      return 'assistant';
+    }
+    
+    // Map other SDK message types to component types
     switch (sdkData.type) {
-      case 'assistant':
-        return 'assistant';
       case 'user':
         return 'user';
       case 'system':
@@ -189,12 +197,23 @@ function extractMessageMetadata(message: any) {
       numTurns: sdk.num_turns,
     };
 
-    // Extract content
+    // Extract content and tool information
     if (sdk.message?.content && Array.isArray(sdk.message.content)) {
+      // Extract text content
       metadata.content = sdk.message.content
         .filter(block => block.type === 'text')
         .map(block => block.text)
         .join('');
+      
+      // Extract tool usage information
+      const toolUseBlocks = sdk.message.content.filter(block => block.type === 'tool_use');
+      if (toolUseBlocks.length > 0) {
+        metadata.toolUse = toolUseBlocks.map(block => ({
+          id: block.id,
+          name: block.name,
+          input: block.input
+        }));
+      }
     } else if (sdk.result) {
       metadata.content = sdk.result;
     }
@@ -300,11 +319,25 @@ export const MessageTypeRenderer: React.FC<MessageTypeRendererProps> = ({
       return <SystemMessageComponent {...commonProps} message={systemMessage as StreamingSystemMessage} />;
       
     case 'tool':
+      // Enhanced tool message handling for SDK messages
+      const toolMessage = {
+        ...message,
+        metadata: metadata,
+      };
+      
+      // For SDK messages, extract tool info from metadata.toolUse
+      if (metadata.toolUse && metadata.toolUse.length > 0) {
+        const toolUse = metadata.toolUse[0]; // Handle first tool use
+        toolMessage.name = toolUse.name;
+        toolMessage.input = toolUse.input;
+        toolMessage.id = toolUse.id;
+      }
+      
       // Check for specialized tool components
-      const toolName = message.metadata?.toolName || message.name || '';
+      const toolName = toolMessage.name || message.metadata?.toolName || message.name || '';
       const isTodoWrite = toolName.toLowerCase() === 'todowrite';
       const isExitPlanMode = toolName.toLowerCase() === 'exitplanmode';
-      const todosData = message.metadata?.toolInput?.todos || message.input?.todos;
+      const todosData = toolMessage.input?.todos || message.metadata?.toolInput?.todos || message.input?.todos;
       
       if (isTodoWrite && todosData) {
         return <TodoWriteTimeline todos={todosData} />;
@@ -326,10 +359,10 @@ export const MessageTypeRenderer: React.FC<MessageTypeRendererProps> = ({
           }
         } : undefined;
         
-        return <ExitPlanModeMessage {...commonProps} message={message as StreamingToolMessage} onPlanDecision={handlePlanDecision} />;
+        return <ExitPlanModeMessage {...commonProps} message={toolMessage as StreamingToolMessage} onPlanDecision={handlePlanDecision} />;
       }
       
-      return <ToolMessageComponent {...commonProps} message={message as StreamingToolMessage} />;
+      return <ToolMessageComponent {...commonProps} message={toolMessage as StreamingToolMessage} />;
       
     case 'result':
       // Enhanced result message with SDK data

@@ -2,8 +2,9 @@ import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { DesktopLayout } from '../layout/DesktopLayout';
 import { MobileLayout } from '../layout/MobileLayout';
-import { ChatLayoutDesktop } from '../chat/components/layout/ChatLayoutDesktop';
-import { ChatLayoutMobile } from '../chat/components/layout/ChatLayoutMobile';
+import { ChatPageDesktop } from '../chat/layouts/ChatPageDesktop';
+import { ChatPageMobile } from '../chat/layouts/ChatPageMobile';
+import { ChatProvider } from '../../contexts/ChatContext';
 import { useBreakpoints } from '../../hooks/useBreakpoints';
 
 interface AppRouterProps {
@@ -35,21 +36,25 @@ export const AppRouter: React.FC<AppRouterProps> = ({ projectId, onSync }) => {
       <Route 
         path="/chat" 
         element={
-          isMobile ? (
-            <ChatLayoutMobile />
-          ) : (
-            <ChatLayoutDesktop />
-          )
+          <ChatProvider projectId={projectId}>
+            {isMobile ? (
+              <ChatPageMobile />
+            ) : (
+              <ChatPageDesktop />
+            )}
+          </ChatProvider>
         } 
       />
       <Route 
         path="/chat/:conversationId" 
         element={
-          isMobile ? (
-            <ChatLayoutMobile />
-          ) : (
-            <ChatLayoutDesktop />
-          )
+          <ChatProvider projectId={projectId}>
+            {isMobile ? (
+              <ChatPageMobile />
+            ) : (
+              <ChatPageDesktop />
+            )}
+          </ChatProvider>
         } 
       />
       
