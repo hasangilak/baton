@@ -16,15 +16,68 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { Button } from '../../ui/button';
 
+// Interface for new WebSocket message format from Claude
 interface AssistantMessageProps {
-  message: any;
+  message: {
+    type?: 'claude_json';
+    data?: {
+      message?: {
+        id?: string;
+        model?: string;
+        content?: Array<{ type: string; text: string }>;
+        usage?: {
+          input_tokens?: number;
+          output_tokens?: number;
+          cache_creation_input_tokens?: number;
+          cache_read_input_tokens?: number;
+        };
+      };
+      session_id?: string;
+    };
+    timestamp?: number;
+    // Fallback properties for simpler formats
+    id?: string;
+    content?: string;
+    createdAt?: string;
+  };
   isStreaming?: boolean;
   onCopy?: (content: string, messageId: string) => void;
   onRetry?: (messageId: string) => void;
   showTimestamp?: boolean;
   compact?: boolean;
   virtualizedIndex?: number;
+  showMetadata?: boolean; // Show model info and token usage
 }
+
+/**
+ * Extract content from the new Claude WebSocket message format
+ */
+const extractMessageContent = (message: AssistantMessageProps['message']): string => {
+  // Try new WebSocket format first
+  if (message.data?.message?.content && Array.isArray(message.data.message.content)) {
+    return message.data.message.content
+      .filter(block => block.type === 'text')
+      .map(block => block.text)
+      .join('');
+  }
+  
+  // Fallback to simple content property
+  return message.content || '';
+};
+
+/**
+ * Extract metadata from the new Claude WebSocket message format
+ */
+const extractMessageMetadata = (message: AssistantMessageProps['message']) => {
+  const claudeMessage = message.data?.message;
+  return {
+    id: claudeMessage?.id || message.id || `msg_${Date.now()}`,
+    model: claudeMessage?.model,
+    usage: claudeMessage?.usage,
+    sessionId: message.data?.session_id,
+    timestamp: message.timestamp || message.createdAt || Date.now(),
+  };
+};
 
 /**
  * Streaming text component with typewriter effect
@@ -134,13 +187,15 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
   onRetry,
   showTimestamp = true,
   compact = false,
+  showMetadata = false,
 }) => {
   const [copied, setCopied] = useState(false);
   const [isExpanded, setIsExpanded] = useState(!compact);
 
-  const content = message.content || message.message || '';
-  const messageId = message.id || `msg_${Date.now()}`;
-  const timestamp = message.createdAt || message.timestamp || Date.now();
+  // Extract content and metadata from new WebSocket format
+  const content = extractMessageContent(message);
+  const metadata = extractMessageMetadata(message);
+  const { id: messageId, model, usage, sessionId, timestamp } = metadata;
 
   // Memory optimization: memoize expensive operations
   const renderedContent = useMemo(() => {
@@ -209,16 +264,34 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
             <Sparkles size={12} className="text-orange-400" />
             Claude
           </span>
+          
           {showTimestamp && (
             <span className="text-xs text-gray-500">
               {formatDistanceToNow(new Date(timestamp), { addSuffix: true })}
             </span>
           )}
-          {message.model && (
-            <span className="text-xs text-gray-600 bg-gray-700 px-2 py-0.5 rounded">
-              {message.model}
+          
+          {/* Model Info */}
+          {model && (
+            <span className="text-xs text-gray-400 bg-gray-700 px-2 py-0.5 rounded">
+              {model}
             </span>
           )}
+          
+          {/* Usage Tokens (if showMetadata is enabled) */}
+          {showMetadata && usage && (
+            <span className="text-xs text-blue-400 bg-blue-900/20 px-2 py-0.5 rounded">
+              {usage.input_tokens}→{usage.output_tokens} tokens
+            </span>
+          )}
+          
+          {/* Session ID for debugging */}
+          {showMetadata && sessionId && (
+            <span className="text-xs text-purple-400 bg-purple-900/20 px-2 py-0.5 rounded font-mono">
+              {sessionId.slice(-8)}
+            </span>
+          )}
+          
           {isStreaming && (
             <span className="text-xs text-orange-400 bg-orange-900/20 px-2 py-0.5 rounded animate-pulse">
               Thinking...
@@ -228,9 +301,9 @@ export const AssistantMessage: React.FC<AssistantMessageProps> = ({
 
         {/* Message Content */}
         <div className="prose prose-invert max-w-none">
-          {message.error ? (
+          {message.error || message.data?.error ? (
             <div className="text-red-400 text-sm bg-red-900/20 p-3 rounded border border-red-800">
-              <strong>Error:</strong> {message.error}
+              <strong>Error:</strong> {message.error || message.data?.error}
             </div>
           ) : (
             <div className='text-gray-100'>{renderedContent}</div>
