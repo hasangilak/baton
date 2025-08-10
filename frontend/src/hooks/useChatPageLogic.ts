@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { useConversations, useConversation, useMessages } from './useChat';
+import { useConversations, useConversation, useMessages, useChat } from './useChat';
 import { useProjects } from './useProjects';
 import { useInteractivePrompts } from './useInteractivePrompts';
-import { useClaudeStreaming } from './useClaudeStreaming';
 import { useFileUpload } from './useFileUpload';
 import { useWebSocket } from './useWebSocket';
 
@@ -41,26 +40,14 @@ export const useChatPageLogic = () => {
   // WebSocket for real-time permission mode changes
   const { socket, joinConversation, leaveConversation } = useWebSocket();
 
-  // New WebUI-based streaming with enhanced features
-  const claudeStreaming = useClaudeStreaming({ 
-    conversationId: selectedConversationId || undefined,
-    onSessionId: (sessionId) => {
-      console.log('🆔 Session ID received in ChatPage:', sessionId);
-      
-      // Immediately update URL with session ID query parameter
-      if (selectedConversationId && sessionId) {
-        const newUrl = `/chat/${selectedConversationId}?sessionId=${sessionId}`;
-        console.log('🔄 Updating URL with session ID:', newUrl);
-        navigate(newUrl, { replace: true });
-        
-        // Update chat state with session ID
-        claudeStreaming.updateSessionId(sessionId);
-      }
-    },
-    onPermissionError: (error) => {
-      console.warn('🔒 Permission error in ChatPage:', error);
-    }
-  });
+  // WebSocket-based chat functionality
+  const {
+    sendMessage,
+    streamingMessage,
+    optimisticUserMessage,
+    isStreaming,
+    stopStreaming
+  } = useChat(selectedConversationId);
 
   // File upload functionality
   const fileUpload = useFileUpload({
@@ -81,20 +68,24 @@ export const useChatPageLogic = () => {
   // Fetch persisted messages for the selected conversation with session ID
   const { messages: dbMessages, isLoading: isLoadingMessages } = useMessages(selectedConversationId, urlSessionId || undefined);
 
-  // Update URL when conversation changes, including session ID
+  // Update URL when conversation changes and track current conversation globally
   useEffect(() => {
     if (selectedConversationId) {
-      const sessionId = conversationDetails?.claudeSessionId || claudeStreaming.currentSessionId;
+      // Track current conversation for session ID updates
+      (window as any).__currentConversationId = selectedConversationId;
+      
+      const sessionId = conversationDetails?.claudeSessionId;
       const url = sessionId 
         ? `/chat/${selectedConversationId}?sessionId=${sessionId}`
         : `/chat/${selectedConversationId}`;
       navigate(url, { replace: true });
       setIsNewChat(false);
     } else {
+      (window as any).__currentConversationId = null;
       navigate('/chat', { replace: true });
       setIsNewChat(true);
     }
-  }, [selectedConversationId, conversationDetails?.claudeSessionId, claudeStreaming.currentSessionId, navigate]);
+  }, [selectedConversationId, conversationDetails?.claudeSessionId, navigate]);
 
   // WebSocket conversation management and permission mode listener
   useEffect(() => {
@@ -133,28 +124,69 @@ export const useChatPageLogic = () => {
   // Filter conversations (placeholder: original code may have had search)
   const displayConversations = conversations || [];
 
-  // Send message logic (simplified preserving existing streaming integration)
+  // Send message logic using WebSocket-based chat
   const handleSendMessage = async () => {
     const trimmed = inputValue.trim();
     if (!trimmed) return;
 
-    // If new chat create conversation first
+    // If new chat create conversation first and wait for it
     let convId = selectedConversationId;
     if (!convId) {
       const title = trimmed.slice(0, 40) || 'New conversation';
-      const result = await createConversation.mutateAsync(title);
-      // Mutation returns API response; refetch will populate list; we need to trust conversations update effect
-      // For immediate continuity we fallback to using existing selectedConversationId once query invalidates
-      // If API returns id, attempt to capture
-      const maybeId = (result as { id?: string; conversation?: { id?: string } })?.id || 
-                     (result as { id?: string; conversation?: { id?: string } })?.conversation?.id;
-      if (maybeId) {
-        convId = maybeId;
+      try {
+        const result = await createConversation.mutateAsync(title);
+        // Mutation returns API response; refetch will populate list; we need to trust conversations update effect
+        // For immediate continuity we fallback to using existing selectedConversationId once query invalidates
+        // If API returns id, attempt to capture
+        const maybeId = (result as { id?: string; conversation?: { id?: string } })?.id || 
+                       (result as { id?: string; conversation?: { id?: string } })?.conversation?.id;
+        if (maybeId) {
+          convId = maybeId;
+          setSelectedConversationId(convId);
+        } else {
+          console.error('❌ Failed to create conversation - no ID returned');
+          return;
+        }
+      } catch (error) {
+        console.error('❌ Failed to create conversation:', error);
+        return;
       }
-      setSelectedConversationId(convId);
     }
 
-    claudeStreaming.sendMessage(trimmed, convId || undefined, permissionMode);
+    // Now that we have a conversation ID, we need to wait for the useChat hook to re-initialize
+    // For now, let's make a direct WebSocket call instead of using the useChat hook
+    // This is a temporary workaround - we should refactor this properly
+    const attachments = fileUpload.files?.map(file => ({
+      id: file.id,
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      url: file.url || file.localUrl,
+    })) || [];
+
+    if (convId) {
+      try {
+        // Use the chat service directly instead of the hook for new conversations
+        const { chatService } = await import('../services/chat.service');
+        await chatService.sendMessage(
+          {
+            conversationId: convId,
+            content: trimmed,
+            attachments: attachments.length > 0 ? attachments : undefined,
+          },
+          (response) => {
+            console.log('📨 Direct message response:', response);
+          }
+        );
+      } catch (error) {
+        console.error('❌ Failed to send message via direct service:', error);
+        // Fallback to the hook method if available
+        if (selectedConversationId === convId) {
+          await sendMessage(trimmed, attachments.length > 0 ? attachments : undefined);
+        }
+      }
+    }
+
     setInputValue('');
     fileUpload.clearFiles();
   };
@@ -233,8 +265,13 @@ export const useChatPageLogic = () => {
     dbMessages,
     isLoadingMessages,
     
+    // WebSocket-based chat state
+    streamingMessage,
+    optimisticUserMessage,
+    isStreaming,
+    stopStreaming,
+    
     // Hooks
-    claudeStreaming,
     fileUpload,
     
     // Interactive prompts

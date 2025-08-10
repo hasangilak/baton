@@ -21,7 +21,10 @@ export const ChatLayoutDesktop: React.FC = () => {
     getGreeting,
     conversationDetails,
     urlSessionId,
-    claudeStreaming,
+    streamingMessage,
+    optimisticUserMessage,
+    isStreaming,
+    stopStreaming,
     pendingPrompts,
     isRespondingToPrompt,
     handlePromptResponse,
@@ -58,7 +61,9 @@ export const ChatLayoutDesktop: React.FC = () => {
   // Always call hooks at top level - never conditionally
   const conversationItems = useConversationItems({
     dbMessages,
-    claudeStreaming,
+    streamingMessage,
+    optimisticUserMessage,
+    isStreaming,
     pendingPrompts,
     selectedConversationId
   });
@@ -76,14 +81,14 @@ export const ChatLayoutDesktop: React.FC = () => {
     });
   }, [
     conversationItems.length,
-    claudeStreaming.isStreaming,
+    isStreaming,
   ]);
 
   // ESC key handler for aborting conversations (Claude Code style)
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Only handle ESC key during streaming and not when modal/dropdown is open
-      if (e.key === 'Escape' && claudeStreaming.isStreaming) {
+      if (e.key === 'Escape' && isStreaming) {
         // Check if there are any open modals/dropdowns to avoid interference
         const hasOpenModal = document.querySelector('[role="dialog"]');
         const hasOpenDropdown = document.querySelector('[role="menu"]');
@@ -97,17 +102,8 @@ export const ChatLayoutDesktop: React.FC = () => {
           // Show immediate feedback (Claude Code style)
           setShowAbortFeedback(true);
           
-          // Add abort message to conversation history
-          claudeStreaming.addMessage({
-            type: "abort",
-            subtype: "user_abort",
-            message: "Conversation aborted by user (ESC key)",
-            reason: "User pressed ESC key to stop the conversation",
-            timestamp: Date.now(),
-          });
-          
-          // Abort the conversation
-          claudeStreaming.handleAbort();
+          // Stop the WebSocket streaming
+          stopStreaming();
           
           // Hide feedback after 3 seconds
           setTimeout(() => {
@@ -123,25 +119,20 @@ export const ChatLayoutDesktop: React.FC = () => {
     return () => {
       document.removeEventListener('keydown', handleKeyDown, { capture: true });
     };
-  }, [claudeStreaming.isStreaming, claudeStreaming.handleAbort]);
+  }, [isStreaming]);
 
-  // Handle session resume
+  // Handle session resume - WebSocket approach doesn't need explicit session resume
   const handleResumeSession = React.useCallback(async () => {
     setIsResuming(true);
     try {
-      // Use URL session ID as fallback if chatState doesn't have it yet
-      const sessionIdToResume = claudeStreaming.currentSessionId || urlSessionId || 
-                               conversationDetails?.claudeSessionId;
-      const success = await claudeStreaming.resumeSession(sessionIdToResume);
-      if (success) {
-        console.log('✅ Session resumed successfully');
-      }
+      // With WebSocket approach, sessions are automatically managed
+      console.log('✅ WebSocket connection handles session management automatically');
     } catch (error) {
       console.error('❌ Session resume error:', error);
     } finally {
       setIsResuming(false);
     }
-  }, [claudeStreaming, urlSessionId, conversationDetails?.claudeSessionId]);
+  }, []);
 
   return (
     <div className="h-[calc(100vh-90px)] flex flex-col md:flex-row bg-[#1E1F22] text-gray-200 relative">
@@ -163,8 +154,7 @@ export const ChatLayoutDesktop: React.FC = () => {
         <div className="mt-8 space-y-4">
           <button
             onClick={() => {
-              claudeStreaming.handleAbort();
-              claudeStreaming.resetForNewConversation();
+              stopStreaming();
               setSelectedConversationId(null);
             }}
             className="p-2 hover:bg-[#242528] rounded-lg transition-colors"
@@ -254,8 +244,7 @@ export const ChatLayoutDesktop: React.FC = () => {
             <SessionInfoBar
               sessionId={
                 conversationDetails?.claudeSessionId ||
-                urlSessionId ||
-                claudeStreaming.currentSessionId
+                urlSessionId
               }
               contextTokens={conversationDetails?.contextTokens ?? null}
               onResumeSession={handleResumeSession}
@@ -292,7 +281,7 @@ export const ChatLayoutDesktop: React.FC = () => {
               handleKeyPress={handleKeyPress}
               handleSendMessage={handleSendMessage}
               fileUpload={fileUpload}
-              isDisabled={claudeStreaming.isStreaming}
+              isDisabled={isStreaming}
               permissionMode={permissionMode}
               onCyclePermissionMode={cyclePermissionMode}
             />

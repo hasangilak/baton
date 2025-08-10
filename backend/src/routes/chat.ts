@@ -6,7 +6,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import multer from 'multer';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
-import { handleStreamingChat, handleAbortRequest } from '../handlers/streaming-chat';
+// Removed deprecated handlers: handleStreamingChat, handleAbortRequest - use WebSocket instead
 import axios from 'axios';
 import { PromptDeliveryService } from '../utils/promptDelivery';
 import { getMessageStorageService } from '../services/message-storage.service';
@@ -256,97 +256,20 @@ router.get('/messages/:conversationId', async (req: Request, res: Response) => {
 
 /**
  * POST /api/chat/messages
- * Send a message and stream the response
+ * DEPRECATED: Legacy endpoint - use WebSocket 'chat:send-message' event instead
+ * This endpoint is kept for backward compatibility but will be removed
  */
 router.post('/messages', async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { conversationId, content, attachments } = req.body;
-
-    if (!conversationId || !content) {
-      res.status(400).json({
-        error: 'Conversation ID and content are required',
-      });
-      return;
+  console.warn('⚠️  Deprecated endpoint /api/chat/messages used. Please migrate to WebSocket chat:send-message event.');
+  
+  res.status(410).json({
+    error: 'This endpoint has been deprecated. Please use WebSocket event chat:send-message instead.',
+    migration: {
+      old: 'POST /api/chat/messages',
+      new: 'WebSocket event: chat:send-message',
+      documentation: 'See ws-refactor.md for migration guide'
     }
-
-    // Get conversation to verify it exists and get project ID
-    const conversation = await prisma.conversation.findUnique({
-      where: { id: conversationId },
-      include: { project: true },
-    });
-
-    if (!conversation) {
-      res.status(404).json({
-        error: 'Conversation not found',
-      });
-      return;
-    }
-
-    // Send message and get assistant message placeholder
-    const assistantMessage = await chatService.sendMessage(
-      conversationId,
-      content,
-      attachments
-    );
-
-    // Update conversation's updatedAt
-    await prisma.conversation.update({
-      where: { id: conversationId },
-      data: { updatedAt: new Date() },
-    });
-
-    // Update conversation title if it's the first message
-    const messageCount = await prisma.message.count({
-      where: { conversationId, role: 'user' },
-    });
-    if (messageCount === 1) {
-      await chatService.updateConversationTitle(conversationId);
-    }
-
-    // Set up SSE headers
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
-    });
-
-    // Listen for streaming updates
-    const streamHandler = (data: any) => {
-      if (data.id === assistantMessage.id) {
-        res.write(`data: ${JSON.stringify(data)}\n\n`);
-        
-        if (data.isComplete) {
-          // Clean up listener and close connection
-          chatService.removeListener('stream', streamHandler);
-          res.end();
-
-          // Emit WebSocket event for message complete
-          ioInstance?.to(`project-${conversation.projectId}`).emit('message:complete', {
-            conversationId,
-            messageId: assistantMessage.id,
-          });
-        }
-      }
-    };
-
-    chatService.on('stream', streamHandler);
-
-    // Clean up on client disconnect
-    req.on('close', () => {
-      chatService.removeListener('stream', streamHandler);
-    });
-
-    // Note: Response is handled via SSE streaming above
-    // No explicit return needed as response is handled by streaming
-    
-  } catch (error) {
-    console.error('Error sending message:', error);
-    res.status(500).json({
-      error: 'Failed to send message',
-    });
-    return;
-  }
+  });
 });
 
 /**
@@ -1393,201 +1316,37 @@ router.put('/prompts/:promptId/timeout', async (req: Request, res: Response) => 
 
 /**
  * POST /api/chat/messages/stream
- * New Claude Code streaming implementation based on WebUI patterns
+ * DEPRECATED: Use WebSocket 'chat:send-message' event instead
  */
 router.post('/messages/stream', async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { conversationId, content, requestId } = req.body;
-
-    if (!conversationId || !content || !requestId) {
-      res.status(400).json({
-        error: 'Conversation ID, content, and requestId are required',
-      });
-      return;
+  console.warn('⚠️  Deprecated endpoint /api/chat/messages/stream used. Please migrate to WebSocket.');
+  
+  res.status(410).json({
+    error: 'This endpoint has been deprecated. Please use WebSocket event chat:send-message instead.',
+    migration: {
+      old: 'POST /api/chat/messages/stream',
+      new: 'WebSocket events: chat:send-message → chat:stream-response → chat:message-complete',
+      documentation: 'See ws-refactor.md for migration guide'
     }
-
-    // Get conversation to verify it exists and get project context
-    const conversation = await prisma.conversation.findUnique({
-      where: { id: conversationId },
-      include: { project: true },
-    });
-
-    if (!conversation) {
-      res.status(404).json({
-        error: 'Conversation not found',
-      });
-      return;
-    }
-
-    // Store user message first
-    await prisma.message.create({
-      data: {
-        conversationId,
-        role: 'user',
-        content,
-        status: 'completed',
-      },
-    });
-
-    // Create assistant message placeholder
-    const assistantMessage = await prisma.message.create({
-      data: {
-        conversationId,
-        role: 'assistant',
-        content: '',
-        status: 'sending',
-      },
-    });
-
-    // Set up streaming headers
-    res.writeHead(200, {
-      'Content-Type': 'application/x-ndjson',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
-    });
-
-    let fullContent = '';
-    let currentSessionId = null;
-
-    try {
-      // Import Claude Code SDK
-      const { query } = require('@anthropic-ai/claude-code');
-      
-      // Build context prompt
-      let contextPrompt = content;
-      if (conversation.project) {
-        contextPrompt = `Project: ${conversation.project.name}\n\n${content}`;
-      }
-
-      console.log(`🎬 Starting Claude Code stream for message ${assistantMessage.id}`);
-      console.log(`📡 Context: "${contextPrompt.substring(0, 150)}..."`);
-
-      // Create abort controller (TODO: implement shared abort controller management)
-      const abortController = new AbortController();
-
-      // Stream Claude Code responses directly
-      for await (const sdkMessage of query({
-        prompt: contextPrompt,
-        options: {
-          abortController,
-          executable: "/usr/local/bin/node" as const,
-          executableArgs: [],
-          pathToClaudeCodeExecutable: process.env.CLAUDE_CODE_PATH || "/home/hassan/.nvm/versions/node/v22.18.0/bin/claude",
-          maxTurns: 1,
-          cwd: "/home/hassan/work/baton",
-          // Use simple options - avoid canUseTool complexity
-          permissionMode: 'default' as const,
-          ...(conversation.claudeSessionId ? { resume: conversation.claudeSessionId } : {}),
-        },
-      })) {
-        // Capture session ID early
-        const sessionId = sdkMessage.sessionId || sdkMessage.session_id || 
-                         (sdkMessage.message && (sdkMessage.message.sessionId || sdkMessage.message.session_id));
-        
-        if (sessionId && !currentSessionId) {
-          currentSessionId = sessionId;
-          console.log(`🆔 Captured session ID: ${currentSessionId}`);
-        }
-
-        // Extract content for database storage
-        if (sdkMessage.type === 'assistant' && sdkMessage.message) {
-          let textContent = '';
-          if (Array.isArray(sdkMessage.message.content)) {
-            textContent = sdkMessage.message.content
-              .filter((block: any) => block.type === 'text')
-              .map((block: any) => block.text)
-              .join('');
-          } else if (typeof sdkMessage.message.content === 'string') {
-            textContent = sdkMessage.message.content;
-          }
-          
-          if (textContent && textContent !== fullContent) {
-            fullContent = textContent;
-          }
-        } else if (sdkMessage.type === 'result' && sdkMessage.result) {
-          fullContent = sdkMessage.result;
-        }
-
-        // Forward raw SDK message to frontend
-        const streamResponse = {
-          type: 'claude_json',
-          data: sdkMessage,
-          messageId: assistantMessage.id, // Include message ID for frontend reference
-        };
-        
-        const chunk = JSON.stringify(streamResponse) + '\n';
-        res.write(chunk);
-      }
-
-      // Update message in database with final content
-      await prisma.message.update({
-        where: { id: assistantMessage.id },
-        data: {
-          content: fullContent,
-          status: 'completed',
-        },
-      });
-
-      // Store session ID if captured
-      if (currentSessionId) {
-        await prisma.conversation.update({
-          where: { id: conversationId },
-          data: { claudeSessionId: currentSessionId },
-        });
-        console.log(`💾 Stored session ID ${currentSessionId}`);
-      }
-
-      // Send completion signal
-      const doneResponse = { 
-        type: 'done',
-        messageId: assistantMessage.id,
-        finalContent: fullContent 
-      };
-      res.write(JSON.stringify(doneResponse) + '\n');
-
-      console.log(`✅ Stream completed for message ${assistantMessage.id}`);
-
-    } catch (error) {
-      console.error('❌ Claude Code streaming error:', error);
-      
-      // Update message status to failed
-      await prisma.message.update({
-        where: { id: assistantMessage.id },
-        data: {
-          status: 'failed',
-          error: error instanceof Error ? error.message : String(error),
-        },
-      });
-
-      // Send error to frontend
-      const errorResponse = {
-        type: 'error',
-        messageId: assistantMessage.id,
-        error: error instanceof Error ? error.message : String(error),
-      };
-      res.write(JSON.stringify(errorResponse) + '\n');
-    } finally {
-      res.end();
-    }
-    // Response handled by streaming above
-
-  } catch (error) {
-    console.error('❌ Stream setup error:', error);
-    res.status(500).json({
-      error: 'Failed to set up streaming response',
-      details: error instanceof Error ? error.message : String(error),
-    });
-    return;
-  }
+  });
 });
 
 /**
  * POST /api/chat/messages/stream-webui
- * New streaming endpoint following Claude Code WebUI architecture exactly
- * Uses AsyncGenerator pattern with NDJSON streaming and shared abort controllers
+ * DEPRECATED: Use WebSocket 'chat:send-message' event instead
  */
-router.post('/messages/stream-webui', handleStreamingChat);
+router.post('/messages/stream-webui', async (req: Request, res: Response): Promise<void> => {
+  console.warn('⚠️  Deprecated endpoint /api/chat/messages/stream-webui used. Please migrate to WebSocket.');
+  
+  res.status(410).json({
+    error: 'This endpoint has been deprecated. Please use WebSocket event chat:send-message instead.',
+    migration: {
+      old: 'POST /api/chat/messages/stream-webui',
+      new: 'WebSocket events: chat:send-message → chat:stream-response → chat:message-complete',
+      documentation: 'See ws-refactor.md for migration guide'
+    }
+  });
+});
 
 /**
  * POST /api/chat/messages/stream-bridge
@@ -1827,49 +1586,36 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
 
 /**
  * POST /api/chat/messages/abort/:requestId
- * Abort a streaming request using WebUI shared abort controller pattern
+ * DEPRECATED: Use WebSocket 'claude:abort' event instead
  */
-router.post('/messages/abort/:requestId', handleAbortRequest);
+router.post('/messages/abort/:requestId', async (req: Request, res: Response): Promise<void> => {
+  console.warn('⚠️  Deprecated endpoint /api/chat/messages/abort used. Please migrate to WebSocket.');
+  
+  res.status(410).json({
+    error: 'This endpoint has been deprecated. Please use WebSocket event claude:abort instead.',
+    migration: {
+      old: 'POST /api/chat/messages/abort/:requestId',
+      new: 'WebSocket event: claude:abort with requestId',
+      documentation: 'See ws-refactor.md for migration guide'
+    }
+  });
+});
 
 /**
  * POST /api/chat/messages/abort-bridge/:requestId
- * Abort a bridge streaming request
+ * DEPRECATED: Use WebSocket 'claude:abort' event instead
  */
 router.post('/messages/abort-bridge/:requestId', async (req: Request, res: Response) => {
-  try {
-    const requestId = req.params.requestId;
-    
-    if (!requestId) {
-      return res.status(400).json({
-        error: 'Request ID is required',
-      });
+  console.warn('⚠️  Deprecated endpoint /api/chat/messages/abort-bridge used. Please migrate to WebSocket.');
+  
+  res.status(410).json({
+    error: 'This endpoint has been deprecated. Please use WebSocket event claude:abort instead.',
+    migration: {
+      old: 'POST /api/chat/messages/abort-bridge/:requestId',
+      new: 'WebSocket event: claude:abort with requestId',
+      documentation: 'See ws-refactor.md for migration guide'
     }
-
-    // Forward abort request to bridge service
-    const bridgeUrl = process.env.BRIDGE_URL || 'http://192.168.2.39:8080';
-    
-    try {
-      await axios.post(`${bridgeUrl}/abort/${requestId}`, {}, { timeout: 5000 });
-      console.log(`⏹️ Abort request sent to bridge for ${requestId}`);
-      
-      return res.json({
-        success: true,
-        message: 'Abort request sent to bridge'
-      });
-    } catch (bridgeError) {
-      console.error(`❌ Failed to abort bridge request ${requestId}:`, bridgeError);
-      return res.status(500).json({
-        error: 'Failed to abort bridge request',
-        details: bridgeError instanceof Error ? bridgeError.message : String(bridgeError)
-      });
-    }
-
-  } catch (error) {
-    console.error('❌ Abort bridge request error:', error);
-    return res.status(500).json({
-      error: 'Failed to process abort request',
-    });
-  }
+  });
 });
 
 /**

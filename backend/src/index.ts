@@ -158,6 +158,201 @@ io.on('connection', (socket) => {
     console.log(`Socket ${socket.id} left conversation ${conversationId}`);
   });
 
+  // New WebSocket handlers for bridge communication
+  // Chat message handling
+  socket.on('chat:send-message', async (data) => {
+    console.log(`💬 Received chat:send-message from ${socket.id}:`, data.requestId);
+    try {
+      const { conversationId, content, requestId, sessionId, allowedTools, workingDirectory, permissionMode } = data;
+      
+      if (!conversationId || !content || !requestId) {
+        socket.emit('chat:error', {
+          requestId: requestId || 'unknown',
+          error: 'Missing required fields: conversationId, content, requestId'
+        });
+        return;
+      }
+
+      // Forward to bridge service if connected
+      const bridgeSockets = await io.in('claude-bridge').fetchSockets();
+      if (bridgeSockets.length > 0) {
+        // Forward to bridge service
+        bridgeSockets[0].emit('claude:execute', {
+          message: content,
+          requestId,
+          conversationId,
+          sessionId,
+          allowedTools,
+          workingDirectory,
+          permissionMode: permissionMode || 'default'
+        });
+        console.log(`📤 Forwarded chat request ${requestId} to bridge service`);
+      } else {
+        socket.emit('chat:error', {
+          requestId,
+          error: 'No bridge service connected'
+        });
+      }
+    } catch (error) {
+      console.error('❌ Error handling chat:send-message:', error);
+      socket.emit('chat:error', {
+        requestId: data?.requestId || 'unknown',
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  });
+
+  // Permission handling
+  socket.on('permission:get-mode', async (data, callback) => {
+    try {
+      const { conversationId } = data;
+      // Get conversation permission mode from database
+      const conversation = await require('@prisma/client').PrismaClient().conversation.findUnique({
+        where: { id: conversationId },
+        select: { metadata: true }
+      });
+      
+      const metadata = conversation?.metadata as any || {};
+      const permissionMode = metadata.permissionMode || 'default';
+      
+      callback({ permissionMode });
+    } catch (error) {
+      console.error('❌ Error getting permission mode:', error);
+      callback({ permissionMode: 'default' });
+    }
+  });
+
+  socket.on('permission:check', async (data, callback) => {
+    try {
+      const { conversationId, toolName } = data;
+      // Check if permission exists in database
+      const permission = await require('@prisma/client').PrismaClient().conversationPermission.findFirst({
+        where: {
+          conversationId,
+          toolName,
+          status: 'granted',
+          OR: [
+            { expiresAt: null },
+            { expiresAt: { gt: new Date() } }
+          ]
+        }
+      });
+      
+      callback({ hasPermission: !!permission });
+    } catch (error) {
+      console.error('❌ Error checking permission:', error);
+      callback({ hasPermission: false });
+    }
+  });
+
+  socket.on('permission:request', async (data) => {
+    console.log(`🔐 Received permission request from bridge:`, data.promptId);
+    // Emit to frontend clients in the conversation room
+    io.to(`conversation-${data.conversationId}`).emit('interactive_prompt', {
+      promptId: data.promptId,
+      conversationId: data.conversationId,
+      type: data.type,
+      title: data.title,
+      message: data.message,
+      options: data.options,
+      context: data.context,
+      timestamp: Date.now()
+    });
+  });
+
+  socket.on('plan:review-request', async (data) => {
+    console.log(`📋 Received plan review request from bridge:`, data.promptId);
+    // Emit to frontend clients in the conversation room
+    io.to(`conversation-${data.conversationId}`).emit('plan_review', {
+      planReviewId: data.promptId,
+      conversationId: data.conversationId,
+      type: data.type,
+      title: data.title,
+      message: data.message,
+      planContent: data.planContent,
+      options: data.options,
+      context: data.context,
+      timestamp: Date.now()
+    });
+  });
+
+  socket.on('permission:escalate', async (data) => {
+    console.log(`📢 Received permission escalation from bridge:`, data.promptId);
+    // Forward escalation to frontend clients
+    io.to(`conversation-${data.conversationId || 'unknown'}`).emit('permission_escalation', {
+      promptId: data.promptId,
+      stage: data.stage,
+      toolName: data.toolName,
+      riskLevel: data.riskLevel,
+      escalationType: data.escalationType,
+      message: `${data.escalationType.toUpperCase()}: Permission still needed for ${data.toolName}`,
+      timestamp: data.timestamp
+    });
+  });
+
+  // Handle responses from frontend back to bridge
+  socket.on('permission:respond', async (data) => {
+    console.log(`📝 Received permission response from frontend:`, data.promptId);
+    // Forward to bridge service
+    const bridgeSockets = await io.in('claude-bridge').fetchSockets();
+    if (bridgeSockets.length > 0) {
+      bridgeSockets[0].emit('permission:response', {
+        promptId: data.promptId,
+        selectedOption: data.selectedOption,
+        label: data.label,
+        ...data
+      });
+    }
+  });
+
+  socket.on('plan:review-respond', async (data) => {
+    console.log(`📋 Received plan review response from frontend:`, data.promptId);
+    // Forward to bridge service  
+    const bridgeSockets = await io.in('claude-bridge').fetchSockets();
+    if (bridgeSockets.length > 0) {
+      bridgeSockets[0].emit('plan:review-response', {
+        promptId: data.promptId,
+        decision: data.decision,
+        feedback: data.feedback,
+        editedPlan: data.editedPlan,
+        ...data
+      });
+    }
+  });
+
+  socket.on('conversation:check', async (data, callback) => {
+    try {
+      const { conversationId } = data;
+      const conversation = await require('@prisma/client').PrismaClient().conversation.findUnique({
+        where: { id: conversationId }
+      });
+      
+      callback({ exists: !!conversation });
+    } catch (error) {
+      console.error('❌ Error checking conversation:', error);
+      callback({ exists: false });
+    }
+  });
+
+  socket.on('conversation:create', async (data, callback) => {
+    try {
+      const { conversationId, projectId, userId } = data;
+      const conversation = await require('@prisma/client').PrismaClient().conversation.create({
+        data: {
+          id: conversationId,
+          projectId,
+          userId,
+          title: 'Bridge conversation'
+        }
+      });
+      
+      callback({ success: !!conversation });
+    } catch (error) {
+      console.error('❌ Error creating conversation:', error);
+      callback({ success: false });
+    }
+  });
+
   // Handle prompt acknowledgments from frontend
   socket.on('prompt_received_confirmation', (data: any) => {
     const { promptId, deliveryId, conversationId, timestamp, clientInfo } = data;
@@ -194,7 +389,60 @@ io.on('connection', (socket) => {
     });
   });
   
-  // Chat bridge support
+  // Bridge service connection
+  socket.on('claude-bridge:connect', () => {
+    socket.join('claude-bridge');
+    console.log(`🌉 Claude Code bridge connected: ${socket.id}`);
+    
+    // Send any pending requests
+    const pendingRequests = chatService.getPendingRequests();
+    if (pendingRequests.length > 0) {
+      socket.emit('chat:pending', pendingRequests);
+    }
+  });
+
+  // Handle bridge responses  
+  socket.on('claude:stream', (data) => {
+    console.log(`📡 Received claude:stream from bridge for ${data.requestId}`);
+    // Forward to frontend clients
+    io.emit('chat:stream-response', {
+      requestId: data.requestId,
+      type: data.type,
+      data: data.data,
+      timestamp: data.timestamp
+    });
+  });
+
+  socket.on('claude:complete', (data) => {
+    console.log(`✅ Received claude:complete from bridge for ${data.requestId}`);
+    // Forward to frontend clients
+    io.emit('chat:message-complete', {
+      requestId: data.requestId,
+      sessionId: data.sessionId,
+      timestamp: data.timestamp
+    });
+  });
+
+  socket.on('claude:error', (data) => {
+    console.log(`❌ Received claude:error from bridge for ${data.requestId}`);
+    // Forward to frontend clients
+    io.emit('chat:error', {
+      requestId: data.requestId,
+      error: data.error,
+      timestamp: data.timestamp
+    });
+  });
+
+  socket.on('claude:aborted', (data) => {
+    console.log(`⏹️ Received claude:aborted from bridge for ${data.requestId}`);
+    // Forward to frontend clients  
+    io.emit('chat:aborted', {
+      requestId: data.requestId,
+      timestamp: data.timestamp
+    });
+  });
+
+  // Legacy chat bridge support for backward compatibility
   socket.on('chat-bridge:connect', () => {
     socket.join('chat-bridge');
     console.log(`Chat bridge connected: ${socket.id}`);

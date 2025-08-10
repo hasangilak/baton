@@ -228,9 +228,78 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
       });
     });
 
-    // Chat message events
+    // WebSocket-based chat events (new)
+    socket.on('chat:stream-response', (data) => {
+      console.log('📡 Chat stream response:', data.requestId);
+      // These are handled directly by the chat service and useChat hook
+      // No need for additional processing here
+    });
+
+    socket.on('chat:message-complete', async (data) => {
+      console.log('✅ Chat message complete:', data.requestId, 'Session ID:', data.sessionId);
+      
+      // If we have a session ID, update the conversation record and URL
+      if (data.sessionId && data.requestId) {
+        console.log('🔗 Updating conversation with Claude session ID:', data.sessionId);
+        
+        // Find the conversation ID from the current URL or global state
+        const currentConversationId = (window as any).__currentConversationId || 
+                                     window.location.pathname.split('/chat/')[1]?.split('?')[0];
+        
+        if (currentConversationId) {
+          try {
+            // Update the conversation record with the session ID
+            const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+            const response = await fetch(`${API_BASE_URL}/api/chat/conversations/${currentConversationId}/session`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ claudeSessionId: data.sessionId })
+            });
+            
+            if (response.ok) {
+              console.log('✅ Conversation updated with session ID');
+              
+              // Update the browser URL with session ID
+              const currentUrl = new URL(window.location.href);
+              currentUrl.searchParams.set('sessionId', data.sessionId);
+              window.history.replaceState({}, '', currentUrl.toString());
+              
+              console.log('🔄 Updated URL with session ID:', currentUrl.toString());
+              
+              // Invalidate conversation details to refetch with new session ID
+              queryClient.invalidateQueries({ 
+                queryKey: ['chat', 'conversation', currentConversationId]
+              });
+            } else {
+              console.warn('⚠️ Failed to update conversation with session ID');
+            }
+          } catch (error) {
+            console.error('❌ Error updating conversation with session ID:', error);
+          }
+        }
+      }
+      
+      // Invalidate conversation-specific message queries
+      if (data.conversationId) {
+        queryClient.invalidateQueries({ 
+          queryKey: ['chat', 'messages', data.conversationId]
+        });
+      }
+    });
+
+    socket.on('chat:error', (data) => {
+      console.log('❌ Chat error:', data.error);
+      // Errors are handled by the chat service directly
+    });
+
+    socket.on('chat:aborted', (data) => {
+      console.log('⏹️ Chat request aborted:', data.requestId);
+      // Aborts are handled by the chat service directly
+    });
+
+    // Legacy chat message events (backward compatibility)
     socket.on('message:updated', (data) => {
-      console.log('💬 Message updated:', data);
+      console.log('💬 Message updated (legacy):', data);
       // Store tool usage in a temporary cache if needed
       if (data.toolUsages) {
         console.log('🔧 Tool usages:', data.toolUsages);
@@ -325,9 +394,9 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
       });
     });
 
-    // Enhanced interactive prompt events with analytics
+    // Interactive prompt events (permission system)
     socket.on('interactive_prompt', (data) => {
-      console.log('🔔 Enhanced interactive prompt received:', data);
+      console.log('🔔 Interactive prompt received:', data);
       console.log('📊 Analytics data:', {
         riskLevel: data.riskLevel,
         usageStatistics: data.usageStatistics,
@@ -348,14 +417,45 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
           queryKey: ['live-permission-status', data.conversationId]
         });
       }
+
+      // Emit custom event for permission UI components
+      const customEvent = new CustomEvent('baton:permission-request', {
+        detail: {
+          promptId: data.promptId,
+          conversationId: data.conversationId,
+          type: data.type,
+          toolName: data.context?.toolName,
+          riskLevel: data.context?.riskLevel,
+          message: data.message,
+          options: data.options,
+          timestamp: data.timestamp
+        }
+      });
+      window.dispatchEvent(customEvent);
     });
 
-    socket.on('permission:response', (data) => {
-      console.log('📝 Enhanced prompt response received:', data);
-      console.log('📊 Response analytics:', {
-        responseTime: data.analytics?.responseTime,
-        riskLevel: data.analytics?.riskLevel
+    // Permission escalation events
+    socket.on('permission_escalation', (data) => {
+      console.log('📢 Permission escalation:', data);
+      
+      // Emit custom event for escalation notifications
+      const customEvent = new CustomEvent('baton:permission-escalation', {
+        detail: {
+          promptId: data.promptId,
+          stage: data.stage,
+          toolName: data.toolName,
+          riskLevel: data.riskLevel,
+          escalationType: data.escalationType,
+          message: data.message,
+          timestamp: data.timestamp
+        }
       });
+      window.dispatchEvent(customEvent);
+    });
+
+    // Permission and plan review response handlers
+    socket.on('permission:response', (data) => {
+      console.log('📝 Permission response received:', data);
       
       // Find which conversation this prompt belongs to and invalidate queries
       queryClient.invalidateQueries({
@@ -363,14 +463,25 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
       });
 
       // Update analytics caches
-      if (data.response?.conversationId) {
+      if (data.conversationId) {
         queryClient.invalidateQueries({
-          queryKey: ['permission-analytics', data.response.conversationId]
+          queryKey: ['permission-analytics', data.conversationId]
         });
         queryClient.invalidateQueries({
-          queryKey: ['live-permission-status', data.response.conversationId]
+          queryKey: ['live-permission-status', data.conversationId]
         });
       }
+      
+      // Emit custom event for permission response handling
+      const customEvent = new CustomEvent('baton:permission-response', {
+        detail: {
+          promptId: data.promptId,
+          selectedOption: data.selectedOption,
+          conversationId: data.conversationId,
+          timestamp: Date.now()
+        }
+      });
+      window.dispatchEvent(customEvent);
     });
 
     // New analytics event handlers
@@ -537,6 +648,25 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
         queryKey: ['chat', 'conversation', data.conversationId]
       });
     });
+    
+    // Bridge service connection events
+    socket.on('claude-bridge:connected', () => {
+      console.log('🌉 Claude Code bridge service connected');
+      // Emit custom event for bridge connection status
+      const event = new CustomEvent('baton:bridge-connected', { 
+        detail: { connected: true, timestamp: Date.now() } 
+      });
+      window.dispatchEvent(event);
+    });
+    
+    socket.on('claude-bridge:disconnected', () => {
+      console.log('🌉 Claude Code bridge service disconnected');
+      // Emit custom event for bridge connection status
+      const event = new CustomEvent('baton:bridge-disconnected', { 
+        detail: { connected: false, timestamp: Date.now() } 
+      });
+      window.dispatchEvent(event);
+    });
   }, [queryClient, shouldProcessEvent]);
 
   const disconnect = useCallback(() => {
@@ -584,6 +714,36 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
   const emit = useCallback((event: string, data: any) => {
     if (socketRef.current?.connected) {
       socketRef.current.emit(event, data);
+    } else {
+      console.warn('⚠️  Cannot emit WebSocket event - not connected:', event);
+    }
+  }, []);
+  
+  // Helper method to send permission responses
+  const respondToPermission = useCallback((promptId: string, selectedOption: string, conversationId: string) => {
+    if (socketRef.current?.connected) {
+      socketRef.current.emit('permission:respond', {
+        promptId,
+        selectedOption,
+        conversationId,
+        timestamp: Date.now()
+      });
+      console.log('📝 Sent permission response:', { promptId, selectedOption });
+    }
+  }, []);
+  
+  // Helper method to send plan review responses
+  const respondToPlanReview = useCallback((promptId: string, decision: string, conversationId: string, feedback?: string, editedPlan?: string) => {
+    if (socketRef.current?.connected) {
+      socketRef.current.emit('plan:review-respond', {
+        promptId,
+        decision,
+        conversationId,
+        feedback,
+        editedPlan,
+        timestamp: Date.now()
+      });
+      console.log('📋 Sent plan review response:', { promptId, decision });
     }
   }, []);
 
@@ -681,6 +841,8 @@ export const useWebSocket = (options: WebSocketHookOptions = {}) => {
     emit,
     on,
     off,
+    respondToPermission,
+    respondToPlanReview,
     socket: socketRef.current
   };
 };

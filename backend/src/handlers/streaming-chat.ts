@@ -1,14 +1,17 @@
 /**
- * Streaming Chat Handler - Based on Claude Code WebUI Architecture
+ * Streaming Chat Handler - WebSocket Version
  * 
- * This implements the AsyncGenerator streaming pattern from the comprehensive guide,
- * providing NDJSON streaming responses with proper session management and abort support.
+ * This has been refactored to work with WebSocket communication instead of HTTP streaming.
+ * The core streaming logic is preserved but adapted for WebSocket event-based communication.
+ * 
+ * NOTE: This file is now primarily used for WebSocket-based streaming via Socket.IO events.
+ * HTTP endpoints have been deprecated in favor of WebSocket communication.
  */
 
-import { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { StreamResponse, StreamingContext, AbortError } from '../types/streaming';
 import { logger } from '../utils/logger';
+import type { Socket } from 'socket.io';
 
 // Shared abort controller management
 const requestAbortControllers = new Map<string, AbortController>();
@@ -97,18 +100,30 @@ async function* executeClaudeCommand(
 }
 
 /**
- * Express handler for streaming chat requests
- * Follows the exact pattern from the WebUI guide
+ * WebSocket handler for streaming chat requests
+ * Refactored from HTTP SSE to WebSocket event-based streaming
  */
-export async function handleStreamingChat(req: Request, res: Response): Promise<void> {
+export async function handleWebSocketChat(
+  socket: Socket,
+  data: {
+    message: string;
+    requestId: string;
+    conversationId: string;
+    sessionId?: string;
+    allowedTools?: string[];
+    workingDirectory?: string;
+    permissionMode?: string;
+  }
+): Promise<void> {
   const prisma = new PrismaClient();
   
   try {
-    const { message, requestId, conversationId, sessionId, allowedTools, workingDirectory, permissionMode } = req.body;
+    const { message, requestId, conversationId, sessionId, allowedTools, workingDirectory, permissionMode } = data;
     
     // Validate required parameters
     if (!message || !requestId || !conversationId) {
-      res.status(400).json({
+      socket.emit('chat:error', {
+        requestId: requestId || 'unknown',
         error: 'message, requestId, and conversationId are required'
       });
       return;
@@ -121,8 +136,9 @@ export async function handleStreamingChat(req: Request, res: Response): Promise<
     });
 
     if (!conversation) {
-      res.status(404).json({
-        error: 'Conversation not found',
+      socket.emit('chat:error', {
+        requestId,
+        error: 'Conversation not found'
       });
       return;
     }
@@ -145,14 +161,6 @@ export async function handleStreamingChat(req: Request, res: Response): Promise<
         content: '',
         status: 'sending',
       },
-    });
-
-    // Set up NDJSON streaming headers (following WebUI exactly)
-    res.writeHead(200, {
-      'Content-Type': 'application/x-ndjson',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-      'Access-Control-Allow-Origin': '*',
     });
 
     // Create abort controller for this request
@@ -181,17 +189,17 @@ export async function handleStreamingChat(req: Request, res: Response): Promise<
       projectName: conversation.project?.name
     });
 
-    // Process streaming responses with Socket.IO bridge integration
+    // Process streaming responses via WebSocket integration
     let fullContent = '';
     let currentSessionId = streamingContext.sessionId;
     let delegatedToHandler = false;
 
-    // Set up listener for responses from local handler
+    // Set up listener for responses from bridge service
     const { io } = await import('../index');
     let responseHandler: ((data: any) => void) | null = null;
     let streamCompleted = false;
 
-    // Execute streaming with AsyncGenerator (which will delegate to local handler)
+    // Execute streaming with AsyncGenerator (which will delegate to bridge service)
     for await (const streamResponse of executeClaudeCommand(
       contextPrompt,
       streamingContext,
@@ -205,92 +213,114 @@ export async function handleStreamingChat(req: Request, res: Response): Promise<
         messageId: assistantMessage.id,
       };
 
-      // Write initial delegation confirmation
-      const chunk = JSON.stringify(response) + '\n';
-      res.write(chunk);
+      // Send initial delegation confirmation via WebSocket
+      socket.emit('chat:stream-response', response);
 
-      // If this is a delegation response, set up Socket.IO listener
+      // If this is a delegation response, set up WebSocket listener
       if (streamResponse.type === 'delegated' && !delegatedToHandler) {
         delegatedToHandler = true;
-        logger.handlers.info('Setting up Socket.IO listener for delegated request', { requestId });
+        logger.handlers.info('Setting up WebSocket listener for delegated request', { requestId });
         
         // Set up response handler for this specific request
         responseHandler = (data: any) => {
-          logger.handlers.info('Received Socket.IO response', { 
+          logger.handlers.info('Received WebSocket response from bridge', { 
             hasRequestId: !!data.requestId,
             targetRequestId: requestId,
             matches: data.requestId === requestId,
-            responseType: data.streamResponse?.type,
-            isComplete: data.isComplete 
+            responseType: data.type
           });
           
           if (data.requestId === requestId) {
-            logger.handlers.info('Processing response from local handler', { 
+            logger.handlers.info('Processing response from bridge service', { 
               requestId, 
-              responseType: data.streamResponse?.type,
-              isComplete: data.isComplete,
-              hasContent: !!data.content,
-              hasSessionId: !!data.sessionId
+              responseType: data.type
             });
             
-            // Update content and session ID from local handler
-            if (data.content && data.content !== fullContent) {
-              fullContent = data.content;
-              logger.handlers.info('Updated content from local handler', { requestId, contentLength: data.content.length });
-            }
-            
-            if (data.sessionId && !currentSessionId) {
-              currentSessionId = data.sessionId;
-              logger.handlers.info('Captured session ID from local handler', { sessionId: data.sessionId, requestId });
-            }
-            
-            // Forward the stream response to frontend
-            if (data.streamResponse) {
-              const forwardedResponse: StreamResponse = {
-                ...data.streamResponse,
-                messageId: assistantMessage.id,
-              };
+            // Extract content from Claude stream data
+            if (data.type === 'claude_json' && data.data) {
+              let newContent = '';
+              if (data.data.type === 'assistant' && data.data.message) {
+                if (Array.isArray(data.data.message.content)) {
+                  newContent = data.data.message.content
+                    .filter((block: any) => block.type === 'text')
+                    .map((block: any) => block.text)
+                    .join('');
+                } else if (typeof data.data.message.content === 'string') {
+                  newContent = data.data.message.content;
+                }
+              }
               
-              const forwardChunk = JSON.stringify(forwardedResponse) + '\n';
-              res.write(forwardChunk);
-              logger.handlers.info('Forwarded stream response to frontend', { 
-                requestId, 
-                responseType: data.streamResponse.type 
-              });
+              if (newContent && newContent !== fullContent) {
+                fullContent = newContent;
+              }
             }
             
-            // Handle completion
-            if (data.isComplete) {
-              streamCompleted = true;
-              logger.handlers.info('🎯 Stream completion detected via local handler', { requestId });
-              
-              // Send final done response
-              const doneResponse: StreamResponse = {
-                type: 'done',
-                messageId: assistantMessage.id,
-              };
-              res.write(JSON.stringify(doneResponse) + '\n');
-              logger.handlers.info('Sent final done response', { requestId });
-            }
-          } else {
-            logger.handlers.debug('Ignoring response for different request', { 
-              receivedRequestId: data.requestId, 
-              expectedRequestId: requestId 
+            // Forward the stream response to frontend via WebSocket
+            socket.emit('chat:stream-response', {
+              requestId,
+              type: data.type,
+              data: data.data,
+              messageId: assistantMessage.id,
+              timestamp: data.timestamp
+            });
+            
+            logger.handlers.info('Forwarded stream response to frontend via WebSocket', { 
+              requestId, 
+              responseType: data.type 
             });
           }
         };
         
-        io.on('chat-bridge:response', responseHandler);
+        // Listen for bridge responses
+        socket.on('claude:stream', responseHandler);
         
-        // Wait for local handler responses (with timeout)
+        // Listen for completion
+        socket.once('claude:complete', (data: any) => {
+          if (data.requestId === requestId) {
+            streamCompleted = true;
+            currentSessionId = data.sessionId || currentSessionId;
+            logger.handlers.info('🎯 Stream completion detected via bridge service', { requestId });
+            
+            // Send final done response
+            socket.emit('chat:message-complete', {
+              requestId,
+              messageId: assistantMessage.id,
+              sessionId: currentSessionId,
+              timestamp: data.timestamp
+            });
+            logger.handlers.info('Sent final completion response', { requestId });
+          }
+        });
+        
+        // Listen for errors
+        socket.once('claude:error', (data: any) => {
+          if (data.requestId === requestId) {
+            streamCompleted = true;
+            logger.handlers.error('Received error from bridge service', { requestId, error: data.error });
+            
+            socket.emit('chat:error', {
+              requestId,
+              messageId: assistantMessage.id,
+              error: data.error,
+              timestamp: data.timestamp
+            });
+          }
+        });
+        
+        // Wait for completion with timeout
         const waitForCompletion = new Promise<void>((resolve) => {
           const timeout = setTimeout(() => {
             if (!streamCompleted) {
-              logger.handlers.warn('Local handler response timeout', { requestId });
+              logger.handlers.warn('Bridge service response timeout', { requestId });
               streamCompleted = true;
+              socket.emit('chat:error', {
+                requestId,
+                messageId: assistantMessage.id,
+                error: 'Bridge service timeout'
+              });
               resolve();
             }
-          }, 10000); // 10 second timeout for testing
+          }, 30000); // 30 second timeout
           
           const checkCompletion = setInterval(() => {
             if (streamCompleted) {
@@ -311,9 +341,9 @@ export async function handleStreamingChat(req: Request, res: Response): Promise<
       }
     }
 
-    // Clean up Socket.IO listener
+    // Clean up WebSocket listeners
     if (responseHandler) {
-      io.off('chat-bridge:response', responseHandler);
+      socket.off('claude:stream', responseHandler);
     }
 
     // Update message in database
@@ -334,47 +364,35 @@ export async function handleStreamingChat(req: Request, res: Response): Promise<
       });
       logger.handlers.info('Stored session ID', { sessionId: currentSessionId, conversationId });
     }
-
-    // Send final completion response
-    const finalResponse: StreamResponse = {
-      type: 'done',
-      messageId: assistantMessage.id,
-    };
-    res.write(JSON.stringify(finalResponse) + '\n');
     
-    logger.handlers.info('Streaming chat completed', { requestId, messageId: assistantMessage.id });
+    logger.handlers.info('WebSocket streaming chat completed', { requestId, messageId: assistantMessage.id });
 
   } catch (error) {
-    logger.handlers.error('Stream setup error', { error });
+    logger.handlers.error('WebSocket stream setup error', { error });
     
-    if (!res.headersSent) {
-      res.status(500).json({
-        error: 'Failed to set up streaming response',
-        details: error instanceof Error ? error.message : String(error),
-      });
-      return;
-    } else {
-      // Send error via stream
-      const errorResponse: StreamResponse = {
-        type: 'error',
-        error: error instanceof Error ? error.message : String(error),
-      };
-      res.write(JSON.stringify(errorResponse) + '\n');
-    }
+    socket.emit('chat:error', {
+      requestId: data.requestId,
+      error: 'Failed to set up streaming response',
+      details: error instanceof Error ? error.message : String(error),
+    });
   } finally {
-    res.end();
     await prisma.$disconnect();
   }
 }
 
 /**
- * Abort handler following WebUI pattern exactly
+ * WebSocket abort handler
  */
-export function handleAbortRequest(req: Request, res: Response): Response {
-  const requestId = req.params.requestId;
-  
+export function handleWebSocketAbort(
+  socket: Socket,
+  requestId: string
+): void {
   if (!requestId) {
-    return res.status(400).json({ error: "Request ID is required" });
+    socket.emit('chat:error', {
+      requestId: 'unknown',
+      error: 'Request ID is required for abort'
+    });
+    return;
   }
 
   const abortController = requestAbortControllers.get(requestId);
@@ -382,10 +400,17 @@ export function handleAbortRequest(req: Request, res: Response): Response {
     abortController.abort();
     requestAbortControllers.delete(requestId);
     
-    logger.handlers.info('Request aborted', { requestId });
-    return res.json({ success: true, message: "Request aborted" });
+    logger.handlers.info('Request aborted via WebSocket', { requestId });
+    socket.emit('chat:aborted', {
+      requestId,
+      message: 'Request aborted successfully',
+      timestamp: Date.now()
+    });
+  } else {
+    logger.handlers.warn('Abort request for unknown requestId', { requestId });
+    socket.emit('chat:error', {
+      requestId,
+      error: 'Request not found or already completed'
+    });
   }
-
-  logger.handlers.warn('Abort request for unknown requestId', { requestId });
-  return res.status(404).json({ error: "Request not found or already completed" });
 }

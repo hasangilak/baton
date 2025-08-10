@@ -1,12 +1,13 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { chatService } from '../services/chat.service';
+import { chatService, getChatSocket } from '../services/chat.service';
 import { useToast } from './useToast';
 import type { 
   Message, 
   StreamingResponse,
   SendMessageRequest 
 } from '../types';
+import type { Socket } from 'socket.io-client';
 
 export const chatKeys = {
   all: ['chat'] as const,
@@ -87,6 +88,20 @@ export function useChat(conversationId: string | null) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const currentRequestIdRef = useRef<string | null>(null);
+  const socketRef = useRef<Socket | null>(null);
+  
+  // Initialize WebSocket connection
+  useEffect(() => {
+    socketRef.current = getChatSocket();
+    
+    return () => {
+      // Clean up any active streaming on unmount
+      if (currentRequestIdRef.current && socketRef.current) {
+        socketRef.current.emit('claude:abort', currentRequestIdRef.current);
+      }
+    };
+  }, []);
 
   const sendMessage = useCallback(async (
     content: string,
@@ -111,7 +126,10 @@ export function useChat(conversationId: string | null) {
     setOptimisticUserMessage(optimisticMessage);
     setIsWaitingForResponse(true);
     setIsStreaming(true);
-    abortControllerRef.current = new AbortController();
+    
+    // Generate request ID for tracking
+    const requestId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    currentRequestIdRef.current = requestId;
 
     try {
       await chatService.sendMessage(
@@ -121,6 +139,8 @@ export function useChat(conversationId: string | null) {
           attachments,
         },
         (response: StreamingResponse) => {
+          console.log('📨 Received streaming response:', response);
+          
           // Update streaming message
           setStreamingMessage(prev => {
             if (!prev) {
@@ -140,24 +160,29 @@ export function useChat(conversationId: string | null) {
             
             return {
               ...prev,
-              content: response.content,
+              content: response.content || prev.content, // Preserve content if response doesn't have it
               status: response.isComplete ? 'completed' : 'sending',
               error: response.error,
               metadata: { 
                 ...(prev.metadata || {}),
                 ...(response as any).toolUsages && { toolUsages: (response as any).toolUsages }
               },
+              updatedAt: new Date().toISOString(),
             };
           });
 
           if (response.isComplete) {
+            console.log('✅ Message streaming completed');
             setIsStreaming(false);
             setIsWaitingForResponse(false);
+            currentRequestIdRef.current = null;
+            
             // Invalidate messages query to refetch complete message with metadata
             queryClient.invalidateQueries({ 
               queryKey: chatKeys.messages(conversationId) 
             });
-            // Clear both optimistic and streaming messages
+            
+            // Clear both optimistic and streaming messages after a short delay
             setTimeout(() => {
               setStreamingMessage(null);
               setOptimisticUserMessage(null);
@@ -166,19 +191,30 @@ export function useChat(conversationId: string | null) {
         }
       );
     } catch (error) {
+      console.error('❌ Failed to send WebSocket message:', error);
       setIsStreaming(false);
       setIsWaitingForResponse(false);
       setStreamingMessage(null);
       setOptimisticUserMessage(null);
-      showError('Error', 'Failed to send message');
+      currentRequestIdRef.current = null;
+      showError('Error', error instanceof Error ? error.message : 'Failed to send message');
     }
-  }, [conversationId, queryClient]);
+  }, [conversationId, queryClient, showError]);
 
   const stopStreaming = useCallback(() => {
+    if (currentRequestIdRef.current && socketRef.current) {
+      socketRef.current.emit('claude:abort', currentRequestIdRef.current);
+      console.log('⏹️ Sent abort request for:', currentRequestIdRef.current);
+    }
+    
+    // Legacy abort controller support
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
-      setIsStreaming(false);
     }
+    
+    setIsStreaming(false);
+    setIsWaitingForResponse(false);
+    currentRequestIdRef.current = null;
   }, []);
 
   const uploadFile = useMutation({

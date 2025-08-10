@@ -6,10 +6,16 @@ import type {
   SendMessageRequest,
   StreamingResponse
 } from '../types/index';
+import { io, type Socket } from 'socket.io-client';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
+// Global WebSocket connection for chat service
+let globalSocket: Socket | null = null;
+
 class ChatService {
+  private socket: Socket | null = null;
+  
   private async request<T>(
     endpoint: string,
     options: RequestInit = {}
@@ -37,6 +43,33 @@ class ChatService {
       console.error('Chat API request failed:', error);
       throw error;
     }
+  }
+
+  private ensureSocketConnection(): Socket {
+    if (!globalSocket) {
+      globalSocket = io(API_BASE_URL, {
+        transports: ['websocket', 'polling'],
+        timeout: 10000,
+        reconnection: true,
+        reconnectionDelay: 1000,
+        reconnectionAttempts: 5
+      });
+      
+      globalSocket.on('connect', () => {
+        console.log('💬 Chat service WebSocket connected:', globalSocket?.id);
+      });
+      
+      globalSocket.on('disconnect', (reason) => {
+        console.log('💬 Chat service WebSocket disconnected:', reason);
+      });
+      
+      globalSocket.on('connect_error', (error) => {
+        console.error('💬 Chat service WebSocket connection error:', error);
+      });
+    }
+    
+    this.socket = globalSocket;
+    return globalSocket;
   }
 
   // Conversations
@@ -77,48 +110,145 @@ class ChatService {
     return this.request<any>(`/api/chat/conversation/${conversationId}`);
   }
 
-  // Send message with SSE streaming
+  // Send message with WebSocket streaming
   async sendMessage(
     data: SendMessageRequest,
     onStream: (response: StreamingResponse) => void
   ): Promise<void> {
-    const response = await fetch(`${API_BASE_URL}/api/chat/messages`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(data),
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to send message');
-    }
-
-    // Handle SSE stream
-    const reader = response.body?.getReader();
-    const decoder = new TextDecoder();
-
-    if (!reader) {
-      throw new Error('No response body');
-    }
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      const chunk = decoder.decode(value);
-      const lines = chunk.split('\n');
-
-      for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          try {
-            const data = JSON.parse(line.slice(6));
-            onStream(data as StreamingResponse);
-          } catch (e) {
-            console.error('Error parsing SSE data:', e);
+    const socket = this.ensureSocketConnection();
+    
+    const requestId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    
+    return new Promise((resolve, reject) => {
+      // Set up event listeners for this specific request
+      const handleStreamResponse = (response: any) => {
+        if (response.requestId === requestId) {
+          console.log('📡 Received stream response:', response.type);
+          
+          // Convert bridge response to frontend format
+          let streamResponse: StreamingResponse;
+          
+          if (response.type === 'claude_json' && response.data) {
+            // Extract content from Claude response
+            let content = '';
+            let isComplete = false;
+            
+            if (response.data.type === 'assistant' && response.data.message) {
+              if (Array.isArray(response.data.message.content)) {
+                content = response.data.message.content
+                  .filter((block: any) => block.type === 'text')
+                  .map((block: any) => block.text)
+                  .join('');
+              } else if (typeof response.data.message.content === 'string') {
+                content = response.data.message.content;
+              }
+            } else if (response.data.type === 'result') {
+              isComplete = true;
+            }
+            
+            streamResponse = {
+              id: response.messageId,
+              content,
+              isComplete,
+              timestamp: response.timestamp
+            };
+          } else {
+            // Handle other response types
+            streamResponse = {
+              id: response.messageId,
+              content: '',
+              isComplete: response.type === 'done',
+              error: response.type === 'error' ? response.error : undefined,
+              timestamp: response.timestamp
+            };
           }
+          
+          onStream(streamResponse);
         }
-      }
+      };
+      
+      const handleComplete = (response: any) => {
+        if (response.requestId === requestId) {
+          console.log('✅ Message complete:', response.messageId);
+          
+          // Send final completion signal
+          onStream({
+            id: response.messageId,
+            content: '',
+            isComplete: true,
+            timestamp: response.timestamp
+          });
+          
+          // Clean up listeners
+          socket.off('chat:stream-response', handleStreamResponse);
+          socket.off('chat:message-complete', handleComplete);
+          socket.off('chat:error', handleError);
+          socket.off('chat:aborted', handleAborted);
+          
+          resolve();
+        }
+      };
+      
+      const handleError = (response: any) => {
+        if (response.requestId === requestId) {
+          console.error('❌ Chat error:', response.error);
+          
+          // Clean up listeners
+          socket.off('chat:stream-response', handleStreamResponse);
+          socket.off('chat:message-complete', handleComplete);
+          socket.off('chat:error', handleError);
+          socket.off('chat:aborted', handleAborted);
+          
+          reject(new Error(response.error || 'Chat request failed'));
+        }
+      };
+      
+      const handleAborted = (response: any) => {
+        if (response.requestId === requestId) {
+          console.log('⏹️ Chat request aborted:', response.requestId);
+          
+          // Clean up listeners
+          socket.off('chat:stream-response', handleStreamResponse);
+          socket.off('chat:message-complete', handleComplete);
+          socket.off('chat:error', handleError);
+          socket.off('chat:aborted', handleAborted);
+          
+          reject(new Error('Chat request was aborted'));
+        }
+      };
+      
+      // Set up listeners
+      socket.on('chat:stream-response', handleStreamResponse);
+      socket.on('chat:message-complete', handleComplete);
+      socket.on('chat:error', handleError);
+      socket.on('chat:aborted', handleAborted);
+      
+      // Send the message request via WebSocket
+      const messageData = {
+        ...data,
+        requestId,
+      };
+      
+      socket.emit('chat:send-message', messageData);
+      console.log('📤 Sent WebSocket message request:', requestId);
+      
+      // Set up timeout
+      setTimeout(() => {
+        socket.off('chat:stream-response', handleStreamResponse);
+        socket.off('chat:message-complete', handleComplete);
+        socket.off('chat:error', handleError);
+        socket.off('chat:aborted', handleAborted);
+        reject(new Error('WebSocket message request timeout'));
+      }, 60000); // 60 second timeout
+    });
+  }
+  
+  // Abort message sending
+  abortMessage(requestId: string): void {
+    const socket = this.socket;
+    if (socket && socket.connected) {
+      socket.emit('claude:abort', requestId);
+      console.log('⏹️ Sent abort request for:', requestId);
     }
   }
 
@@ -153,6 +283,27 @@ class ChatService {
     const data = await response.json();
     return data.file;
   }
+  
+  // Get WebSocket connection for direct use by hooks
+  getSocket(): Socket | null {
+    return this.ensureSocketConnection();
+  }
+  
+  // Clean up WebSocket connection
+  disconnect(): void {
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
+    }
+    if (globalSocket) {
+      globalSocket.disconnect();
+      globalSocket = null;
+    }
+  }
 }
 
 export const chatService = new ChatService();
+
+// Export WebSocket utilities for hooks
+export const getChatSocket = () => chatService.getSocket();
+export const disconnectChatService = () => chatService.disconnect();

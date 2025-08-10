@@ -14,12 +14,10 @@ interface UseConversationItemsProps {
   // Database messages (persisted)
   dbMessages?: Message[];
   
-  // Claude streaming state
-  claudeStreaming: {
-    messages: any[];
-    currentAssistantMessage: any | null;
-    isStreaming: boolean;
-  };
+  // WebSocket-based chat state
+  streamingMessage?: Message | null;
+  optimisticUserMessage?: Message | null;
+  isStreaming: boolean;
   
   // Interactive prompts
   pendingPrompts: InteractivePrompt[];
@@ -34,7 +32,9 @@ interface UseConversationItemsProps {
  */
 export function useConversationItems({
   dbMessages = [],
-  claudeStreaming,
+  streamingMessage,
+  optimisticUserMessage,
+  isStreaming,
   pendingPrompts,
   selectedConversationId
 }: UseConversationItemsProps): ConversationItem[] {
@@ -56,48 +56,37 @@ export function useConversationItems({
       items.push(item);
     });
     
-    // 2. Transform completed streaming messages
-    claudeStreaming.messages.forEach((msg: any, index: number) => {
-      const messageId = msg.id || 
-                       msg.timestamp?.toString() || 
-                       `msg-${index}-${generateMessageId()}`;
-      const timestamp = msg.timestamp ? new Date(msg.timestamp).getTime() : Date.now();
-      
-      
-      const item: StreamingMessageConversationItem = {
-        id: messageId,
+    // 2. Add optimistic user message (shown immediately when user sends message)
+    if (optimisticUserMessage) {
+      const item: MessageConversationItem = {
+        id: optimisticUserMessage.id,
         type: 'message',
-        status: 'streaming',
-        timestamp,
+        status: 'completed', // User messages are immediately "completed"
+        timestamp: new Date(optimisticUserMessage.createdAt).getTime(),
         sortOrder: sortOrder++,
-        data: msg,
-        originalMessage: msg,
-        isStreamingMessage: true
-      };
-      items.push(item);
-    });
-    
-    // 3. Transform current assistant message (if streaming)
-    if (claudeStreaming.currentAssistantMessage) {
-      const msg = claudeStreaming.currentAssistantMessage;
-      const timestamp = Date.now();
-      
-      const item: CurrentStreamingConversationItem = {
-        id: 'streaming',
-        type: 'message',
-        status: 'active-streaming',
-        timestamp,
-        sortOrder: sortOrder++,
-        data: msg,
-        originalMessage: msg,
-        isStreamingMessage: true,
-        isStreaming: true
+        data: optimisticUserMessage
       };
       items.push(item);
     }
     
-    // 4. Add loading state if streaming but no current message
-    else if (claudeStreaming.isStreaming) {
+    // 3. Add streaming assistant message (if currently streaming)
+    if (streamingMessage) {
+      const item: CurrentStreamingConversationItem = {
+        id: streamingMessage.id,
+        type: 'message',
+        status: streamingMessage.status === 'completed' ? 'completed' : 'active-streaming',
+        timestamp: new Date(streamingMessage.createdAt).getTime(),
+        sortOrder: sortOrder++,
+        data: streamingMessage,
+        originalMessage: streamingMessage,
+        isStreamingMessage: true,
+        isStreaming: streamingMessage.status !== 'completed'
+      };
+      items.push(item);
+    }
+    
+    // 4. Add loading state if streaming but no streaming message yet
+    else if (isStreaming) {
       const item: LoadingConversationItem = {
         id: 'loading',
         type: 'loading',
@@ -125,5 +114,5 @@ export function useConversationItems({
       return timeDiff !== 0 ? timeDiff : a.sortOrder - b.sortOrder;
     });
     
-  }, [dbMessages, claudeStreaming, pendingPrompts, selectedConversationId]);
+  }, [dbMessages, streamingMessage, optimisticUserMessage, isStreaming, pendingPrompts, selectedConversationId]);
 }

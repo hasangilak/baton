@@ -1,17 +1,20 @@
 #!/usr/bin/env bun
 
 /**
- * Claude Code Bridge Service
+ * Claude Code Bridge Service - WebSocket Version
  * 
- * A lightweight HTTP service that executes Claude Code SDK requests
- * on behalf of the Docker backend. This allows the web UI to use
- * Claude Code while keeping the execution on the local machine.
+ * A WebSocket-based service that executes Claude Code SDK requests
+ * on behalf of the Docker backend. This eliminates HTTP overhead and
+ * provides true real-time bidirectional communication.
  * 
  * Usage:
- * bun run bridge.ts [--port 8080] [--backend http://localhost:3001]
+ * bun run bridge.ts [--port 8080] [--backend ws://localhost:3001]
  */
 
 import { query, type PermissionResult, type SDKUserMessage, type PermissionMode} from "@anthropic-ai/claude-code";
+import { Server } from 'socket.io';
+import { io as ioClient, Socket } from 'socket.io-client';
+import { createServer } from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -34,19 +37,41 @@ interface StreamResponse {
   timestamp: number;
 }
 
+interface WebSocketBridgeEvents {
+  'claude:execute': (request: BridgeRequest) => void;
+  'claude:abort': (requestId: string) => void;
+  'permission:response': (data: { promptId: string; response: any }) => void;
+  'bridge:health': () => void;
+  'files:list': (data: { workingDirectory?: string; search?: string }) => void;
+  'files:content': (data: { filePath: string; workingDirectory?: string }) => void;
+}
+
+interface WebSocketBridgeEmits {
+  'claude:stream': (response: StreamResponse) => void;
+  'claude:complete': (data: { requestId: string; sessionId?: string }) => void;
+  'claude:error': (data: { requestId: string; error: string }) => void;
+  'claude:aborted': (data: { requestId: string }) => void;
+  'permission:request': (data: any) => void;
+  'bridge:health-response': (data: { status: string; activeRequests: number }) => void;
+  'files:list-response': (data: { files: any[]; workingDirectory: string; count: number }) => void;
+  'files:content-response': (data: { content: string; path: string; fullPath: string; size: number; lastModified: Date }) => void;
+}
+
 class ClaudeCodeBridge {
   private port: number;
   private backendUrl: string;
   private activeRequests = new Map<string, AbortController>();
   private permissionModeCache = new Map<string, { mode: string; timestamp: number }>();
+  private io: Server | null = null;
+  private backendSocket: Socket | null = null;
 
-  constructor(port: number = 8080, backendUrl: string = 'http://localhost:3001') {
+  constructor(port: number = 8080, backendUrl: string = 'ws://localhost:3001') {
     this.port = port;
     this.backendUrl = backendUrl;
   }
 
   /**
-   * Check conversation permission mode from backend
+   * Check conversation permission mode from backend via WebSocket
    */
   private async getConversationPermissionMode(conversationId: string): Promise<string> {
     try {
@@ -57,30 +82,37 @@ class ClaudeCodeBridge {
         return cached.mode;
       }
 
-      const response = await fetch(`${this.backendUrl}/api/chat/conversations/${conversationId}/permission-mode`);
-      
-      if (response.ok) {
-        const data = await response.json();
-        const mode = data.permissionMode || 'default';
-        
-        // Cache the result
-        this.permissionModeCache.set(conversationId, { mode, timestamp: now });
-        
-        return mode;
-      } else {
-        console.warn(`⚠️  Failed to get permission mode for conversation ${conversationId}: ${response.status}`);
+      if (!this.backendSocket) {
+        console.warn(`⚠️  No backend WebSocket connection for conversation ${conversationId}`);
         return 'default';
       }
+
+      // Send WebSocket request for permission mode
+      return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          console.warn(`⚠️  Permission mode request timeout for conversation ${conversationId}`);
+          resolve('default');
+        }, 5000);
+
+        this.backendSocket.emit('permission:get-mode', { conversationId }, (response: any) => {
+          clearTimeout(timeout);
+          const mode = response?.permissionMode || 'default';
+          
+          // Cache the result
+          this.permissionModeCache.set(conversationId, { mode, timestamp: now });
+          
+          resolve(mode);
+        });
+      });
     } catch (error) {
       console.warn(`⚠️  Error getting permission mode for conversation ${conversationId}:`, error);
       return 'default';
     }
   }
 
-  private async handleExecuteRequest(request: Request): Promise<Response> {
+  private async handleExecuteRequest(socket: any, request: BridgeRequest): Promise<void> {
     try {
-      const body = await request.json() as BridgeRequest;
-      const { message, requestId, conversationId, sessionId, allowedTools, workingDirectory, permissionMode = 'default', projectName } = body;
+      const { message, requestId, conversationId, sessionId, allowedTools, workingDirectory, permissionMode = 'default', projectName } = request;
 
       console.log(`🚀 Bridge executing Claude Code request ${requestId}`);
       console.log(`📝 Message: "${message.substring(0, 100)}..."`);
@@ -90,31 +122,23 @@ class ClaudeCodeBridge {
       console.log(`🔐 Permission Mode: ${permissionMode}`);
       console.log(`📦 Conversation: ${conversationId} | Project: ${projectName || 'n/a'}`);
 
-      // Create readable stream for Server-Sent Events
-      const stream = new ReadableStream({
-        start: async (controller) => {
-          let streamClosed = false;
-          
-          const sendResponse = (response: StreamResponse) => {
-            if (streamClosed || !controller) {
-              console.log(`⚠️  Stream already closed, cannot send response for ${requestId}`);
-              return;
-            }
-            
-            try {
-              // Check if controller is still valid before accessing properties
-              if (controller.desiredSize === null) {
-                console.log(`⚠️  Stream controller closed, cannot send response for ${requestId}`);
-                streamClosed = true;
-                return;
-              }
-              
-              controller.enqueue(`data: ${JSON.stringify(response)}\n\n`);
-            } catch (error) {
-              console.log(`⚠️  Error sending to stream for ${requestId}:`, error);
-              streamClosed = true;
-            }
-          };
+      // WebSocket-based response sending
+      let executionCompleted = false;
+      let currentSessionId = sessionId; // Track session ID from request and Claude response
+      
+      const sendResponse = (response: StreamResponse) => {
+        if (executionCompleted) {
+          console.log(`⚠️  Execution already completed, cannot send response for ${requestId}`);
+          return;
+        }
+        
+        try {
+          socket.emit('claude:stream', response);
+        } catch (error) {
+          console.log(`⚠️  Error sending WebSocket response for ${requestId}:`, error);
+          executionCompleted = true;
+        }
+      };
 
           // Use working generator pattern from ultimate-claude-sdk.ts
           let conversationDone: (() => void) | undefined;
@@ -290,9 +314,14 @@ class ClaudeCodeBridge {
                 console.log(`📨 Message ${messageCount} type: ${sdkMessage.type || "unknown"} for ${requestId}`);
               }
 
+              // Capture session ID from system messages
+              if (sdkMessage.type === "system" && (sdkMessage as any).session_id) {
+                currentSessionId = (sdkMessage as any).session_id;
+              }
+
               // Permission handling is now done in canUseTool callback
 
-              // Send stream response
+              // Send stream response via WebSocket
               const streamResponse: StreamResponse = {
                 type: "claude_json",
                 data: sdkMessage,
@@ -331,10 +360,10 @@ class ClaudeCodeBridge {
               }
             }
 
-            // Send completion
-            sendResponse({
-              type: "done",
+            // Send completion via WebSocket
+            socket.emit('claude:complete', {
               requestId,
+              sessionId: currentSessionId,
               timestamp: Date.now()
             });
 
@@ -345,67 +374,41 @@ class ClaudeCodeBridge {
             if (conversationDone) conversationDone();
             
             if (error instanceof Error && error.name === 'AbortError') {
-              sendResponse({
-                type: "aborted",
+              socket.emit('claude:aborted', {
                 requestId,
                 timestamp: Date.now()
               });
             } else {
-              sendResponse({
-                type: "error",
-                error: error instanceof Error ? error.message : String(error),
+              socket.emit('claude:error', {
                 requestId,
+                error: error instanceof Error ? error.message : String(error),
                 timestamp: Date.now()
               });
             }
           } finally {
             // Clean up
             this.activeRequests.delete(requestId);
-            if (!streamClosed && controller.desiredSize !== null) {
-              try {
-                controller.close();
-              } catch (error) {
-                console.log(`⚠️  Error closing controller for ${requestId}:`, error);
-              }
-            }
-            streamClosed = true;
+            executionCompleted = true;
           }
-        }
-      });
-
-      // Return streaming response
-      return new Response(stream, {
-        headers: {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-        }
-      });
-
     } catch (error) {
       console.error('❌ Execute request error:', error);
-      return new Response(JSON.stringify({
-        error: error instanceof Error ? error.message : String(error)
-      }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
+      socket.emit('claude:error', {
+        requestId,
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: Date.now()
       });
     }
   }
 
-  private async handleAbortRequest(request: Request): Promise<Response> {
+  private handleAbortRequest(socket: any, requestId: string): void {
     try {
-      const url = new URL(request.url);
-      const requestId = url.pathname.split('/').pop();
-      
       if (!requestId) {
-        return new Response(JSON.stringify({ error: 'Request ID is required' }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
+        socket.emit('claude:error', {
+          requestId: 'unknown',
+          error: 'Request ID is required',
+          timestamp: Date.now()
         });
+        return;
       }
 
       const abortController = this.activeRequests.get(requestId);
@@ -414,23 +417,25 @@ class ClaudeCodeBridge {
         abortController.abort();
         this.activeRequests.delete(requestId);
         console.log(`⏹️ Request ${requestId} aborted`);
-        return new Response(JSON.stringify({ success: true, message: 'Request aborted' }), {
-          headers: { 'Content-Type': 'application/json' }
+        socket.emit('claude:aborted', {
+          requestId,
+          message: 'Request aborted successfully',
+          timestamp: Date.now()
         });
       } else {
         console.warn(`⚠️ No active request found for ${requestId}`);
-        return new Response(JSON.stringify({ success: false, message: 'Request not found' }), {
-          status: 404,
-          headers: { 'Content-Type': 'application/json' }
+        socket.emit('claude:error', {
+          requestId,
+          error: 'Request not found or already completed',
+          timestamp: Date.now()
         });
       }
     } catch (error) {
       console.error('❌ Abort request error:', error);
-      return new Response(JSON.stringify({
-        error: error instanceof Error ? error.message : String(error)
-      }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
+      socket.emit('claude:error', {
+        requestId,
+        error: error instanceof Error ? error.message : String(error),
+        timestamp: Date.now()
       });
     }
   }
@@ -444,60 +449,50 @@ class ClaudeCodeBridge {
     try {
       console.log(`🔐 Requesting permission for ${toolName} (${riskLevel} risk) with progressive timeout`);
       
-      // Ensure conversation exists first
-      await this.ensureConversationExists(conversationId);
+      if (!this.backendSocket) {
+        console.warn(`⚠️  No backend WebSocket connection for permission request`);
+        return { behavior: 'deny', message: 'No backend connection' };
+      }
+
+      // Check if permission is already granted via WebSocket
+      const hasPermission = await new Promise<boolean>((resolve) => {
+        const timeout = setTimeout(() => resolve(false), 3000);
+        
+        this.backendSocket.emit('permission:check', { conversationId, toolName }, (response: any) => {
+          clearTimeout(timeout);
+          resolve(response?.hasPermission || false);
+        });
+      });
+
+      if (hasPermission) {
+        console.log(`✅ Tool ${toolName} already permitted`);
+        return { behavior: 'allow', updatedInput: parameters };
+      }
+
+      // Create interactive permission prompt via WebSocket
+      const promptData = {
+        type: 'tool_permission',
+        title: 'Tool Permission Required',
+        message: `Claude Code wants to use the ${toolName} tool.`,
+        options: [
+          { id: 'allow_once', label: 'Allow Once', value: 'allow_once' },
+          { id: 'allow_always', label: 'Allow Always', value: 'allow_always' },
+          { id: 'deny', label: 'Deny', value: 'deny' }
+        ],
+        context: {
+          toolName,
+          parameters: JSON.stringify(parameters),
+          riskLevel,
+          usageCount: 0,
+          progressiveTimeout: true
+        },
+        conversationId
+      };
+
+      // Emit permission request and wait for response
+      const promptId = `tool_${toolName}_${Date.now()}`;
+      this.backendSocket.emit('permission:request', { ...promptData, promptId });
       
-      // Check if permission is already granted
-      const permissionsResponse = await fetch(
-        `${this.backendUrl}/api/chat/conversations/${conversationId}/permissions`
-      );
-      
-      if (permissionsResponse.ok) {
-        const permissionsData = await permissionsResponse.json();
-        const permissions = permissionsData.permissions || [];
-        if (permissions.includes(toolName)) {
-          console.log(`✅ Tool ${toolName} already permitted`);
-          return { behavior: 'allow', updatedInput: parameters };
-        }
-      }
-
-      // Create interactive permission prompt
-      const promptResponse = await fetch(
-        `${this.backendUrl}/api/chat/conversations/${conversationId}/prompts`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'tool_permission',
-            title: 'Tool Permission Required',
-            message: `Claude Code wants to use the ${toolName} tool.`,
-            options: [
-              { id: 'allow_once', label: 'Allow Once', value: 'allow_once' },
-              { id: 'allow_always', label: 'Allow Always', value: 'allow_always' },
-              { id: 'deny', label: 'Deny', value: 'deny' }
-            ],
-            context: {
-              toolName,
-              parameters: JSON.stringify(parameters),
-              riskLevel,
-              usageCount: 0,
-              progressiveTimeout: true
-            }
-          })
-        }
-      );
-
-      if (!promptResponse.ok) {
-        throw new Error('Failed to create permission prompt');
-      }
-
-      const promptData = await promptResponse.json();
-      if (!promptData.success) {
-        throw new Error('Failed to create permission prompt');
-      }
-
-      // Use progressive timeout strategy
-      const promptId = promptData.prompt.id;
       console.log(`🔄 Starting progressive timeout for prompt ${promptId}`);
       
       const response = await this.waitForPermissionResponseProgressive(promptId, toolName, riskLevel);
@@ -553,47 +548,36 @@ class ClaudeCodeBridge {
     try {
       console.log(`📋 Requesting plan review for ${toolName} in conversation ${conversationId}`);
       
-      // Ensure conversation exists first
-      await this.ensureConversationExists(conversationId);
+      if (!this.backendSocket) {
+        console.warn(`⚠️  No backend WebSocket connection for plan review`);
+        return { behavior: 'deny', message: 'No backend connection' };
+      }
       
-      // Create plan review prompt
-      const promptResponse = await fetch(
-        `${this.backendUrl}/api/chat/conversations/${conversationId}/plan-review`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'plan_review',
-            title: 'Plan Review Required',
-            message: 'Claude Code has generated an implementation plan for your review.',
-            planContent: planContent,
-            options: [
-              { id: 'auto_accept', label: 'Auto Accept', value: 'auto_accept', description: 'Immediately approve and start implementation' },
-              { id: 'review_accept', label: 'Review & Accept', value: 'review_accept', description: 'I have reviewed the plan and approve it' },
-              { id: 'edit_plan', label: 'Edit Plan', value: 'edit_plan', description: 'Let me modify the plan before proceeding' },
-              { id: 'reject', label: 'Reject', value: 'reject', description: 'Decline this plan and provide feedback' }
-            ],
-            context: {
-              toolName,
-              parameters: JSON.stringify(parameters),
-              planLength: planContent.length,
-              timestamp: Date.now()
-            }
-          })
-        }
-      );
+      // Create plan review prompt via WebSocket
+      const promptData = {
+        type: 'plan_review',
+        title: 'Plan Review Required',
+        message: 'Claude Code has generated an implementation plan for your review.',
+        planContent: planContent,
+        options: [
+          { id: 'auto_accept', label: 'Auto Accept', value: 'auto_accept', description: 'Immediately approve and start implementation' },
+          { id: 'review_accept', label: 'Review & Accept', value: 'review_accept', description: 'I have reviewed the plan and approve it' },
+          { id: 'edit_plan', label: 'Edit Plan', value: 'edit_plan', description: 'Let me modify the plan before proceeding' },
+          { id: 'reject', label: 'Reject', value: 'reject', description: 'Decline this plan and provide feedback' }
+        ],
+        context: {
+          toolName,
+          parameters: JSON.stringify(parameters),
+          planLength: planContent.length,
+          timestamp: Date.now()
+        },
+        conversationId
+      };
 
-      if (!promptResponse.ok) {
-        throw new Error(`Failed to create plan review prompt: ${promptResponse.status}`);
-      }
-
-      const promptData = await promptResponse.json();
-      if (!promptData.success) {
-        throw new Error('Failed to create plan review prompt');
-      }
-
-      // Wait for plan review response with extended timeout for plans
-      const promptId = promptData.prompt.id;
+      // Emit plan review request and wait for response
+      const promptId = `plan_${conversationId.slice(-8)}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      this.backendSocket.emit('plan:review-request', { ...promptData, promptId });
+      
       console.log(`🔄 Waiting for plan review response for prompt ${promptId}`);
       
       const response = await this.waitForPlanReviewResponse(promptId);
@@ -658,35 +642,48 @@ class ClaudeCodeBridge {
     try {
       console.log(`🗨️  Ensuring conversation ${conversationId} exists`);
       
-      // Check if conversation exists
-      const checkResponse = await fetch(
-        `${this.backendUrl}/api/chat/conversations/${conversationId}/permissions`
-      );
+      if (!this.backendSocket) {
+        console.warn(`⚠️  No backend WebSocket connection to check conversation`);
+        return;
+      }
+
+      // Check if conversation exists via WebSocket
+      const exists = await new Promise<boolean>((resolve) => {
+        const timeout = setTimeout(() => {
+          console.warn(`⚠️  Conversation check timeout for ${conversationId}`);
+          resolve(false);
+        }, 5000);
+
+        this.backendSocket.emit('conversation:check', { conversationId }, (response: any) => {
+          clearTimeout(timeout);
+          resolve(response?.exists || false);
+        });
+      });
       
-      if (checkResponse.ok) {
+      if (exists) {
         console.log(`✅ Conversation ${conversationId} already exists`);
         return;
       }
       
-      // If conversation doesn't exist, create it
-      // We need to create it with a default project and user
-      // For now, use the demo project from seeded data
-      const createResponse = await fetch(
-        `${this.backendUrl}/api/chat/messages`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: 'Bridge conversation initialized',
-            requestId: `init-${conversationId}`,
-            conversationId,
-            projectId: 'cmdxumi04000k4yhw92fvsqqa', // Use baton project
-            userId: 'demo-user-1' // Use demo user from seed data
-          })
-        }
-      );
+      // If conversation doesn't exist, create it via WebSocket
+      const created = await new Promise<boolean>((resolve) => {
+        const timeout = setTimeout(() => {
+          console.warn(`⚠️  Conversation creation timeout for ${conversationId}`);
+          resolve(false);
+        }, 5000);
+
+        this.backendSocket.emit('conversation:create', {
+          conversationId,
+          message: 'Bridge conversation initialized',
+          projectId: 'cmdxumi04000k4yhw92fvsqqa', // Use baton project
+          userId: 'demo-user-1' // Use demo user from seed data
+        }, (response: any) => {
+          clearTimeout(timeout);
+          resolve(response?.success || false);
+        });
+      });
       
-      if (createResponse.ok) {
+      if (created) {
         console.log(`✅ Created conversation ${conversationId}`);
       } else {
         console.warn(`⚠️ Failed to create conversation ${conversationId}, will try to proceed anyway`);
@@ -694,7 +691,7 @@ class ClaudeCodeBridge {
       
     } catch (error) {
       console.warn(`⚠️ Error ensuring conversation exists:`, error);
-      // Continue anyway - maybe the conversation exists but permissions endpoint failed
+      // Continue anyway - maybe the conversation exists but check failed
     }
   }
 
@@ -702,70 +699,40 @@ class ClaudeCodeBridge {
     // Extended timeout for plan reviews (5 minutes total)
     const timeoutMs = 300000; // 5 minutes
     const startTime = Date.now();
-    const pollInterval = 1000; // Poll every 1 second for plan reviews
-    let consecutiveErrors = 0;
-    const maxConsecutiveErrors = 10;
     
     console.log(`⏱️  Waiting for plan review response (timeout: ${timeoutMs / 1000}s)`);
     
-    while (Date.now() - startTime < timeoutMs) {
-      try {
-        const fetchAbortController = new AbortController();
-        const timeoutId = setTimeout(() => fetchAbortController.abort(), 8000); // 8 second timeout per request
-        
-        const response = await fetch(`${this.backendUrl}/api/chat/plan-review/${promptId}`, {
-          signal: fetchAbortController.signal,
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (response.ok) {
-          const data = await response.json();
-          const planReview = data.planReview;
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        console.warn(`⏰ Plan review timeout for ${promptId}`);
+        resolve({ value: 'timeout', feedback: 'Plan review timeout' });
+      }, timeoutMs);
+
+      // Listen for plan review response via WebSocket
+      const responseHandler = (data: any) => {
+        if (data.promptId === promptId) {
+          clearTimeout(timeout);
           
-          if (planReview && planReview.status === 'completed') {
-            console.log(`✅ Received plan review response: ${planReview.decision}`);
-            return {
-              value: planReview.decision,
-              feedback: planReview.feedback,
-              editedPlan: planReview.editedPlan
-            };
+          if (this.backendSocket) {
+            this.backendSocket.off('plan:review-response', responseHandler);
           }
           
-          // Reset error count on successful request
-          consecutiveErrors = 0;
-        } else if (response.status === 404) {
-          console.warn(`❓ Plan review ${promptId} not found`);
-          return { value: 'reject', feedback: 'Plan review session not found' };
-        } else {
-          consecutiveErrors++;
-          console.warn(`⚠️  HTTP ${response.status} for plan review ${promptId} (errors: ${consecutiveErrors})`);
+          console.log(`✅ Received plan review response: ${data.decision}`);
+          resolve({
+            value: data.decision,
+            feedback: data.feedback,
+            editedPlan: data.editedPlan
+          });
         }
-        
-        // Wait before next poll
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-        
-      } catch (error) {
-        consecutiveErrors++;
-        
-        if (consecutiveErrors <= 3) {
-          console.log(`⏳ Polling for plan review response ${promptId}... (${Math.floor((Date.now() - startTime) / 1000)}s)`);
-        } else if (consecutiveErrors >= maxConsecutiveErrors) {
-          console.error(`❌ Too many consecutive errors (${consecutiveErrors}) for plan review ${promptId}`);
-          return { value: 'reject', feedback: 'Plan review system error' };
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
+      };
+
+      if (this.backendSocket) {
+        this.backendSocket.on('plan:review-response', responseHandler);
+      } else {
+        clearTimeout(timeout);
+        resolve({ value: 'reject', feedback: 'No backend connection' });
       }
-    }
-    
-    // Timeout reached
-    console.warn(`⏰ Plan review timeout for ${promptId}`);
-    return { value: 'timeout', feedback: 'Plan review timeout' };
+    });
   }
 
   private async waitForPermissionResponseProgressive(
@@ -812,66 +779,38 @@ class ClaudeCodeBridge {
   }
 
   private async waitForPermissionResponse(promptId: string, timeoutMs: number): Promise<any> {
-    const startTime = Date.now();
-    const pollInterval = 500; // Poll every 500ms for faster response
-    let consecutiveErrors = 0;
-    const maxConsecutiveErrors = 10;
+    console.log(`⏱️  Waiting for permission response (timeout: ${timeoutMs / 1000}s)`);
     
-    while (Date.now() - startTime < timeoutMs) {
-      try {
-        const fetchAbortController = new AbortController();
-        const timeoutId = setTimeout(() => fetchAbortController.abort(), 5000); // 5 second timeout
-        
-        const response = await fetch(`${this.backendUrl}/api/chat/prompts/${promptId}`, {
-          signal: fetchAbortController.signal,
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (response.ok) {
-          const data = await response.json();
-          const prompt = data.prompt;
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        resolve({ value: 'timeout' });
+      }, timeoutMs);
+
+      // Listen for permission response via WebSocket
+      const responseHandler = (data: any) => {
+        if (data.promptId === promptId) {
+          clearTimeout(timeout);
           
-          if (prompt && prompt.status === 'answered') {
-            console.log(`✅ Received response for prompt ${promptId}: ${prompt.selectedOption}`);
-            const options = prompt.options as any[];
-            const selectedOption = options.find((o: any) => o.id === prompt.selectedOption);
-            return selectedOption || { value: 'deny' };
+          if (this.backendSocket) {
+            this.backendSocket.off('permission:response', responseHandler);
           }
           
-          // Reset error count on successful request
-          consecutiveErrors = 0;
-        } else if (response.status === 404) {
-          console.warn(`❓ Prompt ${promptId} not found, may have been removed`);
-          return { value: 'deny' };
-        } else {
-          consecutiveErrors++;
-          console.warn(`⚠️  HTTP ${response.status} for prompt ${promptId} (errors: ${consecutiveErrors})`);
+          console.log(`✅ Received response for prompt ${promptId}: ${data.selectedOption}`);
+          resolve({
+            value: data.selectedOption,
+            label: data.label,
+            ...data
+          });
         }
-        
-        // Wait before next poll
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-        
-      } catch (error) {
-        consecutiveErrors++;
-        
-        if (consecutiveErrors <= 3) {
-          console.log(`⏳ Polling for response to ${promptId}... (${Math.floor((Date.now() - startTime) / 1000)}s)`);
-        } else if (consecutiveErrors >= maxConsecutiveErrors) {
-          console.error(`❌ Too many consecutive errors (${consecutiveErrors}) for prompt ${promptId}, giving up`);
-          return { value: 'deny' };
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
+      };
+
+      if (this.backendSocket) {
+        this.backendSocket.on('permission:response', responseHandler);
+      } else {
+        clearTimeout(timeout);
+        resolve({ value: 'deny' });
       }
-    }
-    
-    // Stage timeout
-    return { value: 'timeout' };
+    });
   }
 
   private async escalatePermissionNotification(
@@ -883,20 +822,19 @@ class ClaudeCodeBridge {
     try {
       console.log(`📢 Escalating notification for ${promptId} - Stage ${stage}`);
       
-      // Send escalation notification to backend
-      await fetch(`${this.backendUrl}/api/chat/prompts/${promptId}/escalate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      if (this.backendSocket) {
+        // Send escalation notification via WebSocket
+        this.backendSocket.emit('permission:escalate', {
+          promptId,
           stage,
           toolName,
           riskLevel,
           escalationType: stage === 1 ? 'reminder' : stage === 2 ? 'urgent' : 'critical',
           timestamp: Date.now()
-        })
-      }).catch(error => {
-        console.warn(`⚠️  Failed to send escalation notification:`, error);
-      });
+        });
+      } else {
+        console.warn(`⚠️  No backend WebSocket connection for escalation`);
+      }
       
       // Log escalation locally
       const escalationTypes = ['', '🔔 Reminder', '🚨 Urgent', '🚩 Critical'];
@@ -921,62 +859,52 @@ class ClaudeCodeBridge {
     }
   }
 
-  private async handleFileListRequest(request: Request): Promise<Response> {
+  private async handleFileListRequest(socket: any, data: { workingDirectory?: string; search?: string }): Promise<void> {
     try {
-      const url = new URL(request.url);
-      const workingDir = url.searchParams.get('workingDirectory') || process.cwd();
-      const search = url.searchParams.get('search') || '';
+      const workingDir = data.workingDirectory || process.cwd();
+      const search = data.search || '';
       
       console.log(`📁 File list request for directory: ${workingDir}`);
       
       // Check if directory exists and is accessible
       if (!fs.existsSync(workingDir) || !fs.statSync(workingDir).isDirectory()) {
-        return new Response(JSON.stringify({
+        socket.emit('files:list-response', {
           error: 'Directory not found or not accessible',
-          files: []
-        }), {
-          status: 404,
-          headers: { 'Content-Type': 'application/json' }
+          files: [],
+          workingDirectory: workingDir,
+          count: 0
         });
+        return;
       }
 
       const files = await this.scanDirectory(workingDir, search);
       
-      return new Response(JSON.stringify({
+      socket.emit('files:list-response', {
         files,
         workingDirectory: workingDir,
         count: files.length
-      }), {
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        }
       });
       
     } catch (error) {
       console.error('❌ File list request error:', error);
-      return new Response(JSON.stringify({
+      socket.emit('files:list-response', {
         error: error instanceof Error ? error.message : String(error),
-        files: []
-      }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
+        files: [],
+        workingDirectory: data.workingDirectory || process.cwd(),
+        count: 0
       });
     }
   }
 
-  private async handleFileContentRequest(request: Request): Promise<Response> {
+  private async handleFileContentRequest(socket: any, data: { filePath: string; workingDirectory?: string }): Promise<void> {
     try {
-      const body = await request.json();
-      const { filePath, workingDirectory } = body;
+      const { filePath, workingDirectory } = data;
       
       if (!filePath) {
-        return new Response(JSON.stringify({
+        socket.emit('files:content-response', {
           error: 'File path is required'
-        }), {
-          status: 400,
-          headers: { 'Content-Type': 'application/json' }
         });
+        return;
       }
 
       const baseDir = workingDirectory || process.cwd();
@@ -984,48 +912,36 @@ class ClaudeCodeBridge {
       
       // Security: Ensure file is within working directory
       if (!fullPath.startsWith(path.resolve(baseDir))) {
-        return new Response(JSON.stringify({
+        socket.emit('files:content-response', {
           error: 'File path outside working directory'
-        }), {
-          status: 403,
-          headers: { 'Content-Type': 'application/json' }
         });
+        return;
       }
 
       console.log(`📄 Reading file: ${fullPath}`);
       
       if (!fs.existsSync(fullPath)) {
-        return new Response(JSON.stringify({
+        socket.emit('files:content-response', {
           error: 'File not found'
-        }), {
-          status: 404,
-          headers: { 'Content-Type': 'application/json' }
         });
+        return;
       }
 
       const content = fs.readFileSync(fullPath, 'utf-8');
       const stats = fs.statSync(fullPath);
       
-      return new Response(JSON.stringify({
+      socket.emit('files:content-response', {
         content,
         path: filePath,
         fullPath,
         size: stats.size,
         lastModified: stats.mtime
-      }), {
-        headers: { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        }
       });
       
     } catch (error) {
       console.error('❌ File content request error:', error);
-      return new Response(JSON.stringify({
+      socket.emit('files:content-response', {
         error: error instanceof Error ? error.message : String(error)
-      }), {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
       });
     }
   }
@@ -1088,71 +1004,149 @@ class ClaudeCodeBridge {
   }
 
   async start(): Promise<void> {
-    const server = (Bun as any).serve({
-      port: this.port,
-      idleTimeout: 180, // 3 minutes timeout in seconds (max 255)
-      async fetch(request) {
-        const url = new URL(request.url);
-        
-        // Handle CORS preflight
-        if (request.method === 'OPTIONS') {
-          return new Response(null, {
-            headers: {
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-              'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-            }
-          });
-        }
-        
-        // Route requests
-        if (url.pathname === '/health' && request.method === 'GET') {
-          return new Response(JSON.stringify({
-            status: 'ok',
-            service: 'claude-code-bridge',
-            timestamp: Date.now(),
-            activeRequests: bridge.activeRequests.size
-          }), {
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
-        
-        if (url.pathname === '/execute' && request.method === 'POST') {
-          return bridge.handleExecuteRequest(request);
-        }
-        
-        if (url.pathname.startsWith('/abort/') && request.method === 'POST') {
-          return bridge.handleAbortRequest(request);
-        }
-        
-        if (url.pathname === '/status' && request.method === 'GET') {
-          return new Response(JSON.stringify({
-            activeRequests: Array.from(bridge.activeRequests.keys()),
-            uptime: process.uptime(),
-            memory: process.memoryUsage()
-          }), {
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
-        
-        if (url.pathname === '/files/list' && request.method === 'GET') {
-          return bridge.handleFileListRequest(request);
-        }
-        
-        if (url.pathname === '/files/content' && request.method === 'POST') {
-          return bridge.handleFileContentRequest(request);
-        }
-        
-        return new Response('Not Found', { status: 404 });
+    // Create HTTP server for Socket.IO
+    const httpServer = createServer();
+    
+    // Create Socket.IO server
+    this.io = new Server(httpServer, {
+      cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
       },
+      transports: ['websocket', 'polling']
     });
 
-    console.log(`🌉 Claude Code Bridge running on port ${this.port}`);
-    console.log(`🔗 Backend URL: ${this.backendUrl}`);
-    console.log(`🔧 Ready to serve Claude Code requests from Docker backend`);
+    // Connect to backend WebSocket
+    await this.connectToBackend();
+    
+    // Set up WebSocket event handlers
+    this.setupWebSocketHandlers();
+
+    // Start HTTP server
+    httpServer.listen(this.port, () => {
+      console.log(`🌉 Claude Code Bridge WebSocket server running on port ${this.port}`);
+      console.log(`🔗 Backend URL: ${this.backendUrl}`);
+      console.log(`🔧 Ready to serve Claude Code requests via WebSocket`);
+    });
 
     return new Promise((resolve) => {
       resolve();
+    });
+  }
+
+  private async connectToBackend(): Promise<void> {
+    try {
+      console.log(`🔗 Connecting to backend at ${this.backendUrl}...`);
+      
+      // Convert WebSocket URL to HTTP URL for socket.io-client
+      const httpUrl = this.backendUrl.replace('ws://', 'http://').replace('wss://', 'https://');
+      
+      // For Docker networking, need to use host.docker.internal if connecting from container
+      // But this is running on the host connecting to Docker, so we need to handle the opposite
+      // The backend runs in Docker and needs to be accessible from the host
+      console.log(`📡 Establishing Socket.IO client connection to: ${httpUrl}`);
+      
+      this.backendSocket = ioClient(httpUrl, {
+        transports: ['websocket', 'polling'],
+        timeout: 10000,
+        reconnection: true,
+        reconnectionDelay: 1000,
+        reconnectionAttempts: 5,
+      });
+
+      this.backendSocket.on('connect', () => {
+        console.log('🌉 Connected to backend WebSocket server');
+        // Join the claude-bridge room so backend can find this bridge service
+        this.backendSocket?.emit('claude-bridge:connect');
+        
+        // Set up event handlers for backend communication
+        this.setupBackendEventHandlers();
+      });
+
+      this.backendSocket.on('disconnect', (reason) => {
+        console.log('🌉 Disconnected from backend:', reason);
+      });
+
+      this.backendSocket.on('connect_error', (error) => {
+        console.error('❌ Backend connection error:', error);
+      });
+
+      this.backendSocket.on('reconnect', (attemptNumber) => {
+        console.log('🔄 Reconnected to backend after', attemptNumber, 'attempts');
+        // Re-join the claude-bridge room after reconnection
+        this.backendSocket?.emit('claude-bridge:connect');
+        this.backendSocket?.emit('join-room', 'claude-bridge');
+      });
+      
+    } catch (error) {
+      console.error('❌ Failed to connect to backend:', error);
+    }
+  }
+
+  private setupBackendEventHandlers(): void {
+    if (!this.backendSocket) return;
+
+    // Handle Claude Code execution requests from backend
+    this.backendSocket.on('claude:execute', async (request: BridgeRequest) => {
+      console.log(`🚀 Received claude:execute from backend:`, request.requestId);
+      await this.handleExecuteRequest(this.backendSocket!, request);
+    });
+
+    // Handle abort requests from backend
+    this.backendSocket.on('claude:abort', (requestId: string) => {
+      console.log(`⏹️ Received claude:abort for ${requestId} from backend`);
+      this.handleAbortRequest(this.backendSocket!, requestId);
+    });
+
+    console.log('✅ Backend event handlers configured');
+  }
+
+  private setupWebSocketHandlers(): void {
+    if (!this.io) return;
+
+    this.io.on('connection', (socket) => {
+      console.log(`🔌 Client connected: ${socket.id}`);
+
+      // Handle Claude Code execution requests
+      socket.on('claude:execute', async (request: BridgeRequest) => {
+        console.log(`🚀 Received claude:execute from ${socket.id}`);
+        await this.handleExecuteRequest(socket, request);
+      });
+
+      // Handle abort requests
+      socket.on('claude:abort', (requestId: string) => {
+        console.log(`⏹️ Received claude:abort for ${requestId} from ${socket.id}`);
+        this.handleAbortRequest(socket, requestId);
+      });
+
+      // Handle health checks
+      socket.on('bridge:health', () => {
+        socket.emit('bridge:health-response', {
+          status: 'ok',
+          service: 'claude-code-bridge',
+          timestamp: Date.now(),
+          activeRequests: this.activeRequests.size
+        });
+      });
+
+      // Handle file operations
+      socket.on('files:list', async (data: { workingDirectory?: string; search?: string }) => {
+        await this.handleFileListRequest(socket, data);
+      });
+
+      socket.on('files:content', async (data: { filePath: string; workingDirectory?: string }) => {
+        await this.handleFileContentRequest(socket, data);
+      });
+
+      // Handle permission responses from backend
+      socket.on('permission:response', (data: { promptId: string; response: any }) => {
+        console.log(`🔐 Received permission response for ${data.promptId}`);
+        // This will be handled by the waitForPermissionResponse method
+      });
+
+      socket.on('disconnect', () => {
+        console.log(`🔌 Client disconnected: ${socket.id}`);
+      });
     });
   }
 
@@ -1162,11 +1156,20 @@ class ClaudeCodeBridge {
       abortController.abort();
     }
     this.activeRequests.clear();
+    
+    if (this.io) {
+      this.io.close();
+    }
+    
+    if (this.backendSocket) {
+      this.backendSocket.disconnect();
+    }
+    
     console.log('🛑 Claude Code Bridge stopped');
   }
 }
 
-// Create bridge instance (needed for the server fetch handler)
+// Create bridge instance
 const bridge = new ClaudeCodeBridge();
 
 // Main execution
@@ -1186,25 +1189,24 @@ async function main() {
     }
   }
 
-  // Update bridge instance with parsed args
-  (bridge as any).port = port;
-  (bridge as any).backendUrl = backendUrl;
+  // Create new bridge instance with parsed args
+  const bridgeInstance = new ClaudeCodeBridge(port, backendUrl);
 
   // Graceful shutdown
   process.on('SIGINT', async () => {
     console.log('\n🛑 Shutting down Claude Code Bridge...');
-    await bridge.stop();
+    await bridgeInstance.stop();
     process.exit(0);
   });
 
   process.on('SIGTERM', async () => {
     console.log('\n🛑 Shutting down Claude Code Bridge...');
-    await bridge.stop();
+    await bridgeInstance.stop();
     process.exit(0);
   });
 
   try {
-    await bridge.start();
+    await bridgeInstance.start();
   } catch (error) {
     console.error('❌ Failed to start Claude Code Bridge:', error);
     process.exit(1);

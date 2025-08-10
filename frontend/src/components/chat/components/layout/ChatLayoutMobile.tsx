@@ -20,7 +20,10 @@ export const ChatLayoutMobile: React.FC = () => {
     getGreeting,
     conversationDetails,
     urlSessionId,
-    claudeStreaming,
+    streamingMessage,
+    optimisticUserMessage,
+    isStreaming,
+    stopStreaming,
     pendingPrompts,
     isRespondingToPrompt,
     handlePromptResponse,
@@ -59,7 +62,9 @@ export const ChatLayoutMobile: React.FC = () => {
   // Always call hooks at top level - never conditionally
   const conversationItems = useConversationItems({
     dbMessages,
-    claudeStreaming,
+    streamingMessage,
+    optimisticUserMessage,
+    isStreaming,
     pendingPrompts,
     selectedConversationId
   });
@@ -121,7 +126,7 @@ export const ChatLayoutMobile: React.FC = () => {
       requestAnimationFrame(() => {
         // Add a small delay to ensure content is fully rendered
         setTimeout(() => {
-          scrollToBottom(claudeStreaming.isStreaming ? "auto" : "smooth");
+          scrollToBottom(isStreaming ? "auto" : "smooth");
         }, 10);
       });
     }
@@ -131,7 +136,7 @@ export const ChatLayoutMobile: React.FC = () => {
   }, [
     scrollToBottom,
     conversationItems.length,
-    claudeStreaming.isStreaming,
+    isStreaming,
   ]);
 
   // Force scroll on first load of an existing chat
@@ -150,7 +155,7 @@ export const ChatLayoutMobile: React.FC = () => {
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Only handle ESC key during streaming and not when modal/dropdown is open
-      if (e.key === 'Escape' && claudeStreaming.isStreaming) {
+      if (e.key === 'Escape' && isStreaming) {
         // Check if there are any open modals/dropdowns to avoid interference
         const hasOpenModal = document.querySelector('[role="dialog"]');
         const hasOpenDropdown = document.querySelector('[role="menu"]');
@@ -164,17 +169,8 @@ export const ChatLayoutMobile: React.FC = () => {
           // Show immediate feedback (Claude Code style)
           setShowAbortFeedback(true);
           
-          // Add abort message to conversation history
-          claudeStreaming.addMessage({
-            type: "abort",
-            subtype: "user_abort",
-            message: "Conversation aborted by user (ESC key)",
-            reason: "User pressed ESC key to stop the conversation",
-            timestamp: Date.now(),
-          });
-          
-          // Abort the conversation
-          claudeStreaming.handleAbort();
+          // Stop the WebSocket streaming
+          stopStreaming();
           
           // Hide feedback after 3 seconds
           setTimeout(() => {
@@ -190,25 +186,20 @@ export const ChatLayoutMobile: React.FC = () => {
     return () => {
       document.removeEventListener('keydown', handleKeyDown, { capture: true });
     };
-  }, [claudeStreaming.isStreaming, claudeStreaming.handleAbort]);
+  }, [isStreaming]);
 
-  // Handle session resume
+  // Handle session resume - WebSocket approach doesn't need explicit session resume
   const handleResumeSession = React.useCallback(async () => {
     setIsResuming(true);
     try {
-      // Use URL session ID as fallback if chatState doesn't have it yet
-      const sessionIdToResume = claudeStreaming.currentSessionId || urlSessionId || 
-                               conversationDetails?.claudeSessionId;
-      const success = await claudeStreaming.resumeSession(sessionIdToResume);
-      if (success) {
-        console.log('✅ Session resumed successfully');
-      }
+      // With WebSocket approach, sessions are automatically managed
+      console.log('✅ WebSocket connection handles session management automatically');
     } catch (error) {
       console.error('❌ Session resume error:', error);
     } finally {
       setIsResuming(false);
     }
-  }, [claudeStreaming, urlSessionId, conversationDetails?.claudeSessionId]);
+  }, []);
 
   return (
     <div className="h-full min-h-screen flex flex-col bg-[#1E1F22] text-gray-200 relative">
@@ -235,8 +226,7 @@ export const ChatLayoutMobile: React.FC = () => {
         <div className="flex items-center gap-2">
           <button
             onClick={() => {
-              claudeStreaming.handleAbort();
-              claudeStreaming.resetForNewConversation();
+              stopStreaming();
               setSelectedConversationId(null);
             }}
             className="px-2 py-1 rounded-md bg-[#242528] hover:bg-[#2A2B2E] text-[11px] text-gray-300 leading-none"
@@ -313,8 +303,7 @@ export const ChatLayoutMobile: React.FC = () => {
             <SessionInfoBar
               sessionId={
                 conversationDetails?.claudeSessionId ||
-                urlSessionId ||
-                claudeStreaming.currentSessionId
+                urlSessionId
               }
               contextTokens={conversationDetails?.contextTokens ?? null}
               onResumeSession={handleResumeSession}
@@ -354,7 +343,7 @@ export const ChatLayoutMobile: React.FC = () => {
               handleKeyPress={handleKeyPress}
               handleSendMessage={handleSendMessage}
               fileUpload={fileUpload}
-              isDisabled={claudeStreaming.isStreaming}
+              isDisabled={isStreaming}
               permissionMode={permissionMode}
               onCyclePermissionMode={cyclePermissionMode}
             />
