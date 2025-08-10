@@ -96,11 +96,19 @@ class ClaudeCodeBridge {
           let streamClosed = false;
           
           const sendResponse = (response: StreamResponse) => {
-            if (streamClosed || controller.desiredSize === null) {
+            if (streamClosed || !controller) {
               console.log(`⚠️  Stream already closed, cannot send response for ${requestId}`);
               return;
             }
+            
             try {
+              // Check if controller is still valid before accessing properties
+              if (controller.desiredSize === null) {
+                console.log(`⚠️  Stream controller closed, cannot send response for ${requestId}`);
+                streamClosed = true;
+                return;
+              }
+              
               controller.enqueue(`data: ${JSON.stringify(response)}\n\n`);
             } catch (error) {
               console.log(`⚠️  Error sending to stream for ${requestId}:`, error);
