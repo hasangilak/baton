@@ -200,7 +200,7 @@ export const SimpleFileReferenceMentions: React.FC<SimpleFileReferenceMentionsPr
         onKeyDown={handleKeyDown}
         placeholder={disabled ? "Claude is responding..." : placeholder}
         disabled={disabled}
-        className="w-full px-5 py-4 pr-36 bg-[#2C2D30] border border-[#3E3F42] rounded-xl text-[#F4F4F4] placeholder-[#9CA3AF] resize-none focus:outline-none focus:border-[#4A4B4F] transition-all disabled:opacity-50"
+        className="w-full px-5 py-4 bg-[#2C2D30] border border-[#3E3F42] rounded-xl text-[#F4F4F4] placeholder-[#9CA3AF] resize-none focus:outline-none focus:border-[#4A4B4F] transition-all disabled:opacity-50"
         style={{ minHeight: '95px', maxHeight: '250px' }}
         rows={1}
       />

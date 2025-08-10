@@ -64,17 +64,17 @@ export const ConversationInputArea: React.FC<Props> = ({ inputValue, setInputVal
           placeholder={getPlaceholderText()}
           disabled={isDisabled}
           workingDirectory={workingDirectory}
-          className="w-full pr-36"
+          className="w-full"
         />
         <div className="absolute left-4 bottom-4 flex items-center space-x-1">
           <button onClick={fileUpload.openFileDialog} className="p-2 hover:bg-[#3A3B3E] rounded-lg transition-colors" title="Attach files" data-testid="chat-attach-files-conversation"><Paperclip className="w-5 h-5 text-[#8B8D97]" /></button>
         </div>
-        <button onClick={handleSendMessage} disabled={(!inputValue.trim() && fileUpload.selectedFiles.length === 0) || isDisabled} className="absolute right-38 bottom-4 p-2 text-[#8B8D97] hover:text-[#F4F4F4] disabled:opacity-50 transition-colors" data-testid="chat-send-conversation"><Send className="w-5 h-5" /></button>
+        <button onClick={handleSendMessage} disabled={(!inputValue.trim() && fileUpload.selectedFiles.length === 0) || isDisabled} className="absolute right-4 bottom-4 p-2 text-[#8B8D97] hover:text-[#F4F4F4] disabled:opacity-50 transition-colors" data-testid="chat-send-conversation"><Send className="w-5 h-5" /></button>
 
         {/* Permission mode pill (inline, matching model selector styling) */}
         <button
           onClick={onCyclePermissionMode}
-          className="absolute right-48 bottom-4 px-3 py-2 bg-[#3A3B3E] hover:bg-[#454648] rounded-lg transition-colors flex items-center space-x-1 text-xs"
+          className="absolute right-14 bottom-4 px-3 py-2 bg-[#3A3B3E] hover:bg-[#454648] rounded-lg transition-colors flex items-center space-x-1 text-xs"
           title={`Current mode: ${getModeLabel()}. Click or press Shift+Tab to cycle.`}
           data-testid="chat-permission-mode-conversation"
         >
