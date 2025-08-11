@@ -50,7 +50,17 @@ export const ChatPageDesktop: React.FC = () => {
 
   const handleSendMessage = async () => {
     const trimmed = state.inputValue.trim();
-    if (!trimmed) return;
+    console.log('🔍 [DEBUG] ChatPageDesktop.handleSendMessage called:', {
+      inputValue: state.inputValue,
+      trimmedLength: trimmed.length,
+      hasFiles: !!fileUpload.selectedFiles?.length,
+      sendMessageExists: !!sendMessage
+    });
+    
+    if (!trimmed) {
+      console.log('🔍 [DEBUG] No trimmed content, returning early');
+      return;
+    }
 
     const attachments =
       fileUpload.selectedFiles?.map((fileItem) => ({
@@ -60,14 +70,20 @@ export const ChatPageDesktop: React.FC = () => {
         url: fileItem.preview || `file://${fileItem.file.name}`,
       })) || [];
 
+    console.log('🔍 [DEBUG] About to call sendMessage with:', {
+      message: trimmed,
+      attachmentsCount: attachments.length
+    });
+
     try {
       await sendMessage(
         trimmed,
         attachments.length > 0 ? attachments : undefined
       );
+      console.log('✅ [DEBUG] sendMessage completed successfully');
       fileUpload.clearFiles();
     } catch (error) {
-      console.error("Failed to send message:", error);
+      console.error("❌ [DEBUG] Failed to send message:", error);
     }
   };
 

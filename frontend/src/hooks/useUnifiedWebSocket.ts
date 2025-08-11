@@ -47,7 +47,11 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
   const connect = useCallback(() => {
     // Use existing global socket if available
     if (globalUnifiedSocket?.connected) {
-      console.log('🔌 Reusing existing unified WebSocket connection');
+      console.log('🔌 [DEBUG] Reusing existing unified WebSocket connection:', {
+        socketId: globalUnifiedSocket.id,
+        connected: globalUnifiedSocket.connected,
+        readyState: globalUnifiedSocket.io.readyState
+      });
       socketRef.current = globalUnifiedSocket;
       setState({ connected: true, connecting: false, error: null });
       setUnifiedSocketRef(globalUnifiedSocket);
@@ -83,7 +87,11 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
     globalUnifiedSocket = socket;
 
     socket.on('connect', () => {
-      console.log('🔌 Unified WebSocket connected:', socket.id);
+      console.log('🔌 [DEBUG] Unified WebSocket connected:', socket.id, {
+        socketConnected: socket.connected,
+        readyState: socket.io.readyState,
+        transport: socket.io.engine?.transport?.name
+      });
       setState({ connected: true, connecting: false, error: null });
       
       // Update ChatService reference
@@ -750,12 +758,26 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
 
   // ===== UTILITY METHODS =====
   const emit = useCallback((event: string, data: any) => {
+    console.log('🔍 [DEBUG] useUnifiedWebSocket.emit called:', {
+      event,
+      dataKeys: data ? Object.keys(data) : 'no data',
+      connected: state.connected,
+      socketConnected: socketRef.current?.connected,
+      socketExists: !!socketRef.current,
+      socketId: socketRef.current?.id
+    });
+    
     if (socketRef.current?.connected) {
+      console.log('✅ [DEBUG] Emitting WebSocket event:', event, data);
       socketRef.current.emit(event, data);
     } else {
-      console.warn('⚠️  Cannot emit unified WebSocket event - not connected:', event);
+      console.warn('⚠️  Cannot emit unified WebSocket event - not connected:', event, {
+        connected: state.connected,
+        socketConnected: socketRef.current?.connected,
+        socketExists: !!socketRef.current
+      });
     }
-  }, []);
+  }, [state.connected]);
   
   // ===== CHAT-SPECIFIC METHODS =====
   const sendMessage = useCallback((data: {
@@ -764,6 +786,12 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
     attachments?: any[];
     requestId?: string;
   }) => {
+    console.log('🔍 [DEBUG] useUnifiedWebSocket.sendMessage called:', {
+      conversationId: data.conversationId,
+      messageLength: data.message?.length || 0,
+      hasAttachments: !!data.attachments?.length,
+      requestId: data.requestId
+    });
     emit('chat:send-message', data);
   }, [emit]);
 
@@ -809,6 +837,14 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
 
     if (autoConnect && mounted) {
       connect();
+    }
+    
+    // If global socket is already connected, sync the state immediately
+    if (globalUnifiedSocket?.connected) {
+      console.log('🔍 [DEBUG] Syncing state with already connected global socket');
+      setState({ connected: true, connecting: false, error: null });
+      socketRef.current = globalUnifiedSocket;
+      setUnifiedSocketRef(globalUnifiedSocket);
     }
 
     return () => {
@@ -872,6 +908,14 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
     sendMessage,
     abortMessage,
     respondToPermission,
-    respondToPlanReview
+    respondToPlanReview,
+    // Debug info
+    _debug: {
+      socketExists: !!socketRef.current,
+      socketConnected: socketRef.current?.connected,
+      socketId: socketRef.current?.id,
+      namespace: options.namespace,
+      refCount: globalSocketRefCount
+    }
   };
 };

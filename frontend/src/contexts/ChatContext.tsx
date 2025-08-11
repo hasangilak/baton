@@ -272,21 +272,33 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   }, []);
 
   const sendMessage = useCallback(async (content: string, attachments?: any[]) => {
+    console.log('🔍 [DEBUG] ChatContext.sendMessage called:', {
+      contentLength: content?.length || 0,
+      hasAttachments: !!attachments?.length,
+      selectedConversationId: state.selectedConversationId,
+      sendMessageHookExists: !!sendMessageHook
+    });
+    
     try {
       let conversationId = state.selectedConversationId;
       
       // If no conversation selected, create one first
       if (!conversationId) {
+        console.log('🔍 [DEBUG] No conversation selected, creating new one');
         const newId = await createConversation(content.slice(0, 40) || 'New Chat');
         if (!newId) {
           throw new Error('Failed to create conversation');
         }
         conversationId = newId;
+        console.log('✅ [DEBUG] Created new conversation:', conversationId);
       }
       
+      console.log('🔍 [DEBUG] About to call sendMessageHook with conversationId:', conversationId);
       await sendMessageHook(content, attachments);
+      console.log('✅ [DEBUG] sendMessageHook completed successfully');
       dispatch({ type: 'SET_INPUT_VALUE', payload: '' });
     } catch (error) {
+      console.error('❌ [DEBUG] ChatContext.sendMessage error:', error);
       dispatch({ type: 'SET_ERROR', payload: error instanceof Error ? error.message : 'Failed to send message' });
     }
   }, [state.selectedConversationId, createConversation, sendMessageHook]);

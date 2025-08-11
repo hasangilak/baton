@@ -29,6 +29,7 @@ export const useChatMessages = (options: ChatMessagesOptions) => {
   const { conversationId, autoConnect = true } = options;
   
   const queryClient = useQueryClient();
+  const unifiedWebSocket = useUnifiedWebSocket({ autoConnect, namespace: 'chat' });
   const { 
     connected, 
     emit, 
@@ -37,8 +38,16 @@ export const useChatMessages = (options: ChatMessagesOptions) => {
     joinConversation, 
     leaveConversation,
     sendMessage: sendWebSocketMessage,
-    abortMessage 
-  } = useUnifiedWebSocket({ autoConnect, namespace: 'chat' });
+    abortMessage,
+    _debug
+  } = unifiedWebSocket;
+  
+  console.log('🔍 [DEBUG] useChatMessages useUnifiedWebSocket state:', {
+    connected,
+    debug: _debug,
+    autoConnect,
+    namespace: 'chat'
+  });
 
   // Chat state
   const [state, setState] = useState<ChatState>({
@@ -56,6 +65,12 @@ export const useChatMessages = (options: ChatMessagesOptions) => {
 
   // Update connection state
   useEffect(() => {
+    console.log('🔍 [DEBUG] useChatMessages connection state changed:', {
+      connected,
+      prevConnected: state.isConnected,
+      namespace: 'chat'
+    });
+    
     setState(prev => ({ ...prev, isConnected: connected }));
     
     if (connected) {
@@ -63,7 +78,7 @@ export const useChatMessages = (options: ChatMessagesOptions) => {
     } else {
       ChatEvents.disconnected('connection lost');
     }
-  }, [connected]);
+  }, [connected, state.isConnected]);
 
   // Join/leave conversation rooms
   useEffect(() => {
@@ -183,7 +198,20 @@ export const useChatMessages = (options: ChatMessagesOptions) => {
       url: string;
     }>
   ) => {
+    console.log('🔍 [DEBUG] useChatMessages.sendMessage called:', {
+      contentLength: content?.length || 0,
+      hasAttachments: !!attachments?.length,
+      connected,
+      conversationId,
+      sendWebSocketMessageExists: !!sendWebSocketMessage
+    });
+    
     if (!connected || !conversationId) {
+      console.error('❌ [DEBUG] Cannot send message:', {
+        connected,
+        conversationId,
+        error: 'Not connected or no conversation selected'
+      });
       throw new Error('Not connected or no conversation selected');
     }
 
@@ -211,12 +239,21 @@ export const useChatMessages = (options: ChatMessagesOptions) => {
     }));
 
     // Send via WebSocket
+    console.log('🔍 [DEBUG] About to call sendWebSocketMessage with:', {
+      conversationId,
+      messageContent: content,
+      requestId,
+      attachmentsCount: attachments?.length || 0
+    });
+    
     sendWebSocketMessage({
       conversationId,
       message: content,
       attachments,
       requestId
     });
+    
+    console.log('✅ [DEBUG] sendWebSocketMessage called successfully');
 
     ChatEvents.messageReceived({
       messageId: optimisticMessage.id,
