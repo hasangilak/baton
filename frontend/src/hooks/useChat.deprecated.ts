@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { chatService, getChatSocket } from '../services/chat.service';
+import { chatService } from '../services/chat.service';
+// getChatSocket export has been removed - WebSocket now handled by useUnifiedWebSocket
 import { useToast } from './useToast';
 import type { 
   Message, 
@@ -91,9 +92,10 @@ export function useChat(conversationId: string | null) {
   const currentRequestIdRef = useRef<string | null>(null);
   const socketRef = useRef<Socket | null>(null);
   
-  // Initialize WebSocket connection
+  // Initialize WebSocket connection - DEPRECATED: Now using useUnifiedWebSocket
   useEffect(() => {
-    socketRef.current = getChatSocket();
+    // socketRef.current = getChatSocket(); // Removed - use useUnifiedWebSocket instead
+    socketRef.current = null;
     
     return () => {
       // Clean up any active streaming on unmount

@@ -5,7 +5,7 @@ import { Layout } from './components/layout/Layout';
 import { AppRouter } from './components/router';
 import { queryClient } from './lib/queryClient';
 import { useProjects } from './hooks/useProjects';
-import { useWebSocket } from './hooks/useWebSocket';
+import { useUnifiedWebSocket } from './hooks/useUnifiedWebSocket';
 import { ToastProvider } from './hooks/useToast';
 import { ThemeProvider } from './hooks/useTheme';
 
@@ -16,8 +16,9 @@ function AppContent() {
   // Use first available project if baton project doesn't exist
   const activeProjectId = currentProjectId || projects?.[0]?.id || 'cmdxumi04000k4yhw92fvsqqa';
 
-  const { connected, connecting, error, joinProject, leaveProject } = useWebSocket({
-    activeProjectId
+  const { connected, connecting, error, joinProject, leaveProject } = useUnifiedWebSocket({
+    activeProjectId,
+    namespace: 'both' // App-level hook needs both general and chat events
   });
 
   // Handle project room subscription when activeProjectId changes

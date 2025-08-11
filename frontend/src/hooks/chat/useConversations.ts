@@ -7,7 +7,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useChatWebSocket } from './useChatWebSocket';
+import { useUnifiedWebSocket } from '../useUnifiedWebSocket';
 import { ChatEvents, chatEventBus } from '../../services/chat/eventBus';
 import { useToast } from '../useToast';
 
@@ -27,7 +27,7 @@ interface Conversation {
 export const useConversations = (projectId: string) => {
   const queryClient = useQueryClient();
   const { success, error: showError } = useToast();
-  const { connected, emit } = useChatWebSocket();
+  const { connected, emit } = useUnifiedWebSocket({ namespace: 'chat' });
 
   // Query conversations
   const { 

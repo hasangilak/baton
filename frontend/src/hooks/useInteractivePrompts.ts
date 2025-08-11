@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { useWebSocket } from './useWebSocket';
+import { useUnifiedWebSocket } from './useUnifiedWebSocket';
 import type { InteractivePrompt } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
@@ -27,7 +27,7 @@ interface PermissionAnalytics {
 
 export const useInteractivePrompts = ({ conversationId, enableAnalytics = false }: UseInteractivePromptsProps) => {
   const queryClient = useQueryClient();
-  const { socket, joinConversation, leaveConversation } = useWebSocket(); // Use shared WebSocket connection
+  const { socket, joinConversation, leaveConversation } = useUnifiedWebSocket({ namespace: 'general' }); // Use unified WebSocket connection
   const [isRespondingToPrompt, setIsRespondingToPrompt] = useState(false);
   
   // Real-time prompt state (like successful implementations)

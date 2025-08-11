@@ -236,6 +236,27 @@ export async function handleWebSocketChat(
               responseType: data.type
             });
             
+            // Check for session ID and emit session:available event
+            if (data.sessionId && !currentSessionId) {
+              currentSessionId = data.sessionId;
+              logger.handlers.info('Session ID received, emitting session:available', { 
+                sessionId: currentSessionId, 
+                conversationId 
+              });
+              
+              // Emit session:available event to frontend
+              socket.emit('session:available', {
+                conversationId,
+                sessionId: currentSessionId
+              });
+              
+              // Also emit the WebSocket-specific event
+              socket.emit('chat:session-id-available', {
+                conversationId,
+                sessionId: currentSessionId
+              });
+            }
+            
             // Extract content from Claude stream data
             if (data.type === 'claude_json' && data.data) {
               let newContent = '';

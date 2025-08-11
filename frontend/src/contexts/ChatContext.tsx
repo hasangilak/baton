@@ -137,7 +137,7 @@ interface ChatContextValue {
   
   // Conversation management
   conversations: any[];
-  createConversation: (title?: string) => Promise<void>;
+  createConversation: (title?: string) => Promise<string | null>;
   archiveConversation: (id: string) => Promise<void>;
   deleteConversation: (id: string) => Promise<void>;
   selectConversation: (id: string | null) => void;
@@ -236,14 +236,16 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   }, [conversationDetails, state.conversationDetails]);
 
   // Action handlers
-  const createConversation = useCallback(async (title?: string) => {
+  const createConversation = useCallback(async (title?: string): Promise<string | null> => {
     dispatch({ type: 'SET_CREATING_CONVERSATION', payload: true });
     try {
       const result = await createConversationMutation.mutateAsync(title);
       const newId = result?.id || result?.conversation?.id;
       if (newId) {
         dispatch({ type: 'SET_SELECTED_CONVERSATION', payload: newId });
+        return newId;
       }
+      return null;
     } finally {
       dispatch({ type: 'SET_CREATING_CONVERSATION', payload: false });
     }
@@ -271,11 +273,15 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   const sendMessage = useCallback(async (content: string, attachments?: any[]) => {
     try {
+      let conversationId = state.selectedConversationId;
+      
       // If no conversation selected, create one first
-      if (!state.selectedConversationId) {
-        await createConversation(content.slice(0, 40) || 'New Chat');
-        // Wait for state update
-        await new Promise(resolve => setTimeout(resolve, 100));
+      if (!conversationId) {
+        const newId = await createConversation(content.slice(0, 40) || 'New Chat');
+        if (!newId) {
+          throw new Error('Failed to create conversation');
+        }
+        conversationId = newId;
       }
       
       await sendMessageHook(content, attachments);
@@ -307,9 +313,24 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Computed values
   const isNewChat = useMemo(() => {
-    return !state.selectedConversationId || 
-           (state.messages.length === 0 && !state.optimisticUserMessage);
-  }, [state.selectedConversationId, state.messages.length, state.optimisticUserMessage]);
+    // If no conversation is selected, it's a new chat
+    if (!state.selectedConversationId) {
+      return true;
+    }
+    
+    // If we have messages or an optimistic user message, it's not a new chat
+    if (state.messages.length > 0 || state.optimisticUserMessage) {
+      return false;
+    }
+    
+    // If we're streaming, it's not a new chat (conversation started)
+    if (state.isStreaming) {
+      return false;
+    }
+    
+    // Default to new chat
+    return true;
+  }, [state.selectedConversationId, state.messages.length, state.optimisticUserMessage, state.isStreaming]);
 
   // Event bus integration for global state sync
   useEffect(() => {

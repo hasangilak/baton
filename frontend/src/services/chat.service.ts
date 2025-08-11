@@ -6,12 +6,18 @@ import type {
   SendMessageRequest,
   StreamingResponse
 } from '../types/index';
-import { io, type Socket } from 'socket.io-client';
+import type { Socket } from 'socket.io-client';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
-// Global WebSocket connection for chat service
-let globalSocket: Socket | null = null;
+// Import the global unified socket from the hook
+// This will be set by the useUnifiedWebSocket hook
+let globalUnifiedSocketRef: Socket | null = null;
+
+// Function to set the unified socket reference (called by useUnifiedWebSocket)
+export const setUnifiedSocketRef = (socket: Socket | null) => {
+  globalUnifiedSocketRef = socket;
+};
 
 class ChatService {
   private socket: Socket | null = null;
@@ -46,30 +52,16 @@ class ChatService {
   }
 
   private ensureSocketConnection(): Socket {
-    if (!globalSocket) {
-      globalSocket = io(API_BASE_URL, {
-        transports: ['websocket', 'polling'],
-        timeout: 10000,
-        reconnection: true,
-        reconnectionDelay: 1000,
-        reconnectionAttempts: 5
-      });
-      
-      globalSocket.on('connect', () => {
-        console.log('💬 Chat service WebSocket connected:', globalSocket?.id);
-      });
-      
-      globalSocket.on('disconnect', (reason) => {
-        console.log('💬 Chat service WebSocket disconnected:', reason);
-      });
-      
-      globalSocket.on('connect_error', (error) => {
-        console.error('💬 Chat service WebSocket connection error:', error);
-      });
+    // Use the unified socket if available
+    if (globalUnifiedSocketRef?.connected) {
+      console.log('💬 Chat service using unified WebSocket connection:', globalUnifiedSocketRef.id);
+      this.socket = globalUnifiedSocketRef;
+      return globalUnifiedSocketRef;
     }
     
-    this.socket = globalSocket;
-    return globalSocket;
+    // Fallback: throw error if unified socket is not available
+    // This should not happen if the unified hook is properly initialized
+    throw new Error('Unified WebSocket connection not available. Make sure useUnifiedWebSocket is initialized.');
   }
 
   // Conversations
@@ -286,7 +278,7 @@ class ChatService {
   
   // Get WebSocket connection for direct use by hooks
   getSocket(): Socket | null {
-    return this.ensureSocketConnection();
+    return globalUnifiedSocketRef;
   }
   
   // Create conversation via WebSocket
@@ -316,19 +308,14 @@ class ChatService {
   
   // Clean up WebSocket connection
   disconnect(): void {
-    if (this.socket) {
-      this.socket.disconnect();
-      this.socket = null;
-    }
-    if (globalSocket) {
-      globalSocket.disconnect();
-      globalSocket = null;
-    }
+    // Don't disconnect the unified socket from here - it's managed by the useUnifiedWebSocket hook
+    console.warn('ChatService.disconnect() called - unified WebSocket is managed by useUnifiedWebSocket hook');
+    this.socket = null;
   }
 }
 
 export const chatService = new ChatService();
 
-// Export WebSocket utilities for hooks
-export const getChatSocket = () => chatService.getSocket();
-export const disconnectChatService = () => chatService.disconnect();
+// Legacy exports - deprecated (WebSocket now handled by useUnifiedWebSocket)
+// export const getChatSocket = () => chatService.getSocket();
+// export const disconnectChatService = () => chatService.disconnect();

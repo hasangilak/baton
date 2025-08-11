@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useChatWebSocket } from './useChatWebSocket';
+import { useUnifiedWebSocket } from '../useUnifiedWebSocket';
 import { MessageProcessor, type ProcessedMessage } from '../../services/chat/messages';
 import { chatEventBus, ChatEvents } from '../../services/chat/eventBus';
 
@@ -38,7 +38,7 @@ export const useChatMessages = (options: ChatMessagesOptions) => {
     leaveConversation,
     sendMessage: sendWebSocketMessage,
     abortMessage 
-  } = useChatWebSocket({ autoConnect });
+  } = useUnifiedWebSocket({ autoConnect, namespace: 'chat' });
 
   // Chat state
   const [state, setState] = useState<ChatState>({

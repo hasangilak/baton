@@ -15,7 +15,7 @@ import {
 import clsx from 'clsx';
 import type { ClaudeTodo } from '../../types';
 import { useClaudeTodos, useDeleteClaudeTodo } from '../../hooks/useClaudeTodos';
-import { useWebSocket } from '../../hooks/useWebSocket';
+import { useUnifiedWebSocket } from '../../hooks/useUnifiedWebSocket';
 import { useClaudeModal } from '../../hooks/useClaudeModal';
 import { ClaudeTodoModal } from './ClaudeTodoModal';
 import {
@@ -70,7 +70,7 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
   } = useClaudeModal();
 
   // WebSocket integration for real-time updates
-  const { on, off } = useWebSocket({ activeProjectId: projectId });
+  const { on, off } = useUnifiedWebSocket({ activeProjectId: projectId, namespace: 'general' });
   const [localTodos, setLocalTodos] = useState<ClaudeTodo[]>([]);
 
   // Use WebSocket data if available, otherwise fall back to React Query data
