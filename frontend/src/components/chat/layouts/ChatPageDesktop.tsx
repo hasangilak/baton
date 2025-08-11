@@ -28,50 +28,51 @@ export const ChatPageDesktop: React.FC = () => {
   const fileUpload = useFileUpload({
     maxFiles: 5,
     maxSizeBytes: 25 * 1024 * 1024,
-    onError: (err) => console.error('File upload error:', err)
+    onError: (err) => console.error("File upload error:", err),
   });
 
-  const {
-    pendingPrompts,
-    isRespondingToPrompt,
-    handlePromptResponse,
-  } = useInteractivePrompts({ conversationId: state.selectedConversationId });
+  const { pendingPrompts, isRespondingToPrompt, handlePromptResponse } =
+    useInteractivePrompts({ conversationId: state.selectedConversationId });
 
   // State for ESC key abort feedback
   const [showAbortFeedback, setShowAbortFeedback] = React.useState(false);
-  
+
   // State for session resume
   const [isResuming, setIsResuming] = React.useState(false);
 
   // Helper functions
   const getGreeting = () => {
     const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 18) return 'Good afternoon';
-    return 'Good evening';
+    if (hour < 12) return "Good morning";
+    if (hour < 18) return "Good afternoon";
+    return "Good evening";
   };
 
   const handleSendMessage = async () => {
     const trimmed = state.inputValue.trim();
     if (!trimmed) return;
 
-    const attachments = fileUpload.selectedFiles?.map(fileItem => ({
-      filename: fileItem.file.name,
-      mimeType: fileItem.file.type,
-      size: fileItem.file.size,
-      url: fileItem.preview || `file://${fileItem.file.name}`,
-    })) || [];
+    const attachments =
+      fileUpload.selectedFiles?.map((fileItem) => ({
+        filename: fileItem.file.name,
+        mimeType: fileItem.file.type,
+        size: fileItem.file.size,
+        url: fileItem.preview || `file://${fileItem.file.name}`,
+      })) || [];
 
     try {
-      await sendMessage(trimmed, attachments.length > 0 ? attachments : undefined);
+      await sendMessage(
+        trimmed,
+        attachments.length > 0 ? attachments : undefined
+      );
       fileUpload.clearFiles();
     } catch (error) {
-      console.error('Failed to send message:', error);
+      console.error("Failed to send message:", error);
     }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSendMessage();
     }
@@ -80,10 +81,14 @@ export const ChatPageDesktop: React.FC = () => {
   const cyclePermissionMode = () => {
     const newMode = (() => {
       switch (state.permissionMode) {
-        case 'default': return 'plan';
-        case 'plan': return 'acceptEdits';
-        case 'acceptEdits': return 'default';
-        default: return 'default';
+        case "default":
+          return "plan";
+        case "plan":
+          return "acceptEdits";
+        case "acceptEdits":
+          return "default";
+        default:
+          return "default";
       }
     })();
     setPermissionMode(newMode);
@@ -100,32 +105,29 @@ export const ChatPageDesktop: React.FC = () => {
         el.scrollTop = el.scrollHeight;
       }
     });
-  }, [
-    state.messages.length,
-    state.isStreaming,
-  ]);
+  }, [state.messages.length, state.isStreaming]);
 
   // ESC key handler for aborting conversations (Claude Code style)
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Only handle ESC key during streaming and not when modal/dropdown is open
-      if (e.key === 'Escape' && state.isStreaming) {
+      if (e.key === "Escape" && state.isStreaming) {
         // Check if there are any open modals/dropdowns to avoid interference
         const hasOpenModal = document.querySelector('[role="dialog"]');
         const hasOpenDropdown = document.querySelector('[role="menu"]');
-        
+
         if (!hasOpenModal && !hasOpenDropdown) {
           e.preventDefault();
           e.stopPropagation();
-          
-          console.log('🛑 ESC pressed - aborting conversation');
-          
+
+          console.log("🛑 ESC pressed - aborting conversation");
+
           // Show immediate feedback (Claude Code style)
           setShowAbortFeedback(true);
-          
+
           // Stop the WebSocket streaming
           stopStreaming();
-          
+
           // Hide feedback after 3 seconds
           setTimeout(() => {
             setShowAbortFeedback(false);
@@ -135,10 +137,10 @@ export const ChatPageDesktop: React.FC = () => {
     };
 
     // Add global event listener
-    document.addEventListener('keydown', handleKeyDown, { capture: true });
+    document.addEventListener("keydown", handleKeyDown, { capture: true });
 
     return () => {
-      document.removeEventListener('keydown', handleKeyDown, { capture: true });
+      document.removeEventListener("keydown", handleKeyDown, { capture: true });
     };
   }, [state.isStreaming, stopStreaming]);
 
@@ -147,9 +149,11 @@ export const ChatPageDesktop: React.FC = () => {
     setIsResuming(true);
     try {
       // With WebSocket approach, sessions are automatically managed
-      console.log('✅ WebSocket connection handles session management automatically');
+      console.log(
+        "✅ WebSocket connection handles session management automatically"
+      );
     } catch (error) {
-      console.error('❌ Session resume error:', error);
+      console.error("❌ Session resume error:", error);
     } finally {
       setIsResuming(false);
     }
@@ -280,7 +284,10 @@ export const ChatPageDesktop: React.FC = () => {
                   <SimpleMessageRenderer
                     key={message.id}
                     message={message}
-                    isStreaming={state.isStreaming && message.id === state.streamingMessage?.id}
+                    isStreaming={
+                      state.isStreaming &&
+                      message.id === state.streamingMessage?.id
+                    }
                     onCopy={(content, messageId) => {
                       navigator.clipboard.writeText(content);
                     }}
@@ -310,7 +317,6 @@ export const ChatPageDesktop: React.FC = () => {
         accept={fileUpload.supportedExtensions.join(",")}
         style={{ display: "none" }}
       />
-
     </div>
   );
 };

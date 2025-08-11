@@ -22,6 +22,7 @@ interface SidebarProps {
   onSectionChange: (section: string) => void;
   isCollapsed?: boolean;
   onToggleCollapse?: () => void;
+  currentProjectId?: string;
 }
 
 const mainNavItems = [
@@ -49,7 +50,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentSection, 
   onSectionChange, 
   isCollapsed = false, 
-  onToggleCollapse 
+  onToggleCollapse,
+  currentProjectId
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -61,7 +63,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         key={item.id}
         onClick={() => {
           if (item.path) {
-            navigate(item.path);
+            // Special handling for chat - include project ID in path
+            if (item.id === 'chat' && currentProjectId) {
+              navigate(`/chat/${currentProjectId}`);
+            } else {
+              navigate(item.path);
+            }
           }
           onSectionChange(item.id);
         }}

@@ -121,6 +121,7 @@ export const Layout: React.FC<LayoutProps> = ({
           onSectionChange={handleSectionChange}
           isCollapsed={isMainSidebarCollapsed}
           onToggleCollapse={toggleMainSidebar}
+          currentProjectId={currentProjectId}
         />
       </div>
 

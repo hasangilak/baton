@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { DesktopLayout } from '../layout/DesktopLayout';
 import { MobileLayout } from '../layout/MobileLayout';
 import { ChatPageDesktop } from '../chat/layouts/ChatPageDesktop';
@@ -11,6 +11,23 @@ interface AppRouterProps {
   projectId: string;
   onSync?: () => void;
 }
+
+// Component to handle project-scoped chat routing
+const ProjectScopedChat: React.FC<{ isMobile: boolean }> = ({ isMobile }) => {
+  const { projectId: urlProjectId } = useParams<{ projectId: string }>();
+  const [searchParams] = useSearchParams();
+  const sessionId = searchParams.get('sessionId');
+
+  return (
+    <ChatProvider projectId={urlProjectId || ''} initialSessionId={sessionId}>
+      {isMobile ? (
+        <ChatPageMobile />
+      ) : (
+        <ChatPageDesktop />
+      )}
+    </ChatProvider>
+  );
+};
 
 export const AppRouter: React.FC<AppRouterProps> = ({ projectId, onSync }) => {
   const { isMobile } = useBreakpoints();
@@ -32,30 +49,17 @@ export const AppRouter: React.FC<AppRouterProps> = ({ projectId, onSync }) => {
         } 
       />
       
-      {/* Chat page with responsive layouts */}
+      {/* Chat routes */}
+      {/* Redirect bare /chat to project-scoped chat */}
       <Route 
         path="/chat" 
-        element={
-          <ChatProvider projectId={projectId}>
-            {isMobile ? (
-              <ChatPageMobile />
-            ) : (
-              <ChatPageDesktop />
-            )}
-          </ChatProvider>
-        } 
+        element={<Navigate to={`/chat/${projectId}`} replace />} 
       />
+      
+      {/* Project-scoped chat route */}
       <Route 
-        path="/chat/:conversationId" 
-        element={
-          <ChatProvider projectId={projectId}>
-            {isMobile ? (
-              <ChatPageMobile />
-            ) : (
-              <ChatPageDesktop />
-            )}
-          </ChatProvider>
-        } 
+        path="/chat/:projectId" 
+        element={<ProjectScopedChat isMobile={isMobile} />} 
       />
       
       {/* Other sections - for now redirect to tasks */}

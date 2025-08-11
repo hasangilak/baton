@@ -6,6 +6,7 @@
  */
 
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useConversations, useConversation } from '../hooks/chat/useConversations';
 import { useChatMessages } from '../hooks/chat/useChatMessages';
 import { chatEventBus } from '../services/chat/eventBus';
@@ -163,12 +164,14 @@ interface ChatProviderProps {
   children: React.ReactNode;
   projectId: string;
   initialConversationId?: string | null;
+  initialSessionId?: string | null;
 }
 
 export const ChatProvider: React.FC<ChatProviderProps> = ({
   children,
   projectId,
-  initialConversationId = null
+  initialConversationId = null,
+  initialSessionId = null
 }) => {
   const [state, dispatch] = useReducer(chatReducer, {
     ...initialState,
@@ -184,6 +187,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   } = useConversations(projectId);
 
   const { data: conversationDetails } = useConversation(state.selectedConversationId);
+  
+  // URL parameter management for session ID
+  const [searchParams, setSearchParams] = useSearchParams();
   
   const {
     messages,
@@ -317,12 +323,20 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
             claudeSessionId: data.sessionId 
           }
         });
+        
+        // Update URL with session ID
+        if (data.sessionId) {
+          setSearchParams(prev => ({
+            ...Object.fromEntries(prev),
+            sessionId: data.sessionId
+          }));
+        }
       }
     };
 
     const unsubscribe = chatEventBus.on('session:available', handleSessionAvailable);
     return unsubscribe;
-  }, [state.selectedConversationId, state.conversationDetails]);
+  }, [state.selectedConversationId, state.conversationDetails, setSearchParams]);
 
   // Context value
   const value: ChatContextValue = {
