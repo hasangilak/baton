@@ -71,18 +71,6 @@ export class ChatService extends EventEmitter {
         claudeSessionId: true,
         createdAt: true,
         updatedAt: true,
-        messages: {
-          take: 1,
-          orderBy: {
-            createdAt: 'desc',
-          },
-          select: {
-            id: true,
-            content: true,
-            role: true,
-            createdAt: true,
-          },
-        },
       },
     });
 

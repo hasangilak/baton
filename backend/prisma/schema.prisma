@@ -217,7 +217,7 @@ model Conversation {
   id               String    @id @default(auto()) @map("_id") @db.ObjectId
   title            String?
   projectId        String
-  userId           String   @db.ObjectId
+  userId           String
   model            String    @default("claude-3-sonnet") // Model used for the conversation
   status           String    @default("active") // active, archived
   claudeSessionId  String?   // Claude Code SDK session ID for context preservation
