@@ -37,7 +37,7 @@ The codebase implements enterprise-grade TypeScript with:
 - Zero compilation errors policy (no bypassing with `// @ts-ignore`)
 
 ### Database & State Management
-- **Backend**: Prisma ORM with PostgreSQL, type-safe database operations
+- **Backend**: Prisma ORM with MongoDB, type-safe database operations
 - **Frontend**: TanStack Query for server state management with optimistic updates
 - **Real-time**: Socket.IO for collaborative features
 
@@ -263,7 +263,7 @@ Test database operations should use the seeded data from `npm run db:seed` which
 
 ### Backend (.env)
 ```
-DATABASE_URL="postgresql://baton_user:baton_password@localhost:5432/baton_dev"
+DATABASE_URL="mongodb://localhost:27017/baton_dev"
 PORT=3001
 MCP_SERVER_PORT=3002
 CLIENT_URL="http://localhost:5173"
@@ -273,7 +273,7 @@ CLIENT_URL="http://localhost:5173"
 - Frontend: 5173 (Vite dev server)
 - Backend API: 3001 (Express server)
 - MCP Server: 3002 (WebSocket & STDIO)
-- PostgreSQL: 5432 (Docker container)
+- MongoDB: 27017 (Docker container)
 
 ## AI Agent Integration
 

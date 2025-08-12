@@ -4,7 +4,7 @@
 
 echo "🎯 Starting Baton - AI-Powered Task Manager"
 echo "============================================="
-echo "🐘 Using PostgreSQL database"
+echo "🍃 Using MongoDB database"
 
 # Check if Docker is installed
 if ! command -v docker &> /dev/null; then

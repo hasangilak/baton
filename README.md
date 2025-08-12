@@ -1,6 +1,6 @@
 # Baton 🥍
 
-AI-powered task management designed for seamless integration with Claude Code. Built with React, Node.js, and PostgreSQL.
+AI-powered task management designed for seamless integration with Claude Code. Built with React, Node.js, and MongoDB.
 
 ## ✨ Features
 
@@ -25,7 +25,7 @@ AI-powered task management designed for seamless integration with Claude Code. B
 - **File Attachments** - Upload code, images, documents (25MB, multiple formats)
 
 ### 🏗️ Technical Features
-- **Docker Compose** - One-command setup with PostgreSQL
+- **Docker Compose** - One-command setup with MongoDB
 - **Real-time Updates** - Socket.IO for collaborative features
 - **TypeScript 2025** - Enterprise-grade type safety and modern patterns
 - **Prisma ORM** - Type-safe database operations
@@ -561,7 +561,7 @@ Baton provides **16 powerful MCP tools** for comprehensive task and project mana
 
 #### Prerequisites
 - Node.js 18+ and npm
-- PostgreSQL 15+
+- MongoDB 7+
 - Git
 
 #### Setup Steps
@@ -670,7 +670,7 @@ npm run lint
 
 #### Backend (.env)
 ```bash
-DATABASE_URL="postgresql://baton_user:baton_password@localhost:5432/baton_dev"
+DATABASE_URL="mongodb://localhost:27017/baton_dev"
 PORT=3001
 MCP_SERVER_PORT=3002
 CLIENT_URL="http://localhost:5173"
@@ -722,7 +722,7 @@ make db-reset              # Reset database with automatic sync
 make prisma-sync           # Fix Prisma client sync issues
 
 # Manual operations (if needed)
-docker logs baton-postgres # Check PostgreSQL logs
+docker logs baton-mongodb # Check MongoDB logs
 ```
 
 #### Claude Code Integration Issues
@@ -751,7 +751,7 @@ If you encounter port conflicts, update these ports in `docker-compose.yml`:
 - Frontend: 5173 → your preferred port
 - Backend: 3001 → your preferred port
 - MCP Server: 3002 → your preferred port
-- PostgreSQL: 5432 → your preferred port
+- MongoDB: 27017 → your preferred port
 
 ### Getting Help
 

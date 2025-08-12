@@ -1,27 +1,27 @@
 version: '3.8'
 
 services:
-  # PostgreSQL database
-  postgres:
-    image: postgres:15-alpine
-    container_name: baton-postgres
+  # MongoDB database with replica set
+  mongodb:
+    image: mongo:7
+    container_name: baton-mongodb
+    command: ["mongod", "--quiet", "--logpath", "/var/log/mongodb/mongod.log", "--replSet", "rs0", "--bind_ip_all"]
     environment:
-      - POSTGRES_DB=baton
-      - POSTGRES_USER=baton_user
-      - POSTGRES_PASSWORD=baton_password
+      - MONGO_INITDB_DATABASE=baton
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - mongodb_data:/data/db
+      - mongodb_logs:/var/log/mongodb
     networks:
       - baton-network
+    ports:
+      - "27017:27017"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U baton_user -d baton"]
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 30s
     restart: unless-stopped
-    ports:
-      - "5432:5432"
 
   # Backend service
   backend:
@@ -33,11 +33,11 @@ services:
       - "3001:3001"
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://baton_user:baton_password@postgres:5432/baton
+      - DATABASE_URL=mongodb://mongodb:27017/baton
       - CLIENT_URL=http://localhost:5173
       - MCP_SERVER_PORT=3002
     depends_on:
-      postgres:
+      mongodb:
         condition: service_healthy
     networks:
       - baton-network
@@ -59,11 +59,11 @@ services:
       - "3002:3002"
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://baton_user:baton_password@postgres:5432/baton
+      - DATABASE_URL=mongodb://mongodb:27017/baton
       - MCP_TRANSPORT_MODE=websocket
       - MCP_SERVER_PORT=3002
     depends_on:
-      postgres:
+      mongodb:
         condition: service_healthy
     networks:
       - baton-network
@@ -94,19 +94,19 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  # Database migration service (runs once)
-  db-migrate:
+  # Database setup service (runs once)
+  db-setup:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: baton-db-migrate
+    container_name: baton-db-setup
     environment:
-      - DATABASE_URL=postgresql://baton_user:baton_password@postgres:5432/baton
+      - DATABASE_URL=mongodb://mongodb:27017/baton
     networks:
       - baton-network
-    command: ["dumb-init", "npx", "prisma", "migrate", "deploy"]
+    command: ["dumb-init", "npx", "prisma", "db", "push"]
     depends_on:
-      postgres:
+      mongodb:
         condition: service_healthy
     restart: "no"
 
@@ -117,19 +117,21 @@ services:
       dockerfile: Dockerfile
     container_name: baton-db-seed
     environment:
-      - DATABASE_URL=postgresql://baton_user:baton_password@postgres:5432/baton
+      - DATABASE_URL=mongodb://mongodb:27017/baton
     networks:
       - baton-network
     command: ["dumb-init", "npx", "prisma", "db", "seed"]
     depends_on:
-      db-migrate:
+      db-setup:
         condition: service_completed_successfully
     restart: "no"
     profiles:
       - seed
 
 volumes:
-  postgres_data:
+  mongodb_data:
+    driver: local
+  mongodb_logs:
     driver: local
 
 networks:

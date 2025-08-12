@@ -3,7 +3,7 @@
 const { PrismaClient } = require('@prisma/client');
 
 const prisma = new PrismaClient({
-  datasourceUrl: 'postgresql://baton_user:baton_password@localhost:5432/baton'
+  datasourceUrl: 'mongodb://localhost:27017/baton'
 });
 
 async function getProjectId() {
