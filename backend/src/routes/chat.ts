@@ -1809,11 +1809,11 @@ router.get('/analytics/permissions', async (req: Request, res: Response) => {
     };
 
     if (conversationId) {
+      // Note: conversationId is deprecated after migration, but kept for backward compatibility
       whereClause.conversationId = conversationId as string;
     } else if (projectId) {
-      whereClause.conversation = {
-        projectId: projectId as string
-      };
+      // After migration, InteractivePrompt directly references projectId
+      whereClause.projectId = projectId as string;
     }
 
     // Get permission prompts with analytics
@@ -1824,8 +1824,8 @@ router.get('/analytics/permissions', async (req: Request, res: Response) => {
         status: { not: 'pending' }
       },
       include: {
-        conversation: {
-          select: { projectId: true, title: true }
+        project: {
+          select: { id: true, name: true }
         }
       },
       orderBy: { createdAt: 'desc' }
@@ -1871,8 +1871,8 @@ router.get('/analytics/permissions', async (req: Request, res: Response) => {
       const riskLevel = (prompt.context as any)?.riskLevel as string || 'UNKNOWN';
       analytics.riskLevelDistribution[riskLevel] = (analytics.riskLevelDistribution[riskLevel] || 0) + 1;
 
-      // Conversation activity
-      analytics.conversationActivity[prompt.conversationId] = (analytics.conversationActivity[prompt.conversationId] || 0) + 1;
+      // Project activity (updated from conversation activity after migration)
+      analytics.conversationActivity[prompt.projectId] = (analytics.conversationActivity[prompt.projectId] || 0) + 1;
     });
 
     analytics.averageResponseTime = responsesWithTime > 0 ? totalResponseTime / responsesWithTime : 0;
@@ -2459,6 +2459,72 @@ router.get('/conversations/:conversationId/permissions/live', async (req: Reques
         generatedAt: new Date().toISOString(),
         ttl: 300, // 5 minutes cache recommendation
         conversationId
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching live permission status:', error);
+    return res.status(500).json({
+      error: 'Failed to fetch live permission status',
+      details: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+/**
+ * GET /api/chat/projects/:projectId/prompts/pending
+ * Get pending interactive prompts for a project (WebSocket-first approach)
+ */
+router.get('/projects/:projectId/prompts/pending', async (req: Request, res: Response) => {
+  try {
+    const projectId = req.params.projectId;
+    
+    if (!projectId) {
+      return res.status(400).json({
+        error: 'Project ID is required',
+      });
+    }
+
+    // Since we're moving to WebSocket-only approach, return empty array
+    // Real prompts are delivered via WebSocket events
+    return res.json({
+      success: true,
+      prompts: [],
+      message: 'Prompts are delivered via WebSocket events in real-time'
+    });
+
+  } catch (error) {
+    console.error('Error fetching pending prompts:', error);
+    return res.status(500).json({
+      error: 'Failed to fetch pending prompts',
+      details: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+/**
+ * GET /api/chat/projects/:projectId/permissions/live
+ * Get live permission status for a project (WebSocket-first approach)
+ */
+router.get('/projects/:projectId/permissions/live', async (req: Request, res: Response) => {
+  try {
+    const projectId = req.params.projectId;
+    
+    if (!projectId) {
+      return res.status(400).json({
+        error: 'Project ID is required',
+      });
+    }
+
+    // Since we're moving to WebSocket-only approach, return minimal status
+    // Real permission status is delivered via WebSocket events
+    return res.json({
+      success: true,
+      liveStatus: {
+        activeSessions: 0,
+        pendingRequests: 0,
+        recentActivity: [],
+        message: 'Live permission status is delivered via WebSocket events in real-time'
       }
     });
 

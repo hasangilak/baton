@@ -5,7 +5,7 @@ import type { InteractivePrompt } from '../types';
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 interface UseInteractivePromptsProps {
-  conversationId: string | null;
+  projectId: string | null; // Updated from conversationId to projectId after migration
   sessionId?: string | null; // Claude Code session ID for permission correlation
   enableAnalytics?: boolean;
   socket?: any; // Socket will be passed from parent component
@@ -26,7 +26,7 @@ interface PermissionAnalytics {
   };
 }
 
-export const useInteractivePrompts = ({ conversationId, sessionId, enableAnalytics = false, socket }: UseInteractivePromptsProps) => {
+export const useInteractivePrompts = ({ projectId, sessionId, enableAnalytics = false, socket }: UseInteractivePromptsProps) => {
   const queryClient = useQueryClient();
   const [isRespondingToPrompt, setIsRespondingToPrompt] = useState(false);
   
@@ -43,41 +43,20 @@ export const useInteractivePrompts = ({ conversationId, sessionId, enableAnalyti
   // The useInteractivePrompts hook relies on the main chat system's WebSocket connection
   // and room management to receive permission events in the conversation room
 
-  // Load existing pending prompts on mount (like successful implementations)
+  // Load existing pending prompts on mount - DISABLED for WebSocket-only approach
+  // Pending prompts will be received via WebSocket events instead of HTTP polling
   useEffect(() => {
-    console.log('🔄 useInteractivePrompts mounting, conversationId:', conversationId);
-    if (!conversationId) {
-      console.log('⚠️ No conversation ID, skipping prompt loading');
+    console.log('🔄 useInteractivePrompts mounting, projectId:', projectId);
+    if (!projectId) {
+      console.log('⚠️ No project ID, skipping prompt loading');
       return;
     }
     
-    const loadPendingPrompts = async () => {
-      try {
-        console.log('🔄 Starting to load pending prompts...');
-        setIsLoading(true);
-        const response = await fetch(`${API_BASE}/api/chat/conversations/${conversationId}/prompts/pending`);
-        console.log('📡 Response received:', response.status, response.ok);
-        if (response.ok) {
-          const data = await response.json();
-          console.log('📥 Loaded existing pending prompts data:', data);
-          // Handle the API response structure (data.prompts)
-          if (data.success && data.prompts) {
-            setPendingPrompts(data.prompts);
-            console.log('✅ Set pending prompts:', data.prompts.length, 'prompts');
-          }
-        } else {
-          console.error('❌ API response not ok:', response.status, response.statusText);
-        }
-      } catch (error) {
-        console.error('❌ Error loading pending prompts:', error);
-        setError(error instanceof Error ? error.message : 'Failed to load prompts');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadPendingPrompts();
-  }, [conversationId]);
+    // NOTE: Disabled automatic pending prompt loading
+    // Prompts will be received via WebSocket 'interactive_prompt' events instead
+    console.log('📡 WebSocket-only mode: pending prompts will be received via socket events');
+    setIsLoading(false); // Set to false since we're not loading via HTTP
+  }, [projectId]);
 
   // Enhanced WebSocket listeners with analytics
   useEffect(() => {
@@ -86,16 +65,16 @@ export const useInteractivePrompts = ({ conversationId, sessionId, enableAnalyti
       return;
     }
 
-    console.log('🔗 useInteractivePrompts: Setting up WebSocket listeners for conversation:', conversationId);
+    console.log('🔗 useInteractivePrompts: Setting up WebSocket listeners for project:', projectId);
 
     const handleInteractivePrompt = (data: any) => {
       console.log('🔔 Received enhanced interactive prompt:', data);
-      console.log('🔍 Current conversation ID:', conversationId);
-      console.log('🔍 Prompt conversation ID:', data.conversationId);
+      console.log('🔍 Current project ID:', projectId);
+      console.log('🔍 Prompt project ID:', data.conversationId); // Note: data.conversationId is actually projectId after migration
       
-      // Only handle prompts for the current conversation
-      if (data.conversationId !== conversationId) {
-        console.log('🚫 Ignoring prompt for different conversation:', data.conversationId, 'vs', conversationId);
+      // Only handle prompts for the current project
+      if (data.conversationId !== projectId) {
+        console.log('🚫 Ignoring prompt for different project:', data.conversationId, 'vs', projectId);
         return;
       }
 
@@ -107,7 +86,7 @@ export const useInteractivePrompts = ({ conversationId, sessionId, enableAnalyti
         analytics?: any; 
       } = {
         id: data.promptId,
-        conversationId: data.conversationId,
+        conversationId: data.conversationId, // Note: this is actually projectId after migration
         sessionId: data.sessionId,
         type: data.type,
         title: data.title,
@@ -154,7 +133,7 @@ export const useInteractivePrompts = ({ conversationId, sessionId, enableAnalyti
         const acknowledgment = {
           promptId: data.promptId,
           deliveryId: data.deliveryId,
-          conversationId: data.conversationId,
+          conversationId: data.conversationId, // Note: this is actually projectId after migration
           timestamp: Date.now(),
           clientInfo: {
             userAgent: navigator.userAgent,
@@ -174,7 +153,7 @@ export const useInteractivePrompts = ({ conversationId, sessionId, enableAnalyti
         trackAnalyticsEvent('prompt_received', {
           toolName: data.toolName,
           riskLevel: data.riskLevel,
-          conversationId: data.conversationId,
+          conversationId: data.conversationId, // Note: this is actually projectId after migration
           acknowledged: !!data.requiresAck
         });
       }
@@ -203,8 +182,8 @@ export const useInteractivePrompts = ({ conversationId, sessionId, enableAnalyti
     // Unified permission request handler
     const handleUnifiedPermissionRequest = (data: any) => {
       console.log('🔐 [useInteractivePrompts] Received unified permission request:', data);
-      console.log('🔍 [useInteractivePrompts] Current conversation ID:', conversationId);
-      console.log('🔍 [useInteractivePrompts] Request conversation ID:', data.conversationId);
+      console.log('🔍 [useInteractivePrompts] Current project ID:', projectId);
+      console.log('🔍 [useInteractivePrompts] Request project ID:', data.conversationId); // Note: data.conversationId is actually projectId after migration
       
       // Only handle requests for the current conversation
       if (data.conversationId !== conversationId) {
@@ -278,40 +257,42 @@ export const useInteractivePrompts = ({ conversationId, sessionId, enableAnalyti
       socket.off('analytics_event', handleAnalyticsEvent);
       socket.off('permission_statistics', handleAnalyticsEvent);
     };
-  }, [socket, conversationId, enableAnalytics]);
+  }, [socket, projectId, enableAnalytics]);
 
-  // Analytics API queries
+  // Analytics API queries - only when explicitly enabled AND there are pending prompts
+  const shouldEnableAnalytics = enableAnalytics && !!projectId && pendingPrompts.length > 0;
+  
   const { data: analyticsData } = useQuery({
-    queryKey: ['permission-analytics', conversationId],
+    queryKey: ['permission-analytics', projectId],
     queryFn: async (): Promise<PermissionAnalytics> => {
-      const response = await fetch(`${API_BASE}/api/chat/analytics/permissions?conversationId=${conversationId}&timeframe=24h`);
+      const response = await fetch(`${API_BASE}/api/chat/analytics/permissions?projectId=${projectId}&timeframe=24h`);
       if (!response.ok) {
         throw new Error('Failed to fetch permission analytics');
       }
       const data = await response.json();
       return data.analytics;
     },
-    enabled: enableAnalytics && !!conversationId,
-    refetchInterval: 60000, // Refetch every minute
+    enabled: shouldEnableAnalytics,
+    refetchInterval: shouldEnableAnalytics ? 60000 : false, // Only refetch when actively needed
   });
 
   const { data: liveStatus } = useQuery({
-    queryKey: ['live-permission-status', conversationId],
+    queryKey: ['live-permission-status', projectId],
     queryFn: async () => {
-      const response = await fetch(`${API_BASE}/api/chat/conversations/${conversationId}/permissions/live`);
+      const response = await fetch(`${API_BASE}/api/chat/projects/${projectId}/permissions/live`);
       if (!response.ok) {
         throw new Error('Failed to fetch live permission status');
       }
       const data = await response.json();
       return data.liveStatus;
     },
-    enabled: enableAnalytics && !!conversationId,
-    refetchInterval: 30000, // Refetch every 30 seconds
+    enabled: shouldEnableAnalytics, // Use same conditional logic
+    refetchInterval: shouldEnableAnalytics ? 30000 : false, // Only refetch when actively needed
   });
 
   // Analytics tracking function
   const trackAnalyticsEvent = useCallback(async (eventType: string, metadata: any) => {
-    if (!conversationId) return;
+    if (!projectId) return;
     
     try {
       await fetch(`${API_BASE}/api/chat/analytics/track-event`, {
@@ -321,7 +302,7 @@ export const useInteractivePrompts = ({ conversationId, sessionId, enableAnalyti
         },
         body: JSON.stringify({
           eventType,
-          conversationId,
+          projectId,
           toolName: metadata.toolName,
           metadata: {
             ...metadata,
@@ -333,7 +314,7 @@ export const useInteractivePrompts = ({ conversationId, sessionId, enableAnalyti
     } catch (error) {
       console.error('Failed to track analytics event:', error);
     }
-  }, [conversationId]);
+  }, [projectId]);
 
   // HTTP acknowledgment as backup to WebSocket
   const sendPromptAcknowledgmentHTTP = useCallback(async (promptId: string, clientInfo: any) => {
@@ -378,7 +359,7 @@ export const useInteractivePrompts = ({ conversationId, sessionId, enableAnalyti
         // Send unified permission response
         socket.emit('unified_permission_response', {
           promptId,
-          conversationId,
+          conversationId: projectId, // Updated to use projectId
           sessionId,
           selectedOption: optionId,
           selectedValue: selectedOption?.value || optionId,
@@ -400,7 +381,7 @@ export const useInteractivePrompts = ({ conversationId, sessionId, enableAnalyti
           promptId, 
           selectedOption: optionId,
           permissionType,
-          conversationId,
+          conversationId: projectId, // Updated to use projectId
           sessionId 
         });
       } else {
@@ -408,7 +389,7 @@ export const useInteractivePrompts = ({ conversationId, sessionId, enableAnalyti
         socket.emit('permission:respond', {
           promptId,
           selectedOption: optionId,
-          conversationId, // Include conversation ID for routing
+          conversationId: projectId, // Include project ID for routing (was conversationId)
           sessionId, // Include session ID for Claude Code correlation
           metadata: {
             responseTime,
@@ -420,7 +401,7 @@ export const useInteractivePrompts = ({ conversationId, sessionId, enableAnalyti
         console.log('✅ Legacy permission response sent via WebSocket', { 
           promptId, 
           selectedOption: optionId,
-          conversationId,
+          conversationId: projectId, // Updated to use projectId
           sessionId 
         });
       }
@@ -446,7 +427,7 @@ export const useInteractivePrompts = ({ conversationId, sessionId, enableAnalyti
       
       // Invalidate and refetch pending prompts
       queryClient.invalidateQueries({
-        queryKey: ['interactivePrompts', 'pending', conversationId]
+        queryKey: ['interactivePrompts', 'pending', projectId]
       });
       
       setIsRespondingToPrompt(false);

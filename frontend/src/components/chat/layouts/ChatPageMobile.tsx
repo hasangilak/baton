@@ -48,10 +48,10 @@ export const ChatPageMobile: React.FC = () => {
     isRespondingToPrompt,
     handlePromptResponse,
   } = useInteractivePrompts({ 
-    conversationId: state.selectedConversationId,
+    projectId: state.selectedConversationId, // Note: after migration, selectedConversationId is actually projectId
     sessionId: currentSessionId,
     socket,
-    enableAnalytics: true 
+    enableAnalytics: false // Disabled: permissions handled via WebSocket only, no auto-polling
   });
 
   // State for mobile sidebar
