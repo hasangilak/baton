@@ -333,12 +333,16 @@ export const useChatStore = create<ChatStore>()(
       const { socket, isConnected, joinConversation } = socketStore;
       
       if (socket && isConnected) {
-        joinConversation(conversationId);
-        console.log('🏠 Joined conversation room:', conversationId);
-        
-        // Try to initialize session if needed
+        // Get current session ID if available
         const { sessionState, initializeSession } = get();
         const session = sessionState[conversationId];
+        const currentSessionId = session?.sessionId;
+        
+        // Join conversation with session ID for better targeting
+        joinConversation(conversationId, currentSessionId);
+        console.log('🏠 Joined conversation room:', conversationId, currentSessionId ? `with session: ${currentSessionId}` : 'without session');
+        
+        // Try to initialize session if needed
         if (!session?.initialized && !session?.pending) {
           console.log('🔄 Attempting session initialization for conversation:', conversationId);
           await initializeSession(conversationId);

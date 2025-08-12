@@ -38,7 +38,7 @@ interface SocketState {
   // Specific room management
   joinProject: (projectId: string) => void;
   leaveProject: (projectId: string) => void;
-  joinConversation: (conversationId: string) => void;
+  joinConversation: (conversationId: string, sessionId?: string) => void;
   leaveConversation: (conversationId: string) => void;
   
   // Internal state management
@@ -119,7 +119,13 @@ export const useSocketStore = create<SocketState>()(
         });
         
         state.joinedConversations.forEach(conversationId => {
-          socket.emit('join-conversation', conversationId);
+          // For reconnection, we don't have session ID available in socketStore
+          // The chat system will handle session-aware rejoining
+          socket.emit('join-conversation', { 
+            conversationId,
+            reconnection: true,
+            timestamp: Date.now()
+          });
           console.log('💬 [SocketStore] Re-joined conversation:', conversationId);
         });
       });
@@ -235,14 +241,19 @@ export const useSocketStore = create<SocketState>()(
       }
     },
 
-    joinConversation: (conversationId: string) => {
+    joinConversation: (conversationId: string, sessionId?: string) => {
       const { socket, isConnected } = get();
       if (socket && isConnected && conversationId) {
-        socket.emit('join-conversation', conversationId);
+        // Send conversation ID and optional session ID for better room management
+        socket.emit('join-conversation', { 
+          conversationId, 
+          sessionId,
+          timestamp: Date.now() 
+        });
         set((state) => ({
           joinedConversations: new Set([...state.joinedConversations, conversationId])
         }));
-        console.log('💬 [SocketStore] Joined conversation:', conversationId);
+        console.log('💬 [SocketStore] Joined conversation:', conversationId, sessionId ? `with session: ${sessionId}` : 'without session');
       }
     },
 

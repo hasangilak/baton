@@ -154,9 +154,21 @@ io.on('connection', (socket) => {
   });
 
   // Conversation room management for prompt targeting
-  socket.on('join-conversation', (conversationId: string) => {
+  socket.on('join-conversation', (data: string | { conversationId: string; sessionId?: string; reconnection?: boolean; timestamp?: number }) => {
+    // Handle both old string format and new object format for backward compatibility
+    const conversationId = typeof data === 'string' ? data : data.conversationId;
+    const sessionId = typeof data === 'object' ? data.sessionId : undefined;
+    const isReconnection = typeof data === 'object' ? data.reconnection : false;
+    
     socket.join(`conversation-${conversationId}`);
-    console.log(`Socket ${socket.id} joined conversation ${conversationId}`);
+    
+    if (sessionId) {
+      // Also join session-specific room for targeted session events
+      socket.join(`session-${sessionId}`);
+      console.log(`Socket ${socket.id} joined conversation ${conversationId} with session ${sessionId}`);
+    } else {
+      console.log(`Socket ${socket.id} joined conversation ${conversationId} ${isReconnection ? '(reconnection)' : ''}`);
+    }
   });
   
   socket.on('leave-conversation', (conversationId: string) => {
