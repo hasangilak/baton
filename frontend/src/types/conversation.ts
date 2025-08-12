@@ -50,7 +50,7 @@ export interface PlanReviewConversationItem extends BaseConversationItem {
   type: 'plan_review';
   data: {
     id: string;
-    conversationId: string;
+    projectId: string;
     planContent: string;
     title?: string;
     message?: string;

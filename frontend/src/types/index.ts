@@ -389,7 +389,7 @@ export type PromptStatus = 'pending' | 'answered' | 'timeout' | 'auto_handled';
 
 export interface InteractivePrompt {
   id: string;
-  conversationId: string;
+  projectId: string;
   sessionId?: string;
   type: PromptType;
   title?: string;

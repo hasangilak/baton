@@ -153,7 +153,7 @@ io.on('connection', (socket) => {
     console.log(`Socket ${socket.id} left project ${projectId}`);
   });
 
-  // Conversation room management for prompt targeting
+  // Conversation room management for prompt targeting (keeping conversation semantics for backward compatibility)
   socket.on('join-conversation', (data: string | { conversationId: string; sessionId?: string; reconnection?: boolean; timestamp?: number }) => {
     // Handle both old string format and new object format for backward compatibility
     const conversationId = typeof data === 'string' ? data : data.conversationId;
@@ -181,36 +181,36 @@ io.on('connection', (socket) => {
   socket.on('chat:send-message', async (data) => {
     console.log(`💬 Received chat:send-message from ${socket.id}:`, data.requestId);
     try {
-      const { conversationId, content, requestId, sessionId, allowedTools, workingDirectory, permissionMode, attachments } = data;
+      const { projectId, content, requestId, sessionId, allowedTools, workingDirectory, permissionMode, attachments } = data;
       
-      if (!conversationId || !content || !requestId) {
+      if (!projectId || !content || !requestId) {
         socket.emit('chat:error', {
           requestId: requestId || 'unknown',
-          error: 'Missing required fields: conversationId, content, requestId'
+          error: 'Missing required fields: projectId, content, requestId'
         });
         return;
       }
 
-      // 1. Check session validation for existing conversations
-      const conversation = await prisma.conversation.findUnique({
-        where: { id: conversationId },
+      // 1. Check session validation for existing conversations in this project
+      const conversation = await prisma.conversation.findFirst({
+        where: { projectId: projectId },
         select: { claudeSessionId: true, id: true }
       });
 
       if (!conversation) {
         socket.emit('chat:error', {
           requestId,
-          error: 'Conversation not found'
+          error: 'No conversation found for this project'
         });
         return;
       }
 
       // If conversation has a session ID, require it in the message
       if (conversation.claudeSessionId && !sessionId) {
-        console.log(`🚫 Session validation failed - conversation ${conversationId} has session ${conversation.claudeSessionId} but message has no sessionId`);
+        console.log(`🚫 Session validation failed - project ${projectId} has session ${conversation.claudeSessionId} but message has no sessionId`);
         socket.emit('chat:error', {
           requestId,
-          error: 'Session ID required for this conversation. Please refresh the page.',
+          error: 'Session ID required for this project. Please refresh the page.',
           sessionRequired: true,
           existingSessionId: conversation.claudeSessionId
         });
@@ -229,16 +229,16 @@ io.on('connection', (socket) => {
         return;
       }
 
-      console.log(`✅ Session validation passed for conversation ${conversationId}${sessionId ? ` with session ${sessionId}` : ' (first message)'}`);
+      console.log(`✅ Session validation passed for project ${projectId}${sessionId ? ` with session ${sessionId}` : ' (first message)'}`);
 
       // 2. Store user message in database
-      console.log(`💾 Storing user message for conversation ${conversationId}`);
-      const userMessage = await messageStorage.createUserMessage(conversationId, content, attachments, sessionId);
+      console.log(`💾 Storing user message for project ${projectId}`);
+      const userMessage = await messageStorage.createUserMessage(projectId, content, attachments, sessionId);
       console.log(`✅ User message stored with ID: ${userMessage.id}`);
 
       // 3. Create assistant message placeholder
-      console.log(`💾 Creating assistant message placeholder for conversation ${conversationId}`);
-      const assistantMessage = await messageStorage.createAssistantMessagePlaceholder(conversationId);
+      console.log(`💾 Creating assistant message placeholder for project ${projectId}`);
+      const assistantMessage = await messageStorage.createAssistantMessagePlaceholder(projectId);
       console.log(`✅ Assistant placeholder created with ID: ${assistantMessage.id}`);
 
       // 4. Store request mapping for streaming updates
@@ -247,7 +247,7 @@ io.on('connection', (socket) => {
       }
       (global as any).activeRequests.set(requestId, {
         assistantMessageId: assistantMessage.id,
-        conversationId,
+        projectId,
         userMessageId: userMessage.id
       });
 
@@ -258,7 +258,7 @@ io.on('connection', (socket) => {
         bridgeSockets[0].emit('claude:execute', {
           message: content,
           requestId,
-          conversationId,
+          projectId,
           sessionId,
           allowedTools,
           workingDirectory,
@@ -302,11 +302,11 @@ io.on('connection', (socket) => {
 
   socket.on('permission:check', async (data, callback) => {
     try {
-      const { conversationId, toolName } = data;
+      const { projectId, toolName } = data;
       // Check if permission exists in database
       const permission = await prisma.conversationPermission.findFirst({
         where: {
-          conversationId,
+          projectId,
           toolName,
           status: 'granted',
           OR: [
@@ -334,9 +334,9 @@ io.on('connection', (socket) => {
       });
       
       // Emit unified permission event to frontend
-      io.to(`conversation-${data.conversationId}`).emit('unified_permission_request', {
+      io.to(`project-${data.projectId}`).emit('unified_permission_request', {
         promptId: data.promptId,
-        conversationId: data.conversationId,
+        projectId: data.projectId,
         sessionId: data.sessionId,
         permissionType: data.permissionType,
         subtype: data.subtype,
@@ -350,10 +350,10 @@ io.on('connection', (socket) => {
     } else {
       // Legacy permission request handling
       console.log(`🔐 Received legacy permission request from bridge:`, data.promptId, 'with session ID:', data.sessionId);
-      // Emit to frontend clients in the conversation room with session ID
-      io.to(`conversation-${data.conversationId}`).emit('interactive_prompt', {
+      // Emit to frontend clients in the project room with session ID
+      io.to(`project-${data.projectId}`).emit('interactive_prompt', {
         promptId: data.promptId,
-        conversationId: data.conversationId,
+        projectId: data.projectId,
         sessionId: data.sessionId, // Forward session ID to frontend
         type: data.type,
         title: data.title,
@@ -369,10 +369,10 @@ io.on('connection', (socket) => {
 
   socket.on('plan:review-request', async (data) => {
     console.log(`📋 Received plan review request from bridge:`, data.promptId);
-    // Emit to frontend clients in the conversation room
-    io.to(`conversation-${data.conversationId}`).emit('plan_review', {
+    // Emit to frontend clients in the project room
+    io.to(`project-${data.projectId}`).emit('plan_review', {
       planReviewId: data.promptId,
-      conversationId: data.conversationId,
+      projectId: data.projectId,
       type: data.type,
       title: data.title,
       message: data.message,
@@ -386,7 +386,7 @@ io.on('connection', (socket) => {
   socket.on('permission:escalate', async (data) => {
     console.log(`📢 Received permission escalation from bridge:`, data.promptId);
     // Forward escalation to frontend clients
-    io.to(`conversation-${data.conversationId || 'unknown'}`).emit('permission_escalation', {
+    io.to(`project-${data.projectId || 'unknown'}`).emit('permission_escalation', {
       promptId: data.promptId,
       stage: data.stage,
       toolName: data.toolName,
@@ -410,7 +410,7 @@ io.on('connection', (socket) => {
     if (bridgeSockets && bridgeSockets.length > 0) {
       bridgeSockets[0]?.emit('permission:response', {
         promptId: data.promptId,
-        conversationId: data.conversationId,
+        projectId: data.projectId,
         sessionId: data.sessionId,
         selectedOption: data.selectedOption,
         selectedValue: data.selectedValue,
@@ -580,7 +580,7 @@ io.on('connection', (socket) => {
           
           if (assistantMessageId && requestInfo.assistantMessageId) {
             // This is a streaming update to existing assistant message
-            console.log(`🔄 Updating streaming assistant message for conversation ${requestInfo.conversationId}`);
+            console.log(`🔄 Updating streaming assistant message for project ${requestInfo.projectId}`);
             
             // Extract content from Claude SDK message
             let content = '';
@@ -606,8 +606,8 @@ io.on('connection', (socket) => {
             console.log(`✅ Streaming assistant message updated (complete: ${isComplete})`);
           } else {
             // Create new message with Claude SDK format
-            console.log(`💾 Creating new Claude assistant message for conversation ${requestInfo.conversationId}`);
-            const newMessage = await messageStorage.createClaudeSDKMessage(requestInfo.conversationId, data);
+            console.log(`💾 Creating new Claude assistant message for project ${requestInfo.projectId}`);
+            const newMessage = await messageStorage.createClaudeSDKMessage(requestInfo.projectId, data);
             
             // Update request mapping to track this message for future streaming updates
             if (newMessage && (global as any).activeRequests.has(data.requestId)) {
@@ -621,12 +621,12 @@ io.on('connection', (socket) => {
           
           // Update conversation session ID if provided and broadcast to frontend
           if (data.data.session_id) {
-            await messageStorage.updateConversationSession(requestInfo.conversationId, data.data.session_id);
+            await messageStorage.updateProjectSession(requestInfo.projectId, data.data.session_id);
             
-            // Broadcast session ID availability to frontend clients in conversation room
-            console.log(`🔗 Broadcasting session ID ${data.data.session_id} for conversation ${requestInfo.conversationId}`);
-            io.to(`conversation-${requestInfo.conversationId}`).emit('chat:session-id-available', {
-              conversationId: requestInfo.conversationId,
+            // Broadcast session ID availability to frontend clients in project room
+            console.log(`🔗 Broadcasting session ID ${data.data.session_id} for project ${requestInfo.projectId}`);
+            io.to(`project-${requestInfo.projectId}`).emit('chat:session-id-available', {
+              projectId: requestInfo.projectId,
               sessionId: data.data.session_id,
               timestamp: Date.now()
             });
@@ -634,16 +634,16 @@ io.on('connection', (socket) => {
         }
         // For result messages, also store them for completeness
         else if (data.data.type === 'result') {
-          console.log(`💾 Storing Claude result message for conversation ${requestInfo.conversationId}`);
-          await messageStorage.createClaudeSDKMessage(requestInfo.conversationId, data);
+          console.log(`💾 Storing Claude result message for project ${requestInfo.projectId}`);
+          await messageStorage.createClaudeSDKMessage(requestInfo.projectId, data);
           console.log(`✅ Claude result message stored successfully`);
         }
       }
 
-      // Always forward to frontend for real-time updates with conversation ID
+      // Always forward to frontend for real-time updates with project ID
       const frontendMessage = { 
         ...data, 
-        conversationId: requestInfo?.conversationId 
+        projectId: requestInfo?.projectId 
       };
       io.emit('chat:stream-response', frontendMessage);
       console.log(`📤 Forwarded claude:stream to frontend clients`);
@@ -774,14 +774,14 @@ io.on('connection', (socket) => {
       toolUsages
     );
     
-    // Broadcast to all clients including tool usage and conversationId
+    // Broadcast to all clients including tool usage and projectId
     io.emit('message:updated', { 
       messageId, 
       content, 
       isComplete,
       error,
       toolUsages,
-      conversationId: result.conversationId
+      projectId: result.projectId
     });
   });
   

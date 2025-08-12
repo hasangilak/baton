@@ -365,8 +365,14 @@ export const useChatStore = create<ChatStore>()(
           }
         });
         
-        emit('chat:send-message', data);
-        console.log('📤 Sent WebSocket message:', data);
+        // Convert conversationId to projectId for backend
+        const messageData = { 
+          ...data,
+          projectId: data.projectId || data.conversationId // Use projectId if provided, fallback to conversationId
+        };
+        
+        emit('chat:send-message', messageData);
+        console.log('📤 Sent WebSocket message with projectId:', messageData);
       } else {
         throw new Error('Not connected to chat service');
       }
@@ -404,6 +410,7 @@ export const useChatStore = create<ChatStore>()(
       
       get().sendWebSocketMessage({
         conversationId: lastMessageData.conversationId,
+        projectId: lastMessageData.conversationId, // Use conversationId as projectId for retry
         content: lastMessageData.content,
         attachments: lastMessageData.attachments,
         requestId,
@@ -493,9 +500,10 @@ export const useChatStore = create<ChatStore>()(
           conversationMatch: data.conversationId === currentState.selectedConversationId 
         });
         
-        // Guard: Ignore messages for different conversations
-        if (data.conversationId !== currentState.selectedConversationId) {
-          console.log('🚫 Ignoring stream response for different conversation');
+        // Guard: Ignore messages for different conversations/projects
+        const messageTargetId = data.conversationId || data.projectId;
+        if (messageTargetId !== currentState.selectedConversationId) {
+          console.log('🚫 Ignoring stream response for different conversation/project');
           return;
         }
         
@@ -521,14 +529,17 @@ export const useChatStore = create<ChatStore>()(
       // Simple message complete handler - just stop streaming
       const handleMessageComplete = (data: any) => {
         const currentState = get();
+        const completionTargetId = data.conversationId || data.projectId;
         console.log('🏁 Message completion event received:', {
           conversationId: data.conversationId,
+          projectId: data.projectId,
+          completionTargetId,
           selectedConversationId: currentState.selectedConversationId
         });
         
-        // Guard: Only process completion for current conversation
-        if (data.conversationId !== currentState.selectedConversationId) {
-          console.log('🚫 Ignoring completion for different conversation');
+        // Guard: Only process completion for current conversation/project
+        if (completionTargetId !== currentState.selectedConversationId) {
+          console.log('🚫 Ignoring completion for different conversation/project');
           return;
         }
         
@@ -540,8 +551,10 @@ export const useChatStore = create<ChatStore>()(
       // Session available handler
       const handleSessionAvailable = (data: any) => {
         const currentState = get();
-        if (data.conversationId === currentState.selectedConversationId) {
-          const currentSession = currentState.sessionState[data.conversationId];
+        // Backend now sends projectId instead of conversationId for session events
+        const conversationId = data.conversationId || data.projectId;
+        if (conversationId === currentState.selectedConversationId) {
+          const currentSession = currentState.sessionState[conversationId];
           const hasExistingSessionId = currentSession?.sessionId && currentSession.initialized;
           
           // Only update sessionId if we don't already have one (new conversations)
@@ -556,7 +569,7 @@ export const useChatStore = create<ChatStore>()(
             });
             
             // Update session state for new conversations
-            get().setSessionState(data.conversationId, {
+            get().setSessionState(conversationId, {
               sessionId: data.sessionId,
               initialized: true,
               pending: false,
@@ -575,7 +588,7 @@ export const useChatStore = create<ChatStore>()(
             
             // Just mark as initialized if not already
             if (!currentSession.initialized) {
-              get().setSessionState(data.conversationId, {
+              get().setSessionState(conversationId, {
                 sessionId: currentSession.sessionId, // Keep our existing sessionId
                 initialized: true,
                 pending: false,

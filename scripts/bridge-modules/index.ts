@@ -75,7 +75,7 @@ export class ModularClaudeCodeBridge {
       if (!validation.valid) {
         throw new BridgeError(
           `Configuration validation failed: ${validation.errors.join(', ')}`,
-          ErrorType.CONFIGURATION_ERROR
+          ErrorType.CONFIGURATION_ERROR,
         );
       }
 
@@ -295,7 +295,8 @@ export class ModularClaudeCodeBridge {
           type: "claude_json",
           data: sdkMessage,
           requestId: request.requestId,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          sessionId: sdkMessage.session_id as string
         };
         
         socket.emit('claude:stream', streamResponse);

@@ -206,17 +206,12 @@ router.get('/conversations/by-session/:sessionId', async (req: Request, res: Res
     const conversation = await prisma.conversation.findFirst({
       where: { claudeSessionId: sessionId },
       include: {
-        messages: {
-          where: {
-            status: { in: ['completed', 'failed'] }
-          },
-          include: {
-            attachments: true,
-          },
-          orderBy: {
-            createdAt: 'asc',
-          },
-        },
+        project: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
       },
     });
 
@@ -226,10 +221,24 @@ router.get('/conversations/by-session/:sessionId', async (req: Request, res: Res
       });
     }
 
-    console.log(`📥 Retrieved conversation ${conversation.id} with ${conversation.messages?.length || 0} messages for session ${sessionId}`);
+    // Fetch messages using the project ID (since messages are now linked to projects)
+    const messages = await prisma.message.findMany({
+      where: {
+        projectId: conversation.projectId,
+        status: { in: ['completed', 'failed'] }
+      },
+      include: {
+        attachments: true,
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+    });
+
+    console.log(`📥 Retrieved conversation ${conversation.id} with ${messages?.length || 0} messages for session ${sessionId}`);
 
     // Convert BigInt timestamp to number for JSON serialization
-    const serializedMessages = conversation.messages?.map(message => ({
+    const serializedMessages = messages?.map(message => ({
       ...message,
       timestamp: message.timestamp ? Number(message.timestamp) : null,
     })) || [];
@@ -659,9 +668,21 @@ router.get('/conversations/:conversationId/prompts/pending', async (req: Request
       });
     }
 
+    // Get conversation to find the projectId
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { projectId: true }
+    });
+
+    if (!conversation) {
+      return res.status(404).json({
+        error: 'Conversation not found',
+      });
+    }
+
     const prompts = await prisma.interactivePrompt.findMany({
       where: {
-        conversationId,
+        projectId: conversation.projectId,
         status: 'pending',
         // Note: Removed timeoutAt filter to show all pending prompts (including timed out ones)
         // This supports our new approach where prompts remain available for user interaction
@@ -695,6 +716,18 @@ router.post('/conversations/:conversationId/prompts', async (req: Request, res: 
     if (!conversationId || !type || !message || !options) {
       return res.status(400).json({
         error: 'Conversation ID, type, message, and options are required',
+      });
+    }
+
+    // Get conversation to find projectId
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { projectId: true }
+    });
+
+    if (!conversation) {
+      return res.status(404).json({
+        error: 'Conversation not found',
       });
     }
 
@@ -739,7 +772,7 @@ router.post('/conversations/:conversationId/prompts', async (req: Request, res: 
     
     const deliveryResult = await getPromptDeliveryService().deliverPrompt({
       id: promptId,
-      conversationId,
+      projectId: conversation.projectId,
       type,
       title: title || `${type} prompt`,
       message,
@@ -1417,8 +1450,8 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
     }
 
     // Use enhanced message storage with hybrid approach
-    const userMessage = await messageStorage.createUserMessage(conversationId, content, undefined, conversation.claudeSessionId);
-    const assistantMessage = await messageStorage.createAssistantMessagePlaceholder(conversationId);
+    const userMessage = await messageStorage.createUserMessage(conversation.projectId, content, undefined, conversation.claudeSessionId);
+    const assistantMessage = await messageStorage.createAssistantMessagePlaceholder(conversation.projectId);
     
     console.log(`📝 Created messages: user=${userMessage.id}, assistant=${assistantMessage.id}`);
 
@@ -1481,7 +1514,7 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
                   console.log(`🆔 New session ID captured: ${currentSessionId}`);
                   
                   // Use enhanced session storage
-                  messageStorage.updateConversationSession(conversationId, sessionId);
+                  messageStorage.updateProjectSession(conversation.projectId, sessionId);
                 }
 
                 // Enhanced content extraction and immediate DB updates

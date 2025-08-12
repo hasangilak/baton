@@ -284,7 +284,7 @@ export const ChatPageDesktop: React.FC = () => {
           <button
             onClick={() => {
               stopStreaming();
-              selectConversation(null);
+              selectConversation(null); // No session ID needed for new conversation
             }}
             className="p-2 hover:bg-[#242528] rounded-lg transition-colors"
             data-testid="chat-new-conversation"
@@ -311,7 +311,7 @@ export const ChatPageDesktop: React.FC = () => {
               <button
                 key={c.id}
                 onClick={() => {
-                  selectConversation(c.id);
+                  selectConversation(c.id, c.claudeSessionId || undefined);
                   setSidebarVisible(false);
                 }}
                 className={`w-full px-4 py-3 text-left hover:bg-[#242528] transition-colors border-b border-[#2C2D30] ${
@@ -342,7 +342,7 @@ export const ChatPageDesktop: React.FC = () => {
                     onDelete={() => {
                       deleteConversation(c.id);
                       if (state.selectedConversationId === c.id)
-                        selectConversation(null);
+                        selectConversation(null); // No session ID needed when clearing
                     }}
                   />
                 </div>

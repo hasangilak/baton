@@ -11,6 +11,7 @@ export interface StreamResponse {
   error?: string;
   requestId: string;
   timestamp: number;
+  sessionId: string;
 }
 
 export interface StreamMetrics {

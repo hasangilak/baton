@@ -135,24 +135,34 @@ export const useChatIntegration = (projectId: string) => {
         console.log('🔄 Skipping duplicate sessionId processing:', urlSessionId);
         return;
       }
-      // Scenario 2: Existing conversation - find conversation by sessionId and load messages
-      console.log('🔄 Scenario 2: Loading existing conversation for sessionId:', urlSessionId);
       
-      const loadExistingConversation = async () => {
-        try {
-          // Mark as processed to prevent duplicate calls
-          processedSessionRef.current = urlSessionId;
-          
-          // Use chatStore's enhanced fetchAndLoadMessages with sessionId
-          // This will handle: find conversation + set up state + load messages in one call
-          const store = useChatStore.getState();
-          await store.fetchAndLoadMessages(undefined, urlSessionId);
-        } catch (error) {
-          console.error('❌ Error loading conversation by sessionId:', error);
-        }
-      };
-      
-      loadExistingConversation();
+      // Only fetch by session ID if we don't have a current conversation selected
+      // If we already have a conversation selected, the session ID is likely from that conversation
+      if (!selectedConversationId) {
+        // Scenario 2: Resuming existing conversation - find conversation by sessionId and load messages
+        console.log('🔄 Scenario 2: Resuming existing conversation for sessionId:', urlSessionId);
+        
+        const loadExistingConversation = async () => {
+          try {
+            // Mark as processed to prevent duplicate calls
+            processedSessionRef.current = urlSessionId;
+            
+            // Use chatStore's enhanced fetchAndLoadMessages with sessionId
+            // This will handle: find conversation + set up state + load messages in one call
+            const store = useChatStore.getState();
+            await store.fetchAndLoadMessages(undefined, urlSessionId);
+          } catch (error) {
+            console.error('❌ Error loading conversation by sessionId:', error);
+          }
+        };
+        
+        loadExistingConversation();
+      } else {
+        // We already have a conversation selected, just mark the session as processed
+        // This happens when the URL session ID belongs to the current conversation
+        console.log('🔄 Session ID belongs to current conversation, skipping fetch:', urlSessionId);
+        processedSessionRef.current = urlSessionId;
+      }
     } else {
       // Reset processed session when no sessionId in URL
       processedSessionRef.current = null;
@@ -205,7 +215,48 @@ export const useChatIntegration = (projectId: string) => {
   const deleteConversation = async (id: string) => {
     await deleteConversationMutation.mutateAsync(id);
     if (selectedConversationId === id) {
+      // Clear URL session ID and conversation state
+      const url = new URL(window.location.href);
+      url.searchParams.delete('sessionId');
+      window.history.replaceState({}, '', url.toString());
       useChatStore.getState().selectConversation(null);
+    }
+  };
+
+  // Enhanced conversation selection with session ID and URL management
+  const selectConversationWithSession = (conversationId: string | null, sessionId?: string) => {
+    // Update store state
+    useChatStore.getState().selectConversation(conversationId);
+    
+    if (conversationId && sessionId) {
+      // Update URL with session ID for proper conversation resumption
+      const url = new URL(window.location.href);
+      url.searchParams.set('sessionId', sessionId);
+      window.history.replaceState({}, '', url.toString());
+      
+      // Set session state with URL source for priority handling
+      useChatStore.getState().setSessionState(conversationId, {
+        sessionId: sessionId,
+        initialized: true,
+        pending: false,
+        source: 'url-resume'
+      });
+      
+      console.log('✅ Selected conversation with session:', conversationId, sessionId);
+    } else if (conversationId) {
+      // Clear session ID from URL for conversations without session
+      const url = new URL(window.location.href);
+      url.searchParams.delete('sessionId');
+      window.history.replaceState({}, '', url.toString());
+      
+      console.log('✅ Selected conversation without session:', conversationId);
+    } else {
+      // Clear everything for new chat
+      const url = new URL(window.location.href);
+      url.searchParams.delete('sessionId');
+      window.history.replaceState({}, '', url.toString());
+      
+      console.log('✅ Cleared conversation selection');
     }
   };
 
@@ -264,6 +315,7 @@ export const useChatIntegration = (projectId: string) => {
       
       useChatStore.getState().sendWebSocketMessage({
         conversationId,
+        projectId, // Include projectId for backend compatibility
         content: content, // Backend expects 'content', not 'message'
         attachments,
         requestId,
@@ -291,7 +343,9 @@ export const useChatIntegration = (projectId: string) => {
     
     // Enhanced session available handler with URL updates
     const handleSessionAvailable = (data: any) => {
-      if (data.conversationId === selectedConversationId && data.sessionId) {
+      // Backend now sends projectId instead of conversationId for session events
+      const conversationId = data.conversationId || data.projectId;
+      if (conversationId === selectedConversationId && data.sessionId) {
         // Update URL with session ID
         setSearchParams(prev => ({
           ...Object.fromEntries(prev),
@@ -300,7 +354,7 @@ export const useChatIntegration = (projectId: string) => {
         
         // Only update conversation metadata in cache (no invalidation = no refetch)
         queryClient.setQueryData(
-          ['chat', 'conversation', data.conversationId],
+          ['chat', 'conversation', conversationId],
           (old: any) => old ? { ...old, claudeSessionId: data.sessionId } : null
         );
         
@@ -352,7 +406,7 @@ export const useChatIntegration = (projectId: string) => {
     createConversation,
     archiveConversation,
     deleteConversation,
-    selectConversation: useChatStore.getState().selectConversation,
+    selectConversation: selectConversationWithSession, // Enhanced version with session ID support
     
     // Message management
     sendMessage,
