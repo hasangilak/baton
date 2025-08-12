@@ -12,6 +12,7 @@ export interface StreamResponse {
   error?: string;
   requestId?: string; // For delegated responses
   messageId?: string; // Frontend reference for message updates
+  sessionId?: string; // Claude Code session ID for correlation
 }
 
 // Chat request interface

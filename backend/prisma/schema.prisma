@@ -40,14 +40,17 @@ model Project {
   updatedAt   DateTime @updatedAt
 
   // Relations
-  owner            User               @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  tasks            Task[]
-  mcpPlans         MCPPlan[]
-  claudeTodos      ClaudeTodo[]
-  workspaceMappings WorkspaceMapping[]
-  claudeCodePlans  ClaudeCodePlan[]
-  conversations    Conversation[]
-  permissionRules  PermissionRule[]
+  owner               User                     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  tasks               Task[]
+  mcpPlans            MCPPlan[]
+  claudeTodos         ClaudeTodo[]
+  workspaceMappings   WorkspaceMapping[]
+  claudeCodePlans     ClaudeCodePlan[]
+  conversations       Conversation[]
+  permissionRules     PermissionRule[]
+  messages            Message[]
+  conversationPermissions ConversationPermission[]
+  interactivePrompts  InteractivePrompt[]
 
   @@map("projects")
 }
@@ -225,11 +228,8 @@ model Conversation {
   metadata         Json?     // Store additional conversation metadata
 
   // Relations
-  project           Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages          Message[]
-  interactivePrompts InteractivePrompt[]
-  permissions       ConversationPermission[]
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("conversations")
   @@index([projectId])
@@ -240,57 +240,57 @@ model Conversation {
 }
 
 model ConversationPermission {
-  id             String   @id @default(auto()) @map("_id") @db.ObjectId
-  conversationId String   @db.ObjectId
-  toolName       String   // Edit, MultiEdit, Write, Bash, etc.
-  status         String   @default("granted") // granted, denied, temporary
-  grantedBy      String   @default("user") // user, system, auto
-  grantedAt      DateTime @default(now())
-  expiresAt      DateTime? // Optional expiration for temporary permissions
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  metadata       Json?    // Store additional permission context
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  projectId String   @db.ObjectId
+  toolName  String   // Edit, MultiEdit, Write, Bash, etc.
+  status    String   @default("granted") // granted, denied, temporary
+  grantedBy String   @default("user") // user, system, auto
+  grantedAt DateTime @default(now())
+  expiresAt DateTime? // Optional expiration for temporary permissions
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  metadata  Json?    // Store additional permission context
 
   // Relations
-  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@map("conversation_permissions")
-  @@unique([conversationId, toolName])
-  @@index([conversationId])
+  @@unique([projectId, toolName])
+  @@index([projectId])
   @@index([toolName])
   @@index([status])
 }
 
 model Message {
-  id             String    @id @default(auto()) @map("_id") @db.ObjectId
-  conversationId String   @db.ObjectId
-  role           String    // user, assistant, system
-  content        String
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  projectId String
+  role      String    // user, assistant, system
+  content   String
   
   // Claude WebSocket format fields
-  type           String?   // claude_json, etc.
-  claudeData     Json?     // Full Claude WebSocket data structure
-  claudeMessageId String?  // data.message.id from Claude
-  model          String?   // data.message.model
-  sessionId      String?   // data.session_id
-  usage          Json?     // data.message.usage (tokens, etc.)
+  type            String?   // claude_json, etc.
+  claudeData      Json?     // Full Claude WebSocket data structure
+  claudeMessageId String?   // data.message.id from Claude
+  model           String?   // data.message.model
+  sessionId       String?   // data.session_id
+  usage           Json?     // data.message.usage (tokens, etc.)
   
   // Legacy/fallback fields
-  tokenCount     Int?      // Fallback token count
-  status         String    @default("completed") // sending, completed, failed
-  error          String?   // Error message if failed
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  metadata       Json?     // Additional metadata
-  timestamp      BigInt?   // WebSocket timestamp
+  tokenCount Int?      // Fallback token count
+  status     String    @default("completed") // sending, completed, failed
+  error      String?   // Error message if failed
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  metadata   Json?     // Additional metadata
+  timestamp  BigInt?   // WebSocket timestamp
 
   // Relations
-  conversation   Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  attachments    MessageAttachment[]
-  codeBlocks     CodeBlock[]
+  project     Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  attachments MessageAttachment[]
+  codeBlocks  CodeBlock[]
 
   @@map("messages")
-  @@index([conversationId])
+  @@index([projectId])
   @@index([role])
   @@index([createdAt])
   @@index([sessionId])
@@ -331,29 +331,29 @@ model CodeBlock {
 }
 
 model InteractivePrompt {
-  id               String    @id @default(auto()) @map("_id") @db.ObjectId
-  conversationId   String
-  sessionId        String?
-  type             String    // permission, tool_usage, multiple_choice, three_option, plan_review
-  title            String?
-  message          String
-  options          Json      // Array of PromptOption objects
-  context          Json?     // PromptContext object with tool info
-  status           String    @default("pending") // pending, answered, timeout, auto_handled
-  selectedOption   String?   // ID of the selected option
-  autoHandler      String?   // Strategy that handled this prompt
-  timeoutAt        DateTime  @default(now())
-  createdAt        DateTime  @default(now())
-  respondedAt      DateTime?
-  metadata         Json?     // Enhanced analytics and metadata for permission tracking
-  linkedPlanId     String?   @db.ObjectId // Link to created claudeCodePlan after approval
+  id             String    @id @default(auto()) @map("_id") @db.ObjectId
+  projectId      String
+  sessionId      String?
+  type           String    // permission, tool_usage, multiple_choice, three_option, plan_review
+  title          String?
+  message        String
+  options        Json      // Array of PromptOption objects
+  context        Json?     // PromptContext object with tool info
+  status         String    @default("pending") // pending, answered, timeout, auto_handled
+  selectedOption String?   // ID of the selected option
+  autoHandler    String?   // Strategy that handled this prompt
+  timeoutAt      DateTime  @default(now())
+  createdAt      DateTime  @default(now())
+  respondedAt    DateTime?
+  metadata       Json?     // Enhanced analytics and metadata for permission tracking
+  linkedPlanId   String?   @db.ObjectId // Link to created claudeCodePlan after approval
 
   // Relations
-  conversation     Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  linkedPlan       ClaudeCodePlan? @relation("PlanReview", fields: [linkedPlanId], references: [id], onDelete: SetNull)
+  project    Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  linkedPlan ClaudeCodePlan? @relation("PlanReview", fields: [linkedPlanId], references: [id], onDelete: SetNull)
 
   @@map("interactive_prompts")
-  @@index([conversationId])
+  @@index([projectId])
   @@index([status])
   @@index([timeoutAt])
   @@index([sessionId])

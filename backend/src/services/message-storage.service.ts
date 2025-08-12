@@ -21,17 +21,17 @@ export class MessageStorageService {
    * Hybrid approach: optimistic UI + DB confirmation
    */
   async createUserMessage(
-    conversationId: string, 
+    projectId: string, 
     content: string, 
     attachments?: Array<{ filename: string; mimeType: string; size: number; url: string }>,
     sessionId?: string
   ): Promise<Message> {
-    logger.storage?.info('Creating user message', { conversationId, contentLength: content.length });
+    logger.storage?.info('Creating user message', { projectId, contentLength: content.length });
 
     try {
       const message = await this.prisma.message.create({
         data: {
-          conversationId,
+          projectId,
           role: 'user',
           content,
           status: 'completed',
@@ -50,7 +50,7 @@ export class MessageStorageService {
       logger.storage?.info('✅ User message created successfully', { messageId: message.id });
       return message;
     } catch (error) {
-      logger.storage?.error('❌ Failed to create user message', { error, conversationId });
+      logger.storage?.error('❌ Failed to create user message', { error, projectId });
       throw new Error(`Failed to save your message: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -59,13 +59,13 @@ export class MessageStorageService {
    * Create assistant message placeholder for streaming
    * Returns immediately for optimistic UI updates
    */
-  async createAssistantMessagePlaceholder(conversationId: string): Promise<Message> {
-    logger.storage?.info('Creating assistant message placeholder', { conversationId });
+  async createAssistantMessagePlaceholder(projectId: string): Promise<Message> {
+    logger.storage?.info('Creating assistant message placeholder', { projectId });
 
     try {
       const message = await this.prisma.message.create({
         data: {
-          conversationId,
+          projectId,
           role: 'assistant',
           content: '',
           status: 'sending',
@@ -75,7 +75,7 @@ export class MessageStorageService {
       logger.storage?.info('✅ Assistant placeholder created', { messageId: message.id });
       return message;
     } catch (error) {
-      logger.storage?.error('❌ Failed to create assistant placeholder', { error, conversationId });
+      logger.storage?.error('❌ Failed to create assistant placeholder', { error, projectId });
       throw new Error(`Failed to prepare response: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -85,15 +85,18 @@ export class MessageStorageService {
    * Handles the new StreamResponse format with SDKMessage data
    */
   async createClaudeSDKMessage(
-    conversationId: string,
+    projectId: string,
     streamResponse: StreamResponse
   ): Promise<Message> {
+    // Extract sessionId from new field or fallback to data.session_id
+    const sessionId = streamResponse.sessionId || streamResponse.data?.session_id;
+    
     logger.storage?.info('Creating Claude Code SDK message', { 
-      conversationId, 
-      type: streamResponse.data.type,
-      sessionId: streamResponse.data.session_id,
+      projectId, 
+      type: streamResponse.data?.type,
+      sessionId,
       requestId: streamResponse.requestId,
-      messageModel: streamResponse.data.message?.model 
+      messageModel: streamResponse.data?.message?.model 
     });
 
     try {
@@ -142,15 +145,15 @@ export class MessageStorageService {
 
       const message = await this.prisma.message.create({
         data: {
-          conversationId,
+          projectId,
           role,
           content,
           type: streamResponse.type,
           claudeData: streamResponse as any, // Store full StreamResponse
-          claudeMessageId: streamResponse.data.message?.id,
-          model: streamResponse.data.message?.model,
-          sessionId: streamResponse.data.session_id,
-          usage: streamResponse.data.message?.usage || streamResponse.data.usage,
+          claudeMessageId: streamResponse.data?.message?.id,
+          model: streamResponse.data?.message?.model,
+          sessionId, // Use the extracted sessionId with fallback logic
+          usage: streamResponse.data?.message?.usage || streamResponse.data?.usage,
           timestamp: BigInt(streamResponse.timestamp),
           status: 'completed',
         },
@@ -166,7 +169,7 @@ export class MessageStorageService {
 
       return message;
     } catch (error) {
-      logger.storage?.error('❌ Failed to create Claude Code SDK message', { error, conversationId });
+      logger.storage?.error('❌ Failed to create Claude Code SDK message', { error, projectId });
       throw new Error(`Failed to save Claude response: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -355,23 +358,32 @@ export class MessageStorageService {
   }
 
   /**
-   * Update conversation session ID immediately upon capture
+   * Update project session ID for context preservation
    */
-  async updateConversationSession(conversationId: string, sessionId: string): Promise<void> {
-    logger.storage?.info('Updating conversation session', { conversationId, sessionId });
+  async updateProjectSession(projectId: string, sessionId: string): Promise<void> {
+    logger.storage?.info('Updating project session', { projectId, sessionId });
 
     try {
-      await this.prisma.conversation.update({
-        where: { id: conversationId },
-        data: { 
-          claudeSessionId: sessionId,
-          updatedAt: new Date(),
-        },
+      // Find the conversation for this project and update its session
+      const conversation = await this.prisma.conversation.findFirst({
+        where: { projectId }
       });
+      
+      if (conversation) {
+        await this.prisma.conversation.update({
+          where: { id: conversation.id },
+          data: { 
+            claudeSessionId: sessionId,
+            updatedAt: new Date(),
+          },
+        });
 
-      logger.storage?.info('✅ Session ID updated', { conversationId, sessionId });
+        logger.storage?.info('✅ Session ID updated', { projectId, sessionId, conversationId: conversation.id });
+      } else {
+        logger.storage?.warn('⚠️ No conversation found for project', { projectId });
+      }
     } catch (error) {
-      logger.storage?.error('❌ Failed to update session ID', { error, conversationId, sessionId });
+      logger.storage?.error('❌ Failed to update session ID', { error, projectId, sessionId });
       // Don't throw - session update failures shouldn't break the stream
     }
   }
