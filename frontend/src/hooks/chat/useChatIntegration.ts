@@ -24,6 +24,7 @@ import {
   useInputValue,
   useSessionState
 } from '../../stores/chatStore';
+import { useSocketStore } from '../../stores/socketStore';
 import { useConversations, useConversation } from './useConversations';
 import type { ProcessedMessage } from '../../services/chat/messages';
 
@@ -47,6 +48,9 @@ export const useChatIntegration = (projectId: string) => {
   const inputValue = useInputValue();
   
   const sessionState = useSessionState();
+  
+  // Get socket connection state
+  const isConnected = useSocketStore((state) => state.isConnected);
 
   // Create state object for compatibility (but don't use in useEffect deps!)
   const state = {
@@ -62,6 +66,7 @@ export const useChatIntegration = (projectId: string) => {
     showSidebar,
     permissionMode,
     inputValue,
+    isConnected,
   };
 
   // Get conversation management hooks
