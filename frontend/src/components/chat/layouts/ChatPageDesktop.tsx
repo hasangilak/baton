@@ -6,6 +6,9 @@ import { SessionInfo } from "../shared/SessionInfo";
 import { ConversationInputArea } from "../input/ConversationInputArea";
 import { DropdownMenu } from "../sidebar/DropdownMenu";
 import { SimpleMessageRenderer } from "../messages/SimpleMessageRenderer";
+import { SessionStatusIndicator } from "../shared/SessionStatusIndicator";
+import { SessionErrorBanner } from "../shared/SessionErrorBanner";
+import { ConnectionStatusIndicator, ConnectionLostBanner } from "../shared/ConnectionStatusIndicator";
 import { useChatContext } from "../../../contexts/ChatContext";
 import { useFileUpload } from "../../../hooks/useFileUpload";
 import { useInteractivePrompts } from "../../../hooks/useInteractivePrompts";
@@ -23,6 +26,12 @@ export const ChatPageDesktop: React.FC = () => {
     archiveConversation,
     deleteConversation,
     isNewChat,
+    getAllMessages,
+    // Session management
+    sessionState,
+    isSessionReady,
+    isSessionPending,
+    initializeSession,
   } = useChatContext();
 
   const fileUpload = useFileUpload({
@@ -39,6 +48,15 @@ export const ChatPageDesktop: React.FC = () => {
 
   // State for session resume
   const [isResuming, setIsResuming] = React.useState(false);
+
+  // Session error handling
+  const [sessionError, setSessionError] = React.useState<any>(null);
+  
+  // Connection error handling
+  const [showConnectionBanner, setShowConnectionBanner] = React.useState(false);
+  
+  // Get current messages including optimistic and streaming
+  const currentMessages = getAllMessages();
 
   // Helper functions
   const getGreeting = () => {
@@ -121,7 +139,7 @@ export const ChatPageDesktop: React.FC = () => {
         el.scrollTop = el.scrollHeight;
       }
     });
-  }, [state.messages.length, state.isStreaming]);
+  }, [currentMessages.length, state.isStreaming]);
 
   // ESC key handler for aborting conversations (Claude Code style)
   React.useEffect(() => {
@@ -174,6 +192,30 @@ export const ChatPageDesktop: React.FC = () => {
       setIsResuming(false);
     }
   }, []);
+
+  // Listen for session-related errors from context
+  React.useEffect(() => {
+    if (state.error && state.error.includes('session')) {
+      setSessionError({
+        type: 'session_failed',
+        message: state.error,
+        recoverable: true
+      });
+    }
+  }, [state.error]);
+
+  // Monitor connection status
+  React.useEffect(() => {
+    if (!state.isConnected) {
+      // Show connection banner after a short delay to avoid flicker
+      const timer = setTimeout(() => {
+        setShowConnectionBanner(true);
+      }, 2000);
+      return () => clearTimeout(timer);
+    } else {
+      setShowConnectionBanner(false);
+    }
+  }, [state.isConnected]);
 
   return (
     <div className="h-[calc(100vh-90px)] flex flex-col md:flex-row bg-[#1E1F22] text-gray-200 relative">
@@ -277,12 +319,50 @@ export const ChatPageDesktop: React.FC = () => {
           />
         ) : (
           <>
-            <SessionInfo
-              sessionId={state.conversationDetails?.claudeSessionId}
-              contextTokens={state.conversationDetails?.contextTokens ?? null}
-              onResumeSession={handleResumeSession}
-              isResuming={isResuming}
-            />
+            {/* Session status bar */}
+            <div className="bg-[#1F2022] border-b border-[#2C2D30] p-3 flex items-center justify-between">
+              <SessionInfo
+                sessionId={state.conversationDetails?.claudeSessionId}
+                contextTokens={state.conversationDetails?.contextTokens ?? null}
+                onResumeSession={handleResumeSession}
+                isResuming={isResuming}
+              />
+              
+              <div className="flex items-center gap-3">
+                <ConnectionStatusIndicator compact />
+                <SessionStatusIndicator 
+                  conversationId={state.selectedConversationId}
+                />
+              </div>
+            </div>
+
+            {/* Connection lost banner */}
+            {showConnectionBanner && (
+              <div className="p-4 bg-[#1E1F22]">
+                <ConnectionLostBanner
+                  onDismiss={() => setShowConnectionBanner(false)}
+                  onRetry={() => {
+                    // Unified WebSocket will handle automatic reconnection
+                    console.log('Manual retry requested');
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Session error banner */}
+            {sessionError && (
+              <div className="p-4 bg-[#1E1F22]">
+                <SessionErrorBanner
+                  conversationId={state.selectedConversationId}
+                  error={sessionError}
+                  onDismiss={() => setSessionError(null)}
+                  onNewConversation={() => {
+                    selectConversation(null);
+                    setSessionError(null);
+                  }}
+                />
+              </div>
+            )}
             <div
               ref={scrollContainerRef}
               className="flex-1 min-h-0 overflow-y-auto no-scrollbar pb-8"
@@ -296,7 +376,7 @@ export const ChatPageDesktop: React.FC = () => {
                     </div>
                   </div>
                 )}
-                {state.messages.map((message) => (
+                {currentMessages.map((message) => (
                   <SimpleMessageRenderer
                     key={message.id}
                     message={message}
@@ -321,6 +401,8 @@ export const ChatPageDesktop: React.FC = () => {
               isDisabled={state.isStreaming}
               permissionMode={state.permissionMode}
               onCyclePermissionMode={cyclePermissionMode}
+              conversationId={state.selectedConversationId}
+              messageCount={currentMessages.length}
             />
           </>
         )}

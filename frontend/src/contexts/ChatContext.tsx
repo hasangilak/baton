@@ -7,10 +7,10 @@
 
 import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useConversations, useConversation } from '../hooks/chat/useConversations';
-import { useChatMessages } from '../hooks/chat/useChatMessages';
-import { chatEventBus } from '../services/chat/eventBus';
-import type { ProcessedMessage } from '../services/chat/messages';
+import { useUnifiedWebSocket } from '../hooks/useUnifiedWebSocket';
+import { MessageProcessor, type ProcessedMessage } from '../services/chat/messages';
 
 // Chat state interface
 interface ChatState {
@@ -145,6 +145,14 @@ interface ChatContextValue {
   // Message management
   sendMessage: (content: string, attachments?: any[]) => Promise<void>;
   stopStreaming: () => void;
+  loadMessages: (dbMessages: any[]) => void;
+  getAllMessages: () => ProcessedMessage[];
+  
+  // Session management (unified WebSocket)
+  sessionState: any;
+  isSessionReady: (conversationId: string) => boolean;
+  isSessionPending: (conversationId: string) => boolean;
+  initializeSession: (conversationId: string) => Promise<void>;
   
   // UI actions
   setInputValue: (value: string) => void;
@@ -178,6 +186,8 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     selectedConversationId: initialConversationId
   });
 
+  const queryClient = useQueryClient();
+
   // Hooks integration
   const {
     conversations,
@@ -191,49 +201,144 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   // URL parameter management for session ID
   const [searchParams, setSearchParams] = useSearchParams();
   
-  const {
-    messages,
-    isStreaming,
-    streamingMessage,
-    optimisticUserMessage,
-    isConnected,
-    sendMessage: sendMessageHook,
-    stopStreaming: stopStreamingHook,
-    loadMessages,
-  } = useChatMessages({
-    conversationId: state.selectedConversationId
+  // Unified WebSocket integration
+  const unifiedWebSocket = useUnifiedWebSocket({ 
+    autoConnect: true, 
+    namespace: 'chat' 
   });
+  
+  const { 
+    connected, 
+    emit, 
+    on, 
+    off,
+    joinConversationWithSession,
+    sendMessage: sendWebSocketMessage,
+    abortMessage,
+    sessionState,
+    isSessionReady,
+    isSessionPending,
+    initializeSession
+  } = unifiedWebSocket;
 
-  // Sync hook state with context state - only dispatch if values actually changed
+  // Connection state sync with debugging
   useEffect(() => {
-    if (JSON.stringify(state.messages) !== JSON.stringify(messages)) {
-      dispatch({ type: 'SET_MESSAGES', payload: messages });
+    console.log('🔍 [DEBUG] ChatContext connection state update:', {
+      previousState: state.isConnected,
+      newState: connected,
+      willUpdate: state.isConnected !== connected,
+      unifiedWebSocketConnected: connected,
+      unifiedWebSocketState: unifiedWebSocket.connected
+    });
+    
+    if (state.isConnected !== connected) {
+      console.log('✅ [DEBUG] Updating ChatContext connection state to:', connected);
+      dispatch({ type: 'SET_CONNECTION_STATE', payload: connected });
     }
-  }, [messages, state.messages]);
+  }, [connected, state.isConnected]);
 
-  useEffect(() => {
-    if (state.isStreaming !== isStreaming || state.streamingMessage !== streamingMessage) {
-      dispatch({ type: 'SET_STREAMING_STATE', payload: { isStreaming, message: streamingMessage } });
-    }
-  }, [isStreaming, streamingMessage, state.isStreaming, state.streamingMessage]);
-
-  useEffect(() => {
-    if (state.optimisticUserMessage !== optimisticUserMessage) {
-      dispatch({ type: 'SET_OPTIMISTIC_MESSAGE', payload: optimisticUserMessage });
-    }
-  }, [optimisticUserMessage, state.optimisticUserMessage]);
-
-  useEffect(() => {
-    if (state.isConnected !== isConnected) {
-      dispatch({ type: 'SET_CONNECTION_STATE', payload: isConnected });
-    }
-  }, [isConnected, state.isConnected]);
-
+  // Conversation details sync
   useEffect(() => {
     if (state.conversationDetails !== conversationDetails) {
       dispatch({ type: 'SET_CONVERSATION_DETAILS', payload: conversationDetails });
     }
   }, [conversationDetails, state.conversationDetails]);
+
+  // WebSocket event handlers for unified chat system
+  useEffect(() => {
+    if (!connected) return;
+
+    // Stream response handler
+    const handleStreamResponse = (data: any) => {
+      if (data.conversationId !== state.selectedConversationId) return;
+      
+      const processedMessage = MessageProcessor.processMessage(data);
+      if (processedMessage) {
+        dispatch({
+          type: 'SET_STREAMING_STATE',
+          payload: {
+            isStreaming: !processedMessage.metadata?.isComplete,
+            message: processedMessage
+          }
+        });
+      }
+    };
+
+    // Message complete handler
+    const handleMessageComplete = (data: any) => {
+      if (data.conversationId !== state.selectedConversationId) return;
+      
+      dispatch({
+        type: 'SET_STREAMING_STATE',
+        payload: { isStreaming: false, message: null }
+      });
+      
+      dispatch({ type: 'SET_OPTIMISTIC_MESSAGE', payload: null });
+      
+      // Refresh messages from server
+      queryClient.invalidateQueries({
+        queryKey: ['chat', 'messages', state.selectedConversationId]
+      });
+    };
+
+    // Session available handler
+    const handleSessionAvailable = (data: any) => {
+      if (data.conversationId === state.selectedConversationId) {
+        // Update conversation details with session ID
+        dispatch({ 
+          type: 'SET_CONVERSATION_DETAILS', 
+          payload: { 
+            ...state.conversationDetails,
+            claudeSessionId: data.sessionId 
+          }
+        });
+        
+        // Update URL with session ID
+        if (data.sessionId) {
+          setSearchParams(prev => ({
+            ...Object.fromEntries(prev),
+            sessionId: data.sessionId
+          }));
+        }
+        
+        // Clear any session-related errors
+        dispatch({ type: 'SET_ERROR', payload: null });
+      }
+    };
+
+    // Error handler
+    const handleError = (data: any) => {
+      dispatch({
+        type: 'SET_STREAMING_STATE',
+        payload: { isStreaming: false, message: null }
+      });
+      
+      dispatch({ type: 'SET_ERROR', payload: data.error });
+    };
+
+    // Abort handler
+    const handleAbort = (data: any) => {
+      dispatch({
+        type: 'SET_STREAMING_STATE',
+        payload: { isStreaming: false, message: null }
+      });
+    };
+
+    // Register WebSocket listeners
+    on('chat:stream-response', handleStreamResponse);
+    on('chat:message-complete', handleMessageComplete);
+    on('chat:session-id-available', handleSessionAvailable);
+    on('chat:error', handleError);
+    on('chat:aborted', handleAbort);
+
+    return () => {
+      off('chat:stream-response', handleStreamResponse);
+      off('chat:message-complete', handleMessageComplete);
+      off('chat:session-id-available', handleSessionAvailable);
+      off('chat:error', handleError);
+      off('chat:aborted', handleAbort);
+    };
+  }, [connected, state.selectedConversationId, state.conversationDetails, on, off, queryClient, setSearchParams]);
 
   // Action handlers
   const createConversation = useCallback(async (title?: string): Promise<string | null> => {
@@ -272,12 +377,23 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   }, []);
 
   const sendMessage = useCallback(async (content: string, attachments?: any[]) => {
-    console.log('🔍 [DEBUG] ChatContext.sendMessage called:', {
+    console.log('🔍 [DEBUG] ChatContext.sendMessage called (unified):', {
       contentLength: content?.length || 0,
       hasAttachments: !!attachments?.length,
       selectedConversationId: state.selectedConversationId,
-      sendMessageHookExists: !!sendMessageHook
+      connected,
+      stateConnected: state.isConnected,
+      unifiedWebSocketState: unifiedWebSocket
     });
+    
+    if (!connected) {
+      console.error('❌ [DEBUG] WebSocket not connected:', {
+        connected,
+        stateConnected: state.isConnected,
+        webSocketDebug: unifiedWebSocket._debug || 'no debug info'
+      });
+      throw new Error('Not connected to chat service');
+    }
     
     try {
       let conversationId = state.selectedConversationId;
@@ -293,15 +409,88 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         console.log('✅ [DEBUG] Created new conversation:', conversationId);
       }
       
-      console.log('🔍 [DEBUG] About to call sendMessageHook with conversationId:', conversationId);
-      await sendMessageHook(content, attachments);
-      console.log('✅ [DEBUG] sendMessageHook completed successfully');
+      // Get session information
+      const session = sessionState[conversationId];
+      const isFirstMessage = state.messages.length === 0 && !state.optimisticUserMessage;
+      
+      console.log('🔍 [DEBUG] Session info:', {
+        conversationId,
+        sessionId: session?.sessionId,
+        isFirstMessage,
+        sessionReady: isSessionReady(conversationId),
+        sessionPending: isSessionPending(conversationId)
+      });
+      
+      // Join conversation room if not already joined
+      await joinConversationWithSession(conversationId);
+      
+      // Create optimistic user message
+      const optimisticMessage: ProcessedMessage = {
+        id: `user_${Date.now()}`,
+        type: 'user',
+        content,
+        timestamp: Date.now(),
+        metadata: {
+          conversationId,
+          isComplete: true,
+          optimistic: true
+        }
+      };
+
+      dispatch({
+        type: 'SET_OPTIMISTIC_MESSAGE',
+        payload: optimisticMessage
+      });
+      
+      dispatch({
+        type: 'SET_STREAMING_STATE',
+        payload: { isStreaming: true, message: null }
+      });
+      
+      // Send via unified WebSocket
+      const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
+      console.log('🔍 [DEBUG] Sending message via unified WebSocket:', {
+        conversationId,
+        sessionId: session?.sessionId,
+        requestId,
+        isFirstMessage
+      });
+      
+      sendWebSocketMessage({
+        conversationId,
+        message: content,
+        attachments,
+        requestId,
+        sessionId: session?.sessionId // Include session ID when available
+      });
+      
       dispatch({ type: 'SET_INPUT_VALUE', payload: '' });
+      dispatch({ type: 'SET_ERROR', payload: null });
+      
+      console.log('✅ [DEBUG] Message sent successfully via unified WebSocket');
+      
     } catch (error) {
       console.error('❌ [DEBUG] ChatContext.sendMessage error:', error);
+      
+      // Clear optimistic states on error
+      dispatch({ type: 'SET_OPTIMISTIC_MESSAGE', payload: null });
+      dispatch({ type: 'SET_STREAMING_STATE', payload: { isStreaming: false, message: null } });
+      
       dispatch({ type: 'SET_ERROR', payload: error instanceof Error ? error.message : 'Failed to send message' });
     }
-  }, [state.selectedConversationId, createConversation, sendMessageHook]);
+  }, [
+    state.selectedConversationId, 
+    state.messages.length, 
+    state.optimisticUserMessage,
+    connected,
+    createConversation, 
+    sendWebSocketMessage,
+    sessionState,
+    isSessionReady,
+    isSessionPending,
+    joinConversationWithSession
+  ]);
 
   const setInputValue = useCallback((value: string) => {
     dispatch({ type: 'SET_INPUT_VALUE', payload: value });
@@ -320,8 +509,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   }, []);
 
   const stopStreaming = useCallback(() => {
-    stopStreamingHook();
-  }, [stopStreamingHook]);
+    // Use unified WebSocket abort functionality
+    abortMessage(); // This will abort the current message if any
+  }, [abortMessage]);
 
   // Computed values
   const isNewChat = useMemo(() => {
@@ -344,32 +534,32 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     return true;
   }, [state.selectedConversationId, state.messages.length, state.optimisticUserMessage, state.isStreaming]);
 
-  // Event bus integration for global state sync
-  useEffect(() => {
-    const handleSessionAvailable = (data: any) => {
-      if (data.conversationId === state.selectedConversationId) {
-        // Update conversation details when session becomes available
-        dispatch({ 
-          type: 'SET_CONVERSATION_DETAILS', 
-          payload: { 
-            ...state.conversationDetails,
-            claudeSessionId: data.sessionId 
-          }
-        });
-        
-        // Update URL with session ID
-        if (data.sessionId) {
-          setSearchParams(prev => ({
-            ...Object.fromEntries(prev),
-            sessionId: data.sessionId
-          }));
-        }
-      }
-    };
+  // Load messages from database for selected conversation
+  const loadMessages = useCallback((dbMessages: any[]) => {
+    if (!dbMessages) return;
+    
+    const processedMessages = MessageProcessor.processMessages(dbMessages);
+    const deduplicatedMessages = MessageProcessor.deduplicateMessages(processedMessages);
+    
+    dispatch({ type: 'SET_MESSAGES', payload: deduplicatedMessages });
+  }, []);
 
-    const unsubscribe = chatEventBus.on('session:available', handleSessionAvailable);
-    return unsubscribe;
-  }, [state.selectedConversationId, state.conversationDetails, setSearchParams]);
+  // Get combined messages for rendering (including optimistic and streaming)
+  const getAllMessages = useCallback((): ProcessedMessage[] => {
+    let allMessages = [...state.messages];
+    
+    // Add optimistic user message
+    if (state.optimisticUserMessage) {
+      allMessages = MessageProcessor.mergeStreamingMessage(allMessages, state.optimisticUserMessage);
+    }
+    
+    // Add streaming message
+    if (state.streamingMessage) {
+      allMessages = MessageProcessor.mergeStreamingMessage(allMessages, state.streamingMessage);
+    }
+    
+    return allMessages;
+  }, [state.messages, state.optimisticUserMessage, state.streamingMessage]);
 
   // Context value
   const value: ChatContextValue = {
@@ -381,6 +571,13 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     selectConversation,
     sendMessage,
     stopStreaming,
+    loadMessages,
+    getAllMessages,
+    // Session management from unified WebSocket
+    sessionState,
+    isSessionReady,
+    isSessionPending,
+    initializeSession,
     setInputValue,
     setSidebarVisible,
     setPermissionMode,

@@ -56,6 +56,16 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
   const eventHandlers = useRef<Map<string, Set<Function>>>(new Map());
 
   const connect = useCallback(() => {
+    console.log('🔌 [DEBUG] connect() function called with:', {
+      url,
+      namespace,
+      autoConnect,
+      globalSocketExists: !!globalUnifiedSocket,
+      globalSocketConnected: globalUnifiedSocket?.connected,
+      currentSocketConnected: socketRef.current?.connected,
+      stateConnecting: state.connecting
+    });
+
     // Use existing global socket if available
     if (globalUnifiedSocket?.connected) {
       console.log('🔌 [DEBUG] Reusing existing unified WebSocket connection:', {
@@ -980,7 +990,13 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
     console.log(`🔌 Unified WebSocket reference count: ${globalSocketRefCount}`);
 
     if (autoConnect && mounted) {
+      console.log('🔌 [DEBUG] Calling connect() with autoConnect=true');
       connect();
+    } else {
+      console.log('🔌 [DEBUG] Not calling connect():', {
+        autoConnect,
+        mounted
+      });
     }
     
     // If global socket is already connected, sync the state immediately
@@ -1068,7 +1084,15 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
       socketId: socketRef.current?.id,
       namespace: options.namespace,
       refCount: globalSocketRefCount,
-      sessionCount: Object.keys(sessionState).length
+      sessionCount: Object.keys(sessionState).length,
+      state,
+      url,
+      autoConnect,
+      // Add manual connect function for debugging
+      forceConnect: () => {
+        console.log('🔌 [DEBUG] Manual connect triggered from _debug');
+        connect();
+      }
     }
   };
 };
