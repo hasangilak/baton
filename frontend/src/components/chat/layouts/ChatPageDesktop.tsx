@@ -67,6 +67,21 @@ export const ChatPageDesktop: React.FC = () => {
   
   // Get current messages including optimistic and streaming
   const currentMessages = getAllMessages();
+  
+  // Debug: Track message changes
+  React.useEffect(() => {
+    console.log('🖥️ ChatPageDesktop messages updated:', {
+      messageCount: currentMessages.length,
+      isStreaming: state.isStreaming,
+      lastMessageType: currentMessages[currentMessages.length - 1]?.type,
+      messageIds: currentMessages.map(m => ({ id: m.id, type: m.type }))
+    });
+  }, [currentMessages, state.isStreaming]);
+  
+  // Debug: Track re-renders
+  React.useEffect(() => {
+    console.log('🔄 ChatPageDesktop re-rendered');
+  });
 
   // Helper functions
   const getGreeting = () => {
@@ -421,7 +436,7 @@ export const ChatPageDesktop: React.FC = () => {
                     message={message}
                     isStreaming={
                       state.isStreaming &&
-                      message.id === state.streamingMessage?.id
+                      !message.metadata?.isComplete
                     }
                     onCopy={(content, messageId) => {
                       navigator.clipboard.writeText(content);

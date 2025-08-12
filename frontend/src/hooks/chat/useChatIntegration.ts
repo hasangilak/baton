@@ -14,8 +14,6 @@ import {
   useConversationDetails,
   useChatMessages,
   useIsStreaming,
-  useStreamingMessage,
-  useOptimisticUserMessage,
   useChatError,
   useIsLoadingMessages,
   useIsCreatingConversation,
@@ -23,7 +21,8 @@ import {
   usePermissionMode,
   useInputValue,
   useSessionState,
-  useBridgeServiceError
+  useBridgeServiceError,
+  useAllMessages
 } from '../../stores/chatStore';
 import { useSocketStore } from '../../stores/socketStore';
 import { useConversations, useConversation } from './useConversations';
@@ -38,8 +37,6 @@ export const useChatIntegration = (projectId: string) => {
   const conversationDetailsFromStore = useConversationDetails();
   const messages = useChatMessages();
   const isStreaming = useIsStreaming();
-  const streamingMessage = useStreamingMessage();
-  const optimisticUserMessage = useOptimisticUserMessage();
   const error = useChatError();
   const isLoadingMessages = useIsLoadingMessages();
   const isCreatingConversation = useIsCreatingConversation();
@@ -51,6 +48,9 @@ export const useChatIntegration = (projectId: string) => {
   const sessionState = useSessionState();
   const bridgeServiceError = useBridgeServiceError();
   
+  // Use reactive selector for messages
+  const allMessages = useAllMessages();
+  
   // Get socket connection state
   const isConnected = useSocketStore((state) => state.isConnected);
 
@@ -60,8 +60,6 @@ export const useChatIntegration = (projectId: string) => {
     conversationDetails: conversationDetailsFromStore,
     messages,
     isStreaming,
-    streamingMessage,
-    optimisticUserMessage,
     error,
     isLoadingMessages,
     isCreatingConversation,
@@ -166,7 +164,7 @@ export const useChatIntegration = (projectId: string) => {
       
       // Get session information
       const session = sessionState[conversationId];
-      const isFirstMessage = messages.length === 0 && !optimisticUserMessage;
+      const isFirstMessage = messages.length === 0;
       
       console.log('🔍 [DEBUG] Session info:', {
         conversationId,
@@ -179,21 +177,8 @@ export const useChatIntegration = (projectId: string) => {
       // Join conversation room if not already joined
       await useChatStore.getState().joinConversationWithSession(conversationId);
       
-      // Create optimistic user message
-      const optimisticMessage: ProcessedMessage = {
-        id: `user_${Date.now()}`,
-        type: 'user',
-        content,
-        timestamp: Date.now(),
-        metadata: {
-          conversationId,
-          isComplete: true,
-          optimistic: true,
-        },
-      };
-
-      useChatStore.getState().setOptimisticMessage(optimisticMessage);
-      useChatStore.getState().setStreamingState(true, null);
+      // Start streaming
+      useChatStore.getState().setStreamingState(true);
       
       // Send via WebSocket
       const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -221,9 +206,8 @@ export const useChatIntegration = (projectId: string) => {
     } catch (error) {
       console.error('❌ [DEBUG] ChatIntegration.sendMessage error:', error);
       
-      // Clear optimistic states on error
-      useChatStore.getState().setOptimisticMessage(null);
-      useChatStore.getState().setStreamingState(false, null);
+      // Stop streaming on error
+      useChatStore.getState().setStreamingState(false);
       useChatStore.getState().setError(error instanceof Error ? error.message : 'Failed to send message');
     }
   };
@@ -292,7 +276,7 @@ export const useChatIntegration = (projectId: string) => {
   // Computed values
   const isNewChat = useMemo(() => {
     return useChatStore.getState().isNewChat();
-  }, [selectedConversationId, messages.length, optimisticUserMessage, isStreaming]);
+  }, [selectedConversationId, messages.length, isStreaming]);
 
   // Bridge service retry function
   const retryBridgeMessage = () => {
@@ -316,7 +300,7 @@ export const useChatIntegration = (projectId: string) => {
     sendMessage,
     stopStreaming: useChatStore.getState().abortMessage,
     loadMessages: useChatStore.getState().loadMessages,
-    getAllMessages: useChatStore.getState().getAllMessages,
+    getAllMessages: () => allMessages,
     
     // Session management
     sessionState: sessionState,

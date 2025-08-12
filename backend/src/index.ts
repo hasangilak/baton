@@ -496,13 +496,50 @@ io.on('connection', (socket) => {
 
       // Store Claude Code SDK message directly in database with new format
       if (data.type === 'claude_json' && data.data) {
-        // For assistant messages, create new database entry
+        // For assistant messages, handle both new messages and streaming updates
         if (data.data.type === 'assistant') {
-          console.log(`💾 Storing Claude assistant message for conversation ${requestInfo.conversationId}`);
+          const assistantMessageId = data.data.message?.id;
           
-          // Create new message with Claude SDK format
-          await messageStorage.createClaudeSDKMessage(requestInfo.conversationId, data);
-          console.log(`✅ Claude assistant message stored successfully`);
+          if (assistantMessageId && requestInfo.assistantMessageId) {
+            // This is a streaming update to existing assistant message
+            console.log(`🔄 Updating streaming assistant message for conversation ${requestInfo.conversationId}`);
+            
+            // Extract content from Claude SDK message
+            let content = '';
+            if (data.data.message?.content) {
+              if (Array.isArray(data.data.message.content)) {
+                content = data.data.message.content
+                  .filter((block: any) => block.type === 'text')
+                  .map((block: any) => block.text)
+                  .join('');
+              } else if (typeof data.data.message.content === 'string') {
+                content = data.data.message.content;
+              }
+            }
+            
+            // Update existing assistant message with streaming content
+            const isComplete = data.data.message?.usage !== undefined; // Message is complete when usage is provided
+            await messageStorage.updateAssistantMessageStreaming(
+              requestInfo.assistantMessageId,
+              content,
+              isComplete,
+              data.data.session_id
+            );
+            console.log(`✅ Streaming assistant message updated (complete: ${isComplete})`);
+          } else {
+            // Create new message with Claude SDK format
+            console.log(`💾 Creating new Claude assistant message for conversation ${requestInfo.conversationId}`);
+            const newMessage = await messageStorage.createClaudeSDKMessage(requestInfo.conversationId, data);
+            
+            // Update request mapping to track this message for future streaming updates
+            if (newMessage && (global as any).activeRequests.has(data.requestId)) {
+              const requestMapping = (global as any).activeRequests.get(data.requestId);
+              requestMapping.assistantMessageId = newMessage.id;
+              (global as any).activeRequests.set(data.requestId, requestMapping);
+            }
+            
+            console.log(`✅ Claude assistant message created successfully`);
+          }
           
           // Update conversation session ID if provided and broadcast to frontend
           if (data.data.session_id) {

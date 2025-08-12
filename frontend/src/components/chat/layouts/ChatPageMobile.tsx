@@ -227,7 +227,7 @@ export const ChatPageMobile: React.FC = () => {
                   <SimpleMessageRenderer
                     key={message.id}
                     message={message}
-                    isStreaming={state.isStreaming && message.id === state.streamingMessage?.id}
+                    isStreaming={state.isStreaming && !message.metadata?.isComplete}
                     onCopy={(content, messageId) => {
                       navigator.clipboard.writeText(content);
                     }}

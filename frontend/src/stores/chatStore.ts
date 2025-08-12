@@ -17,11 +17,9 @@ interface ChatState {
   selectedConversationId: string | null;
   conversationDetails: any | null;
   
-  // Messages
+  // Messages (single source of truth)
   messages: ProcessedMessage[];
   isStreaming: boolean;
-  streamingMessage: ProcessedMessage | null;
-  optimisticUserMessage: ProcessedMessage | null;
   
   // UI state
   showSidebar: boolean;
@@ -51,8 +49,8 @@ interface ChatStore extends ChatState {
   setSelectedConversation: (id: string | null) => void;
   setConversationDetails: (details: any) => void;
   setMessages: (messages: ProcessedMessage[]) => void;
-  setStreamingState: (isStreaming: boolean, message?: ProcessedMessage | null) => void;
-  setOptimisticMessage: (message: ProcessedMessage | null) => void;
+  setStreamingState: (isStreaming: boolean) => void;
+  addOrUpdateMessage: (message: ProcessedMessage) => void;
   setSidebarVisible: (visible: boolean) => void;
   setPermissionMode: (mode: 'default' | 'plan' | 'acceptEdits') => void;
   setInputValue: (value: string) => void;
@@ -98,8 +96,7 @@ const initialState: ChatState = {
   conversationDetails: null,
   messages: [],
   isStreaming: false,
-  streamingMessage: null,
-  optimisticUserMessage: null,
+  
   showSidebar: false,
   permissionMode: 'default',
   inputValue: '',
@@ -110,6 +107,7 @@ const initialState: ChatState = {
   sessionState: {},
   lastMessageData: null,
 };
+
 
 export const useChatStore = create<ChatStore>()(
   subscribeWithSelector((set, get) => ({
@@ -125,11 +123,26 @@ export const useChatStore = create<ChatStore>()(
     setMessages: (messages: ProcessedMessage[]) => 
       set({ messages }),
     
-    setStreamingState: (isStreaming: boolean, message?: ProcessedMessage | null) => 
-      set({ isStreaming, streamingMessage: message || null }),
+    setStreamingState: (isStreaming: boolean) => 
+      set({ isStreaming }),
     
-    setOptimisticMessage: (message: ProcessedMessage | null) => 
-      set({ optimisticUserMessage: message }),
+    // Simple direct message update - no deduplication, just add or update
+    addOrUpdateMessage: (message: ProcessedMessage) => {
+      const { messages } = get();
+      const existingIndex = messages.findIndex(m => m.id === message.id);
+      
+      if (existingIndex >= 0) {
+        // Update existing message
+        const updatedMessages = [...messages];
+        updatedMessages[existingIndex] = message;
+        console.log('🔄 Updated existing message:', message.id);
+        set({ messages: updatedMessages });
+      } else {
+        // Add new message
+        console.log('➕ Added new message:', message.id);
+        set({ messages: [...messages, message] });
+      }
+    },
     
     setSidebarVisible: (visible: boolean) => 
       set({ showSidebar: visible }),
@@ -179,7 +192,7 @@ export const useChatStore = create<ChatStore>()(
     isSessionReady: (conversationId: string) => {
       const { sessionState } = get();
       const session = sessionState[conversationId];
-      return session?.initialized && !!session.sessionId;
+      return Boolean(session?.initialized && session?.sessionId);
     },
     
     isSessionPending: (conversationId: string) => {
@@ -235,9 +248,8 @@ export const useChatStore = create<ChatStore>()(
       if (!dbMessages) return;
       
       const processedMessages = MessageProcessor.processMessages(dbMessages);
-      const deduplicatedMessages = MessageProcessor.deduplicateMessages(processedMessages);
-      
-      set({ messages: deduplicatedMessages });
+      console.log('📥 Loading', processedMessages.length, 'processed messages from database');
+      set({ messages: processedMessages });
     },
     
     fetchAndLoadMessages: async (conversationId: string) => {
@@ -284,20 +296,7 @@ export const useChatStore = create<ChatStore>()(
     },
     
     getAllMessages: (): ProcessedMessage[] => {
-      const { messages, optimisticUserMessage, streamingMessage } = get();
-      let allMessages = [...messages];
-      
-      // Add optimistic user message
-      if (optimisticUserMessage) {
-        allMessages = MessageProcessor.mergeStreamingMessage(allMessages, optimisticUserMessage);
-      }
-      
-      // Add streaming message
-      if (streamingMessage) {
-        allMessages = MessageProcessor.mergeStreamingMessage(allMessages, streamingMessage);
-      }
-      
-      return allMessages;
+      return get().messages;
     },
 
     // WebSocket operations
@@ -381,15 +380,15 @@ export const useChatStore = create<ChatStore>()(
 
     // Computed values
     isNewChat: () => {
-      const { selectedConversationId, messages, optimisticUserMessage, isStreaming } = get();
+      const { selectedConversationId, messages, isStreaming } = get();
       
       // If no conversation is selected, it's a new chat
       if (!selectedConversationId) {
         return true;
       }
       
-      // If we have messages or an optimistic user message, it's not a new chat
-      if (messages.length > 0 || optimisticUserMessage) {
+      // If we have messages, it's not a new chat
+      if (messages.length > 0) {
         return false;
       }
       
@@ -445,65 +444,63 @@ export const useChatStore = create<ChatStore>()(
       const {
         selectedConversationId,
         setStreamingState,
-        setOptimisticMessage,
         setConversationDetails,
         setError,
-        conversationDetails
+        conversationDetails,
+        addOrUpdateMessage
       } = get();
 
-      // Stream response handler
+      // Stream response handler with race condition protection
       const handleStreamResponse = (data: any) => {
         const currentState = get();
-        if (data.conversationId !== currentState.selectedConversationId) return;
+        console.log('🎯 Received chat:stream-response:', { 
+          dataType: data.type, 
+          requestId: data.requestId,
+          conversationMatch: data.conversationId === currentState.selectedConversationId 
+        });
+        
+        // Guard: Ignore messages for different conversations
+        if (data.conversationId !== currentState.selectedConversationId) {
+          console.log('🚫 Ignoring stream response for different conversation');
+          return;
+        }
         
         const processedMessage = MessageProcessor.processMessage(data);
         if (processedMessage) {
-          setStreamingState(!processedMessage.metadata?.isComplete, processedMessage);
+          console.log('✅ Adding/updating message:', { 
+            messageId: processedMessage.id,
+            messageType: processedMessage.type,
+            contentLength: processedMessage.content.length 
+          });
+          
+          // Simple: just add or update the message
+          addOrUpdateMessage(processedMessage);
+          
+          // Update streaming state based on message completion
+          const isStreaming = !processedMessage.metadata?.isComplete;
+          setStreamingState(isStreaming);
+        } else {
+          console.log('⚠️ Failed to process stream message:', data.type);
         }
       };
 
-      // Message complete handler
+      // Simple message complete handler - just stop streaming
       const handleMessageComplete = (data: any) => {
         const currentState = get();
-        if (data.conversationId !== currentState.selectedConversationId) return;
+        console.log('🏁 Message completion event received:', {
+          conversationId: data.conversationId,
+          selectedConversationId: currentState.selectedConversationId
+        });
         
-        // Move both optimistic user message and streaming message to permanent messages
-        let updatedMessages = [...currentState.messages];
-        
-        // First, add optimistic user message to permanent messages if it exists
-        if (currentState.optimisticUserMessage) {
-          const userMessage = { ...currentState.optimisticUserMessage };
-          userMessage.metadata = {
-            ...userMessage.metadata,
-            optimistic: false // Mark as no longer optimistic
-          };
-          updatedMessages = MessageProcessor.mergeStreamingMessage(updatedMessages, userMessage);
-          console.log('💬 Moved optimistic user message to permanent messages:', userMessage.id);
+        // Guard: Only process completion for current conversation
+        if (data.conversationId !== currentState.selectedConversationId) {
+          console.log('🚫 Ignoring completion for different conversation');
+          return;
         }
         
-        // Then, add streaming assistant message to permanent messages if it exists
-        if (currentState.streamingMessage) {
-          const assistantMessage = { ...currentState.streamingMessage };
-          assistantMessage.metadata = {
-            ...assistantMessage.metadata,
-            isComplete: true,
-            optimistic: false
-          };
-          updatedMessages = MessageProcessor.mergeStreamingMessage(updatedMessages, assistantMessage);
-          console.log('💬 Moved streaming message to permanent messages:', assistantMessage.id);
-        }
-        
-        // Update the messages array with both messages
-        if (currentState.optimisticUserMessage || currentState.streamingMessage) {
-          set({ messages: updatedMessages });
-        }
-        
-        // Clear streaming states
-        setStreamingState(false, null);
-        setOptimisticMessage(null);
-        
-        // Note: We'll need to handle query invalidation externally since we don't have queryClient here
-        console.log('💬 Message complete, should refresh messages from server');
+        // Simple: just stop streaming
+        setStreamingState(false);
+        console.log('💬 Message complete, stopped streaming');
       };
 
       // Session available handler
@@ -534,10 +531,7 @@ export const useChatStore = create<ChatStore>()(
 
       // Enhanced error handler with bridge service detection
       const handleError = (data: any) => {
-        setStreamingState(false, null);
-        
-        // Clear optimistic message on any error
-        setOptimisticMessage(null);
+        setStreamingState(false);
         
         // Check if this is a bridge service error
         const isBridgeError = data.error && data.error.includes('No bridge service connected');
@@ -554,7 +548,7 @@ export const useChatStore = create<ChatStore>()(
 
       // Abort handler
       const handleAbort = (data: any) => {
-        setStreamingState(false, null);
+        setStreamingState(false);
       };
 
       // Register WebSocket listeners
@@ -581,8 +575,6 @@ export const useSelectedConversationId = () => useChatStore((state) => state.sel
 export const useConversationDetails = () => useChatStore((state) => state.conversationDetails);
 export const useChatMessages = () => useChatStore((state) => state.messages);
 export const useIsStreaming = () => useChatStore((state) => state.isStreaming);
-export const useStreamingMessage = () => useChatStore((state) => state.streamingMessage);
-export const useOptimisticUserMessage = () => useChatStore((state) => state.optimisticUserMessage);
 export const useChatError = () => useChatStore((state) => state.error);
 export const useIsLoadingMessages = () => useChatStore((state) => state.isLoadingMessages);
 export const useIsCreatingConversation = () => useChatStore((state) => state.isCreatingConversation);
@@ -593,6 +585,9 @@ export const useInputValue = () => useChatStore((state) => state.inputValue);
 
 export const useSessionState = () => useChatStore((state) => state.sessionState);
 export const useBridgeServiceError = () => useChatStore((state) => state.bridgeServiceError);
+
+// Simple selector that returns messages array (stable reference)
+export const useAllMessages = () => useChatStore((state) => state.messages);
 
 // DEPRECATED: Use individual selectors or direct store access instead
 // These composite selectors create new objects on every call and cause infinite loops

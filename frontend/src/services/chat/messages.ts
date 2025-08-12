@@ -66,6 +66,12 @@ export class MessageProcessor {
    * Process any message into a standardized format
    */
   static processMessage(rawMessage: any): ProcessedMessage | null {
+    console.log('🔧 MessageProcessor.processMessage:', { 
+      type: rawMessage.type, 
+      hasData: !!rawMessage.data,
+      role: rawMessage.role 
+    });
+    
     try {
       // Handle different message formats
       if (rawMessage.type === 'claude_json' && rawMessage.data) {
@@ -80,6 +86,7 @@ export class MessageProcessor {
         return this.processLegacyMessage(rawMessage);
       }
 
+      console.log('⚠️ MessageProcessor: Unhandled message format:', rawMessage.type);
       return null;
     } catch (error) {
       console.error('❌ Message processing error:', error);
@@ -274,15 +281,35 @@ export class MessageProcessor {
   }
 
   /**
-   * Filter out duplicate messages based on ID and content
+   * Filter out duplicate messages with enhanced logic
    */
   static deduplicateMessages(messages: ProcessedMessage[]): ProcessedMessage[] {
     const seen = new Map<string, ProcessedMessage>();
     
     for (const message of messages) {
       const key = `${message.id}_${message.type}`;
-      if (!seen.has(key) || seen.get(key)!.timestamp < message.timestamp) {
+      
+      if (!seen.has(key)) {
         seen.set(key, message);
+      } else {
+        const existing = seen.get(key)!;
+        
+        // Prefer message with more content or newer timestamp
+        const shouldReplace = message.timestamp > existing.timestamp ||
+                             (message.timestamp === existing.timestamp && 
+                              message.content.length > existing.content.length) ||
+                             (existing.metadata?.optimistic && !message.metadata?.optimistic);
+        
+        if (shouldReplace) {
+          console.log('🔄 Replacing duplicate message with better version:', {
+            messageId: message.id,
+            oldContent: existing.content.substring(0, 30),
+            newContent: message.content.substring(0, 30),
+            oldTimestamp: existing.timestamp,
+            newTimestamp: message.timestamp
+          });
+          seen.set(key, message);
+        }
       }
     }
     
@@ -290,7 +317,7 @@ export class MessageProcessor {
   }
 
   /**
-   * Merge streaming updates with existing messages
+   * Merge streaming updates with existing messages with enhanced conflict resolution
    */
   static mergeStreamingMessage(
     existingMessages: ProcessedMessage[],
@@ -300,13 +327,40 @@ export class MessageProcessor {
     const existingIndex = messages.findIndex(m => m.id === streamingMessage.id);
     
     if (existingIndex >= 0) {
-      // Update existing message
-      messages[existingIndex] = streamingMessage;
+      const existing = messages[existingIndex];
+      
+      // Only update if streaming message is newer or has more content
+      const shouldUpdate = streamingMessage.timestamp >= existing.timestamp ||
+                          streamingMessage.content.length > existing.content.length ||
+                          (existing.metadata?.optimistic && !streamingMessage.metadata?.optimistic);
+      
+      if (shouldUpdate) {
+        console.log('🔄 Merging streaming message update:', {
+          messageId: streamingMessage.id,
+          oldContentLength: existing.content.length,
+          newContentLength: streamingMessage.content.length,
+          wasOptimistic: existing.metadata?.optimistic,
+          nowOptimistic: streamingMessage.metadata?.optimistic
+        });
+        messages[existingIndex] = streamingMessage;
+      } else {
+        console.log('📝 Skipping outdated streaming message merge');
+      }
     } else {
-      // Add new message
-      messages.push(streamingMessage);
+      // Add new message at appropriate position based on timestamp
+      const insertIndex = messages.findIndex(m => m.timestamp > streamingMessage.timestamp);
+      if (insertIndex >= 0) {
+        messages.splice(insertIndex, 0, streamingMessage);
+      } else {
+        messages.push(streamingMessage);
+      }
+      console.log('➕ Added new streaming message:', {
+        messageId: streamingMessage.id,
+        messageType: streamingMessage.type,
+        position: insertIndex >= 0 ? insertIndex : messages.length - 1
+      });
     }
     
-    return messages.sort((a, b) => a.timestamp - b.timestamp);
+    return messages;
   }
 }
