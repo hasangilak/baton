@@ -292,5 +292,6 @@ export const useChatIntegration = (projectId: string) => {
     // Utility
     isNewChat,
     clearError: useChatStore.getState().clearError,
+    clearBridgeError: useChatStore.getState().clearBridgeError,
   };
 };

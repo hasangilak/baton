@@ -41,6 +41,7 @@ export const ChatPageDesktop: React.FC = () => {
     retryBridgeMessage,
     // Utility
     clearError,
+    clearBridgeError,
   } = useChatIntegration(projectId || '');
 
   const fileUpload = useFileUpload({
@@ -368,7 +369,7 @@ export const ChatPageDesktop: React.FC = () => {
                 <BridgeServiceBanner
                   onRetry={retryBridgeMessage}
                   onDismiss={() => {
-                    clearError();
+                    clearBridgeError();
                   }}
                 />
               </div>

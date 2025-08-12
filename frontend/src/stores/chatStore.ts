@@ -65,6 +65,7 @@ interface ChatStore extends ChatState {
   // Complex actions
   selectConversation: (id: string | null) => void;
   clearError: () => void;
+  clearBridgeError: () => void;
   resetState: () => void;
   
   // Session management
@@ -167,7 +168,9 @@ export const useChatStore = create<ChatStore>()(
       });
     },
     
-    clearError: () => set({ error: null, bridgeServiceError: false }),
+    clearError: () => set({ error: null }),
+    
+    clearBridgeError: () => set({ bridgeServiceError: false }),
     
     resetState: () => set({ ...initialState }),
 
@@ -313,8 +316,7 @@ export const useChatStore = create<ChatStore>()(
       
       if (bridgeServiceError) {
         // Clear bridge service error before retry
-        get().setBridgeServiceError(false);
-        get().setError(null);
+        get().clearBridgeError();
       }
       
       console.log('🔄 Retrying last message:', lastMessageData);
@@ -447,8 +449,10 @@ export const useChatStore = create<ChatStore>()(
           
           console.log('💬 Session available and state updated:', data.sessionId);
           
-          // Clear any session-related errors
-          get().clearError();
+          // Clear session-related errors only (not bridge service errors)
+          if (currentState.error && !currentState.bridgeServiceError) {
+            get().setError(null);
+          }
         }
       };
 
