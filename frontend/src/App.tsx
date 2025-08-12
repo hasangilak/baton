@@ -16,7 +16,7 @@ function AppContent() {
   // Use first available project if baton project doesn't exist
   const activeProjectId = currentProjectId || projects?.[0]?.id || '';
 
-  const { connected, connecting, error, joinProject, leaveProject } = useUnifiedWebSocket({
+  const { connected, connecting, error, socket, joinProject, leaveProject } = useUnifiedWebSocket({
     activeProjectId,
     namespace: 'both' // App-level hook needs both general and chat events
   });
@@ -60,6 +60,8 @@ function AppContent() {
           <AppRouter 
             projectId={activeProjectId}
             onSync={handleSync}
+            socket={socket}
+            connected={connected}
           />
         </div>
       </div>

@@ -33,6 +33,21 @@ interface WebSocketState {
 let globalUnifiedSocket: Socket | null = null;
 let globalSocketRefCount = 0;
 
+// Global state and listeners to ensure all hook instances share the same state
+let globalState: WebSocketState = {
+  connected: false,
+  connecting: false,
+  error: null
+};
+let globalStateListeners: Set<(state: WebSocketState) => void> = new Set();
+
+// Function to update global state and notify all listeners
+const updateGlobalState = (newState: Partial<WebSocketState>) => {
+  globalState = { ...globalState, ...newState };
+  console.log('🌐 [DEBUG] Global WebSocket state updated:', globalState, `notifying ${globalStateListeners.size} listeners`);
+  globalStateListeners.forEach(listener => listener(globalState));
+};
+
 export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
   const {
     url = import.meta.env.VITE_API_URL || 'http://localhost:3001',
@@ -43,11 +58,22 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
 
   const socketRef = useRef<Socket | null>(globalUnifiedSocket);
   const queryClient = useQueryClient();
-  const [state, setState] = useState<WebSocketState>({
-    connected: false,
-    connecting: false,
-    error: null
-  });
+  
+  // Use global state instead of local state
+  const [state, setState] = useState<WebSocketState>(globalState);
+  
+  // Register this component as a state listener
+  useEffect(() => {
+    const listener = (newState: WebSocketState) => setState(newState);
+    globalStateListeners.add(listener);
+    
+    // Sync with current global state immediately
+    setState(globalState);
+    
+    return () => {
+      globalStateListeners.delete(listener);
+    };
+  }, []);
 
   // Session state management for Claude Code continuity
   const [sessionState, setSessionState] = useState<SessionState>({});
@@ -74,7 +100,7 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
         readyState: globalUnifiedSocket.io.readyState
       });
       socketRef.current = globalUnifiedSocket;
-      setState({ connected: true, connecting: false, error: null });
+      updateGlobalState({ connected: true, connecting: false, error: null });
       setUnifiedSocketRef(globalUnifiedSocket);
       setupEventListeners(globalUnifiedSocket);
       return;
@@ -86,7 +112,7 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
       return;
     }
 
-    setState(prev => ({ ...prev, connecting: true, error: null }));
+    updateGlobalState({ connecting: true, error: null });
 
     console.log('🔌 Creating new unified WebSocket connection to:', url);
     
@@ -113,7 +139,7 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
         readyState: socket.io.readyState,
         transport: socket.io.engine?.transport?.name
       });
-      setState({ connected: true, connecting: false, error: null });
+      updateGlobalState({ connected: true, connecting: false, error: null });
       
       // Update ChatService reference
       setUnifiedSocketRef(socket);
@@ -128,7 +154,7 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
 
     socket.on('disconnect', (reason) => {
       console.log('🔌 Unified WebSocket disconnected:', reason);
-      setState(prev => ({ ...prev, connected: false, connecting: false }));
+      updateGlobalState({ connected: false, connecting: false });
       
       // Clear ChatService reference
       setUnifiedSocketRef(null);
@@ -136,17 +162,16 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
 
     socket.on('connect_error', (error) => {
       console.error('❌ Unified WebSocket connection error:', error);
-      setState(prev => ({ 
-        ...prev, 
+      updateGlobalState({ 
         connected: false, 
         connecting: false, 
         error: error.message 
-      }));
+      });
     });
 
     socket.on('reconnect', (attemptNumber) => {
       console.log('🔄 Unified WebSocket reconnected after', attemptNumber, 'attempts');
-      setState({ connected: true, connecting: false, error: null });
+      updateGlobalState({ connected: true, connecting: false, error: null });
     });
 
     // Register core event listeners
@@ -742,7 +767,7 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
       socketRef.current = null;
       globalUnifiedSocket = null;
       setUnifiedSocketRef(null);
-      setState({ connected: false, connecting: false, error: null });
+      updateGlobalState({ connected: false, connecting: false, error: null });
     } else if (socketRef.current) {
       console.log('🔌 Keeping unified WebSocket alive (other components using it)...');
       socketRef.current = null;
@@ -987,7 +1012,15 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
 
     // Increment reference count
     globalSocketRefCount++;
-    console.log(`🔌 Unified WebSocket reference count: ${globalSocketRefCount}`);
+    
+    // Enhanced debugging to identify which component is creating the hook instance
+    const componentStack = new Error().stack?.split('\n').slice(1, 6).join('\n') || 'Unknown';
+    console.log(`🔌 Unified WebSocket reference count: ${globalSocketRefCount}`, {
+      url,
+      namespace, 
+      autoConnect,
+      componentStack: componentStack.substring(0, 200) + '...'
+    });
 
     if (autoConnect && mounted) {
       console.log('🔌 [DEBUG] Calling connect() with autoConnect=true');
@@ -1002,7 +1035,7 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
     // If global socket is already connected, sync the state immediately
     if (globalUnifiedSocket?.connected) {
       console.log('🔍 [DEBUG] Syncing state with already connected global socket');
-      setState({ connected: true, connecting: false, error: null });
+      updateGlobalState({ connected: true, connecting: false, error: null });
       socketRef.current = globalUnifiedSocket;
       setUnifiedSocketRef(globalUnifiedSocket);
     }

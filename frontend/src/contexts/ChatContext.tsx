@@ -5,12 +5,12 @@
  * Replaces multiple useState/useEffect hooks with centralized state management
  */
 
-import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, useCallback, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useConversations, useConversation } from '../hooks/chat/useConversations';
-import { useUnifiedWebSocket } from '../hooks/useUnifiedWebSocket';
 import { MessageProcessor, type ProcessedMessage } from '../services/chat/messages';
+import type { Socket } from 'socket.io-client';
 
 // Chat state interface
 interface ChatState {
@@ -173,13 +173,17 @@ interface ChatProviderProps {
   projectId: string;
   initialConversationId?: string | null;
   initialSessionId?: string | null;
+  socket: Socket | null;
+  connected: boolean;
 }
 
 export const ChatProvider: React.FC<ChatProviderProps> = ({
   children,
   projectId,
   initialConversationId = null,
-  initialSessionId = null
+  initialSessionId = null,
+  socket,
+  connected
 }) => {
   const [state, dispatch] = useReducer(chatReducer, {
     ...initialState,
@@ -201,34 +205,125 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   // URL parameter management for session ID
   const [searchParams, setSearchParams] = useSearchParams();
   
-  // Unified WebSocket integration
-  const unifiedWebSocket = useUnifiedWebSocket({ 
-    autoConnect: true, 
-    namespace: 'chat' 
-  });
-  
-  const { 
-    connected, 
-    emit, 
-    on, 
-    off,
-    joinConversationWithSession,
-    sendMessage: sendWebSocketMessage,
-    abortMessage,
-    sessionState,
-    isSessionReady,
-    isSessionPending,
-    initializeSession
-  } = unifiedWebSocket;
+  // Session state management for Claude Code continuity
+  const [sessionState, setSessionState] = useState<{[conversationId: string]: {sessionId?: string; initialized: boolean; pending: boolean}}>({});
+
+  // Session management functions
+  const isSessionReady = useCallback((conversationId: string) => {
+    const session = sessionState[conversationId];
+    return session?.initialized && !!session.sessionId;
+  }, [sessionState]);
+
+  const isSessionPending = useCallback((conversationId: string) => {
+    const session = sessionState[conversationId];
+    return session?.pending || false;
+  }, [sessionState]);
+
+  const initializeSession = useCallback(async (conversationId: string) => {
+    if (!conversationId) return;
+    
+    setSessionState(prev => ({
+      ...prev,
+      [conversationId]: {
+        ...prev[conversationId],
+        pending: true
+      }
+    }));
+
+    try {
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const response = await fetch(`${API_BASE_URL}/api/chat/conversation/${conversationId}`);
+      
+      if (response.ok) {
+        const result = await response.json();
+        const conversation = result.data;
+        
+        if (conversation?.claudeSessionId) {
+          setSessionState(prev => ({
+            ...prev,
+            [conversationId]: {
+              sessionId: conversation.claudeSessionId,
+              initialized: true,
+              pending: false
+            }
+          }));
+          
+          return conversation.claudeSessionId;
+        }
+      }
+    } catch (error) {
+      console.error('❌ Failed to initialize session for conversation:', conversationId, error);
+    }
+    
+    setSessionState(prev => ({
+      ...prev,
+      [conversationId]: {
+        ...prev[conversationId],
+        pending: false
+      }
+    }));
+    
+    return null;
+  }, []);
+
+  // Join conversation room
+  const joinConversationWithSession = useCallback(async (conversationId: string) => {
+    if (socket?.connected) {
+      socket.emit('join', `conversation-${conversationId}`);
+      console.log('🏠 Joined conversation room:', conversationId);
+      
+      // Try to initialize session if needed
+      const session = sessionState[conversationId];
+      if (!session?.initialized && !session?.pending) {
+        console.log('🔄 Attempting session initialization for conversation:', conversationId);
+        await initializeSession(conversationId);
+      }
+    }
+  }, [socket, sessionState, initializeSession]);
+
+  // Send message via WebSocket
+  const sendWebSocketMessage = useCallback((data: any) => {
+    if (socket?.connected) {
+      socket.emit('chat:send-message', data);
+      console.log('📤 Sent WebSocket message:', data);
+    } else {
+      throw new Error('Not connected to chat service');
+    }
+  }, [socket]);
+
+  // Abort current message
+  const abortMessage = useCallback(() => {
+    if (socket?.connected) {
+      socket.emit('chat:abort');
+      console.log('⏹️ Aborted current message');
+    }
+  }, [socket]);
+
+  // WebSocket event handlers
+  const on = useCallback((event: string, handler: Function) => {
+    if (socket) {
+      socket.on(event, handler as any);
+    }
+  }, [socket]);
+
+  const off = useCallback((event: string, handler: Function) => {
+    if (socket) {
+      socket.off(event, handler as any);
+    }
+  }, [socket]);
+
+  const emit = useCallback((event: string, data: any) => {
+    if (socket?.connected) {
+      socket.emit(event, data);
+    }
+  }, [socket]);
 
   // Connection state sync with debugging
   useEffect(() => {
     console.log('🔍 [DEBUG] ChatContext connection state update:', {
       previousState: state.isConnected,
       newState: connected,
-      willUpdate: state.isConnected !== connected,
-      unifiedWebSocketConnected: connected,
-      unifiedWebSocketState: unifiedWebSocket.connected
+      willUpdate: state.isConnected !== connected
     });
     
     if (state.isConnected !== connected) {
@@ -246,7 +341,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // WebSocket event handlers for unified chat system
   useEffect(() => {
-    if (!connected) return;
+    if (!socket?.connected) return;
 
     // Stream response handler
     const handleStreamResponse = (data: any) => {
@@ -338,7 +433,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       off('chat:error', handleError);
       off('chat:aborted', handleAbort);
     };
-  }, [connected, state.selectedConversationId, state.conversationDetails, on, off, queryClient, setSearchParams]);
+  }, [socket, state.selectedConversationId, state.conversationDetails, on, off, queryClient, setSearchParams]);
 
   // Action handlers
   const createConversation = useCallback(async (title?: string): Promise<string | null> => {

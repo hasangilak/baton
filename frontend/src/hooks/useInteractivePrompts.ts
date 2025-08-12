@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
-import { useUnifiedWebSocket } from './useUnifiedWebSocket';
 import type { InteractivePrompt } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
@@ -8,6 +7,7 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 interface UseInteractivePromptsProps {
   conversationId: string | null;
   enableAnalytics?: boolean;
+  socket?: any; // Socket will be passed from parent component
 }
 
 interface PermissionAnalytics {
@@ -25,9 +25,8 @@ interface PermissionAnalytics {
   };
 }
 
-export const useInteractivePrompts = ({ conversationId, enableAnalytics = false }: UseInteractivePromptsProps) => {
+export const useInteractivePrompts = ({ conversationId, enableAnalytics = false, socket }: UseInteractivePromptsProps) => {
   const queryClient = useQueryClient();
-  const { socket, joinConversation, leaveConversation } = useUnifiedWebSocket({ namespace: 'general' }); // Use unified WebSocket connection
   const [isRespondingToPrompt, setIsRespondingToPrompt] = useState(false);
   
   // Real-time prompt state (like successful implementations)
@@ -38,6 +37,21 @@ export const useInteractivePrompts = ({ conversationId, enableAnalytics = false 
   // Enhanced analytics state
   const [livePermissionStatus] = useState<string>('');
   const [realtimeAnalytics, setRealtimeAnalytics] = useState<Record<string, unknown>>({});
+
+  // Simple room management functions
+  const joinConversation = useCallback((conversationId: string) => {
+    if (socket?.connected) {
+      socket.emit('join', `conversation-${conversationId}`);
+      console.log('🏠 Joined conversation room:', conversationId);
+    }
+  }, [socket]);
+
+  const leaveConversation = useCallback((conversationId: string) => {
+    if (socket?.connected) {
+      socket.emit('leave', `conversation-${conversationId}`);
+      console.log('🚪 Left conversation room:', conversationId);
+    }
+  }, [socket]);
 
   // Auto-join conversation room for targeted prompt delivery
   useEffect(() => {

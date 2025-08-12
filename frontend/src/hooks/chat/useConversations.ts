@@ -7,7 +7,6 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useUnifiedWebSocket } from '../useUnifiedWebSocket';
 import { ChatEvents, chatEventBus } from '../../services/chat/eventBus';
 import { useToast } from '../useToast';
 
@@ -32,7 +31,6 @@ interface Conversation {
 export const useConversations = (projectId: string) => {
   const queryClient = useQueryClient();
   const { success, error: showError } = useToast();
-  const { connected, emit } = useUnifiedWebSocket({ namespace: 'chat' });
 
   // Query conversations
   const { 
@@ -103,12 +101,6 @@ export const useConversations = (projectId: string) => {
     },
     onSuccess: (data, conversationId) => {
       queryClient.invalidateQueries({ queryKey: ['chat', 'conversations', projectId] });
-      
-      // Emit WebSocket event
-      if (connected) {
-        emit('conversation:archived', { conversationId });
-      }
-      
       success('Success', 'Conversation archived');
     },
     onError: () => {
@@ -127,12 +119,6 @@ export const useConversations = (projectId: string) => {
     },
     onSuccess: (data, conversationId) => {
       queryClient.invalidateQueries({ queryKey: ['chat', 'conversations', projectId] });
-      
-      // Emit WebSocket event
-      if (connected) {
-        emit('conversation:deleted', { conversationId });
-      }
-      
       success('Success', 'Conversation deleted');
     },
     onError: () => {
