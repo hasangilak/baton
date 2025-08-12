@@ -312,16 +312,19 @@ io.on('connection', (socket) => {
   });
 
   socket.on('permission:request', async (data) => {
-    console.log(`🔐 Received permission request from bridge:`, data.promptId);
-    // Emit to frontend clients in the conversation room
+    console.log(`🔐 Received permission request from bridge:`, data.promptId, 'with session ID:', data.sessionId);
+    // Emit to frontend clients in the conversation room with session ID
     io.to(`conversation-${data.conversationId}`).emit('interactive_prompt', {
       promptId: data.promptId,
       conversationId: data.conversationId,
+      sessionId: data.sessionId, // Forward session ID to frontend
       type: data.type,
       title: data.title,
       message: data.message,
       options: data.options,
       context: data.context,
+      toolName: data.toolName,
+      riskLevel: data.riskLevel,
       timestamp: Date.now()
     });
   });

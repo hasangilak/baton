@@ -28,9 +28,13 @@ export const ChatPageMobile: React.FC = () => {
     getAllMessages,
     // Session management
     sessionState,
+    currentSessionId,
     isSessionReady,
     isSessionPending,
     initializeSession,
+    // WebSocket connection
+    socket,
+    isConnected,
   } = useChatIntegration(projectId || '');
 
   const fileUpload = useFileUpload({
@@ -43,7 +47,12 @@ export const ChatPageMobile: React.FC = () => {
     pendingPrompts,
     isRespondingToPrompt,
     handlePromptResponse,
-  } = useInteractivePrompts({ conversationId: state.selectedConversationId });
+  } = useInteractivePrompts({ 
+    conversationId: state.selectedConversationId,
+    sessionId: currentSessionId,
+    socket,
+    enableAnalytics: true 
+  });
 
   // State for mobile sidebar
   const [showMobileSidebar, setShowMobileSidebar] = React.useState(false);

@@ -54,7 +54,7 @@ export class ModularClaudeCodeBridge {
     
     // Initialize modules
     this.permissionManager = new PermissionManager();
-    this.claudeSDK = new ClaudeSDK(backendUrl);
+    this.claudeSDK = new ClaudeSDK(this.logger);
     this.streamManager = new StreamManager();
     this.resourceManager = new ResourceManager(this.streamManager, this.claudeSDK);
     
@@ -138,6 +138,9 @@ export class ModularClaudeCodeBridge {
         
         // Wire up permission manager with backend socket
         this.permissionManager.setBackendSocket(this.backendSocket);
+        
+        // Also set up permission manager socket for Claude SDK
+        this.claudeSDK.setPermissionManagerSocket(this.backendSocket);
         
         this.setupBackendEventHandlers();
       });

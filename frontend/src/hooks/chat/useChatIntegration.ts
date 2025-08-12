@@ -51,8 +51,9 @@ export const useChatIntegration = (projectId: string) => {
   // Use reactive selector for messages
   const allMessages = useAllMessages();
   
-  // Get socket connection state
+  // Get socket connection state and socket instance
   const isConnected = useSocketStore((state) => state.isConnected);
+  const socket = useSocketStore((state) => state.socket);
 
   // Create state object for compatibility (but don't use in useEffect deps!)
   const state = {
@@ -326,9 +327,14 @@ export const useChatIntegration = (projectId: string) => {
     
     // Session management
     sessionState: sessionState,
+    currentSessionId: sessionState[selectedConversationId]?.sessionId || null,
     isSessionReady: useChatStore.getState().isSessionReady,
     isSessionPending: useChatStore.getState().isSessionPending,
     initializeSession: useChatStore.getState().initializeSession,
+    
+    // WebSocket connection
+    socket,
+    isConnected,
     
     // Bridge service management
     retryBridgeMessage,

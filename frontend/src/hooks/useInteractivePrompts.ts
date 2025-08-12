@@ -6,6 +6,7 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 interface UseInteractivePromptsProps {
   conversationId: string | null;
+  sessionId?: string | null; // Claude Code session ID for permission correlation
   enableAnalytics?: boolean;
   socket?: any; // Socket will be passed from parent component
 }
@@ -25,7 +26,7 @@ interface PermissionAnalytics {
   };
 }
 
-export const useInteractivePrompts = ({ conversationId, enableAnalytics = false, socket }: UseInteractivePromptsProps) => {
+export const useInteractivePrompts = ({ conversationId, sessionId, enableAnalytics = false, socket }: UseInteractivePromptsProps) => {
   const queryClient = useQueryClient();
   const [isRespondingToPrompt, setIsRespondingToPrompt] = useState(false);
   
@@ -167,7 +168,7 @@ export const useInteractivePrompts = ({ conversationId, enableAnalytics = false,
         return [...filtered, prompt];
       });
 
-      // Send acknowledgment if required
+      // Send acknowledgment if required via WebSocket only
       if (data.requiresAck && socket) {
         const acknowledgment = {
           promptId: data.promptId,
@@ -183,11 +184,8 @@ export const useInteractivePrompts = ({ conversationId, enableAnalytics = false,
           }
         };
         
-        console.log('📨 Sending prompt acknowledgment:', acknowledgment);
+        console.log('📨 Sending prompt acknowledgment via WebSocket:', acknowledgment);
         socket.emit('prompt_received_confirmation', acknowledgment);
-        
-        // Also send via HTTP as backup
-        sendPromptAcknowledgmentHTTP(data.promptId, acknowledgment.clientInfo);
       }
 
       // Track analytics event
@@ -312,7 +310,7 @@ export const useInteractivePrompts = ({ conversationId, enableAnalytics = false,
     }
   }, []);
 
-  // Enhanced respond to prompt mutation with analytics
+  // Enhanced respond to prompt via WebSocket with analytics
   const respondToPrompt = useMutation({
     mutationFn: async ({ promptId, optionId, startTime }: { 
       promptId: string; 
@@ -321,39 +319,41 @@ export const useInteractivePrompts = ({ conversationId, enableAnalytics = false,
     }) => {
       const responseTime = startTime ? Date.now() - startTime : 0;
       
-      const response = await fetch(`${API_BASE}/api/chat/prompts/${promptId}/respond`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          selectedOption: optionId,
-          metadata: {
-            responseTime,
-            source: 'frontend',
-            timestamp: Date.now()
-          }
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to respond to prompt');
+      if (!socket) {
+        throw new Error('No WebSocket connection available');
       }
 
-      const result = await response.json();
+      // Send response via WebSocket instead of HTTP with session correlation
+      socket.emit('permission:respond', {
+        promptId,
+        selectedOption: optionId,
+        conversationId, // Include conversation ID for routing
+        sessionId, // Include session ID for Claude Code correlation
+        metadata: {
+          responseTime,
+          source: 'frontend',
+          timestamp: Date.now()
+        }
+      });
+
+      console.log('✅ Permission response sent via WebSocket', { 
+        promptId, 
+        selectedOption: optionId,
+        conversationId,
+        sessionId 
+      });
       
       // Track response analytics
-      if (enableAnalytics && result.response) {
+      if (enableAnalytics) {
         trackAnalyticsEvent('prompt_responded', {
           promptId,
           selectedOption: optionId,
           responseTime,
-          riskLevel: result.response.riskLevel,
-          toolName: result.response.toolName
+          method: 'websocket'
         });
       }
 
-      return result;
+      return { success: true, promptId, selectedOption: optionId };
     },
     onMutate: () => {
       setIsRespondingToPrompt(true);
@@ -434,12 +434,12 @@ export const useInteractivePrompts = ({ conversationId, enableAnalytics = false,
     trackAnalyticsEvent,
     
     // Computed analytics
-    permissionSummary: analyticsData ? {
+    permissionSummary: analyticsData?.summary ? {
       totalRequests: analyticsData.summary.totalRequests,
       averageResponseTime: analyticsData.summary.averageResponseSeconds,
       mostCommonDecision: analyticsData.summary.mostCommonDecision,
       riskDistribution: analyticsData.riskLevelDistribution,
-      topTools: analyticsData.topTools.slice(0, 3),
+      topTools: analyticsData.topTools?.slice(0, 3) || [],
       recentActivity: liveStatus?.recentActivity?.slice(0, 5) || []
     } : null,
   };

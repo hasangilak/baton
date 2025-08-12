@@ -37,9 +37,16 @@ export class ClaudeSDK {
   private logger: ContextualLogger;
   private activeQueries = new Map<string, AbortController>();
 
-  constructor(backendUrl: string) {
-    this.permissionManager = new PermissionManager(backendUrl);
-    this.logger = new ContextualLogger(logger, 'ClaudeSDK');
+  constructor(logger?: ContextualLogger) {
+    this.permissionManager = new PermissionManager();
+    this.logger = logger || new ContextualLogger(logger, 'ClaudeSDK');
+  }
+  
+  /**
+   * Set the permission manager's backend socket
+   */
+  setPermissionManagerSocket(socket: any): void {
+    this.permissionManager.setBackendSocket(socket);
   }
 
   /**

@@ -25,6 +25,7 @@ export interface PermissionRequest {
   projectId: string;
   riskLevel: RiskLevel;
   requestId?: string;
+  conversationId?: string;
 }
 
 export interface PlanReviewRequest {
@@ -33,15 +34,25 @@ export interface PlanReviewRequest {
   projectId: string;
   planContent: string;
   requestId?: string;
+  conversationId?: string;
+}
+
+export interface ProgressiveTimeoutRequest {
+  toolName: string;
+  parameters: Record<string, any>;
+  projectId: string;
+  conversationId: string;
+  riskLevel: RiskLevel;
+  requestId?: string;
 }
 
 export class PermissionManager {
   private permissionCache = new Map<string, PermissionCache>();
   private backendSocket: any; // Socket.IO client socket
   private logger: ContextualLogger;
+  private responseHandlers = new Map<string, { resolve: Function; reject: Function; timeout?: NodeJS.Timeout }>();
 
-  constructor(backendSocket?: any) {
-    this.backendSocket = backendSocket;
+  constructor() {
     this.logger = new ContextualLogger(logger, 'PermissionManager');
     
     // Clean up cache periodically
@@ -50,6 +61,71 @@ export class PermissionManager {
 
   setBackendSocket(socket: any): void {
     this.backendSocket = socket;
+    this.setupWebSocketHandlers();
+  }
+
+  /**
+   * Setup WebSocket event handlers for permission responses
+   */
+  private setupWebSocketHandlers(): void {
+    if (!this.backendSocket) return;
+
+    // Handle permission responses from backend
+    this.backendSocket.on('permission:response', (data: any) => {
+      this.logger.info('Received permission response', { promptId: data.promptId });
+      this.handlePermissionResponse(data.promptId, data);
+    });
+
+    // Handle plan review responses from backend
+    this.backendSocket.on('plan:review-response', (data: any) => {
+      this.logger.info('Received plan review response', { promptId: data.promptId });
+      this.handlePlanReviewResponse(data.promptId, data);
+    });
+
+    this.logger.info('WebSocket permission handlers configured');
+  }
+
+  /**
+   * Handle permission response from WebSocket
+   */
+  private handlePermissionResponse(promptId: string, data: any): void {
+    const handler = this.responseHandlers.get(promptId);
+    if (handler) {
+      if (handler.timeout) {
+        clearTimeout(handler.timeout);
+      }
+      this.responseHandlers.delete(promptId);
+      
+      // Process the response
+      const result = {
+        value: data.selectedOption || data.decision || 'deny',
+        label: data.label,
+        metadata: data.metadata
+      };
+      
+      handler.resolve(result);
+    }
+  }
+
+  /**
+   * Handle plan review response from WebSocket
+   */
+  private handlePlanReviewResponse(promptId: string, data: any): void {
+    const handler = this.responseHandlers.get(promptId);
+    if (handler) {
+      if (handler.timeout) {
+        clearTimeout(handler.timeout);
+      }
+      this.responseHandlers.delete(promptId);
+      
+      const result = {
+        value: data.decision || 'reject',
+        feedback: data.feedback,
+        editedPlan: data.editedPlan
+      };
+      
+      handler.resolve(result);
+    }
   }
 
   /**
@@ -105,17 +181,20 @@ export class PermissionManager {
    * Handle plan mode permissions (ExitPlanMode tool)
    */
   private async handlePlanPermission(request: PermissionRequest): Promise<PermissionResult> {
-    const { toolName, parameters, conversationId, requestId } = request;
+    const { toolName, parameters, projectId, requestId } = request;
     const contextLogger = new ContextualLogger(logger, 'PermissionManager', requestId);
     
     contextLogger.info(`Processing plan review`, { toolName });
     
     const planContent = parameters.plan || 'No plan content provided';
+    // Use projectId as conversationId if no specific conversationId provided
+    const conversationId = (request as any).conversationId || projectId;
     
     try {
       const planReview = await this.requestPlanReview({
         toolName,
         parameters,
+        projectId,
         conversationId,
         planContent,
         requestId
@@ -148,11 +227,15 @@ export class PermissionManager {
       return { behavior: 'allow', updatedInput: parameters };
     }
 
+    // Use projectId as conversationId if no specific conversationId provided
+    const conversationId = (request as any).conversationId || projectId;
+
     // Request permission with progressive timeout
     try {
       const permissionResult = await this.requestPermissionWithProgressiveTimeout({
         toolName,
         parameters,
+        projectId,
         conversationId,
         riskLevel,
         requestId
@@ -244,7 +327,7 @@ export class PermissionManager {
   /**
    * Request permission with progressive timeout strategy
    */
-  private async requestPermissionWithProgressiveTimeout(request: PermissionRequest): Promise<PermissionResult> {
+  private async requestPermissionWithProgressiveTimeout(request: ProgressiveTimeoutRequest): Promise<PermissionResult> {
     const { toolName, parameters, conversationId, riskLevel, requestId } = request;
     const contextLogger = new ContextualLogger(logger, 'PermissionManager', requestId);
     
@@ -304,52 +387,45 @@ export class PermissionManager {
   }
 
   /**
-   * Request plan review
+   * Request plan review via WebSocket
    */
   private async requestPlanReview(request: PlanReviewRequest): Promise<PermissionResult> {
     const { toolName, parameters, conversationId, planContent, requestId } = request;
     const contextLogger = new ContextualLogger(logger, 'PermissionManager', requestId);
     
-    contextLogger.info(`Requesting plan review`, { planLength: planContent.length });
+    contextLogger.info(`Requesting plan review via WebSocket`, { planLength: planContent.length });
     
-    // Ensure conversation exists
-    await this.ensureConversationExists(conversationId);
+    if (!this.backendSocket) {
+      throw new Error('No backend WebSocket connection for plan review');
+    }
+
+    const promptId = `plan-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
-    // Create plan review prompt
-    const response = await fetch(`${this.backendUrl}/api/chat/conversations/${conversationId}/plan-review`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'plan_review',
-        title: 'Plan Review Required',
-        message: 'Claude Code has generated an implementation plan for your review.',
-        planContent: planContent,
-        options: [
-          { id: 'auto_accept', label: 'Auto Accept', value: 'auto_accept' },
-          { id: 'review_accept', label: 'Review & Accept', value: 'review_accept' },
-          { id: 'edit_plan', label: 'Edit Plan', value: 'edit_plan' },
-          { id: 'reject', label: 'Reject', value: 'reject' }
-        ],
-        context: {
-          toolName,
-          parameters: JSON.stringify(parameters),
-          planLength: planContent.length,
-          timestamp: Date.now()
-        }
-      })
+    // Send plan review request via WebSocket
+    this.backendSocket.emit('plan:review-request', {
+      promptId,
+      conversationId,
+      type: 'plan_review',
+      title: 'Plan Review Required',
+      message: 'Claude Code has generated an implementation plan for your review.',
+      planContent: planContent,
+      options: [
+        { id: 'auto_accept', label: 'Auto Accept', value: 'auto_accept' },
+        { id: 'review_accept', label: 'Review & Accept', value: 'review_accept' },
+        { id: 'edit_plan', label: 'Edit Plan', value: 'edit_plan' },
+        { id: 'reject', label: 'Reject', value: 'reject' }
+      ],
+      context: {
+        toolName,
+        parameters: JSON.stringify(parameters),
+        planLength: planContent.length,
+        timestamp: Date.now()
+      }
     });
 
-    if (!response.ok) {
-      throw new Error(`Failed to create plan review prompt: ${response.status}`);
-    }
-
-    const promptData = await response.json();
-    if (!promptData.success) {
-      throw new Error('Failed to create plan review prompt');
-    }
+    contextLogger.info('Plan review request sent via WebSocket', { promptId });
 
     // Wait for plan review response
-    const promptId = promptData.prompt.id;
     const reviewResponse = await this.waitForPlanReviewResponse(promptId);
     
     return this.processPlanReviewResponse(reviewResponse, parameters, planContent);
@@ -398,134 +474,122 @@ export class PermissionManager {
   }
 
   /**
-   * Create permission prompt
+   * Create permission prompt via WebSocket
    */
   private async createPermissionPrompt(request: PermissionRequest): Promise<string | null> {
     const { toolName, parameters, conversationId, riskLevel } = request;
     
-    const response = await fetch(`${this.backendUrl}/api/chat/conversations/${conversationId}/prompts`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        type: 'tool_permission',
-        title: 'Tool Permission Required',
-        message: `Claude Code wants to use the ${toolName} tool.`,
-        options: [
-          { id: 'allow_once', label: 'Allow Once', value: 'allow_once' },
-          { id: 'allow_always', label: 'Allow Always', value: 'allow_always' },
-          { id: 'deny', label: 'Deny', value: 'deny' }
-        ],
-        context: {
-          toolName,
-          parameters: JSON.stringify(parameters),
-          riskLevel,
-          usageCount: 0,
-          progressiveTimeout: true
-        }
-      })
+    if (!this.backendSocket) {
+      this.logger.error('No backend WebSocket connection for permission prompt');
+      return null;
+    }
+
+    const promptId = `prompt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Send permission request via WebSocket
+    this.backendSocket.emit('permission:request', {
+      promptId,
+      conversationId,
+      type: 'tool_permission',
+      title: 'Tool Permission Required',
+      message: `Claude Code wants to use the ${toolName} tool.`,
+      options: [
+        { id: 'allow_once', label: 'Allow Once', value: 'allow_once' },
+        { id: 'allow_always', label: 'Allow Always', value: 'allow_always' },
+        { id: 'deny', label: 'Deny', value: 'deny' }
+      ],
+      context: {
+        toolName,
+        parameters: JSON.stringify(parameters),
+        riskLevel,
+        usageCount: 0,
+        progressiveTimeout: true,
+        requestTime: Date.now()
+      },
+      toolName,
+      riskLevel
     });
 
-    if (response.ok) {
-      const data = await response.json();
-      return data.success ? data.prompt.id : null;
-    }
-    
-    return null;
+    this.logger.info('Permission prompt created via WebSocket', { promptId, toolName });
+    return promptId;
   }
 
   /**
-   * Wait for permission response with timeout
+   * Wait for permission response via WebSocket with timeout
    */
   private async waitForPermissionResponse(promptId: string, timeoutMs: number): Promise<any> {
-    const startTime = Date.now();
-    const pollInterval = config.getConfig().pollInterval;
-    
-    while (Date.now() - startTime < timeoutMs) {
-      try {
-        const response = await fetch(`${this.backendUrl}/api/chat/prompts/${promptId}`, {
-          headers: { 'Accept': 'application/json' }
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          const prompt = data.prompt;
-          
-          if (prompt && prompt.status === 'answered') {
-            const options = prompt.options as any[];
-            const selectedOption = options.find((o: any) => o.id === prompt.selectedOption);
-            return selectedOption || { value: 'deny' };
-          }
-        } else if (response.status === 404) {
-          return { value: 'deny' };
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-        
-      } catch (error) {
-        this.logger.warn(`Polling error for prompt ${promptId}`, {}, error);
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-      }
-    }
-    
-    return { value: 'timeout' };
+    return new Promise((resolve, reject) => {
+      // Set up timeout
+      const timeout = setTimeout(() => {
+        this.responseHandlers.delete(promptId);
+        this.logger.warn(`Permission response timeout for prompt ${promptId}`);
+        resolve({ value: 'timeout' });
+      }, timeoutMs);
+
+      // Store the promise handlers
+      this.responseHandlers.set(promptId, {
+        resolve,
+        reject,
+        timeout
+      });
+
+      this.logger.info(`Waiting for permission response via WebSocket`, { 
+        promptId, 
+        timeoutMs: timeoutMs / 1000 
+      });
+    });
   }
 
   /**
-   * Wait for plan review response
+   * Wait for plan review response via WebSocket
    */
   private async waitForPlanReviewResponse(promptId: string): Promise<any> {
     const timeoutMs = 300000; // 5 minutes for plan reviews
-    const startTime = Date.now();
-    const pollInterval = 1000; // 1 second for plan reviews
     
-    while (Date.now() - startTime < timeoutMs) {
-      try {
-        const response = await fetch(`${this.backendUrl}/api/chat/plan-review/${promptId}`);
-        
-        if (response.ok) {
-          const data = await response.json();
-          const planReview = data.planReview;
-          
-          if (planReview && planReview.status === 'completed') {
-            return {
-              value: planReview.decision,
-              feedback: planReview.feedback,
-              editedPlan: planReview.editedPlan
-            };
-          }
-        } else if (response.status === 404) {
-          return { value: 'reject', feedback: 'Plan review session not found' };
-        }
-        
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-        
-      } catch (error) {
-        this.logger.warn(`Plan review polling error`, { promptId }, error);
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-      }
-    }
-    
-    return { value: 'timeout', feedback: 'Plan review timeout' };
+    return new Promise((resolve, reject) => {
+      // Set up timeout
+      const timeout = setTimeout(() => {
+        this.responseHandlers.delete(promptId);
+        this.logger.warn(`Plan review response timeout for prompt ${promptId}`);
+        resolve({ value: 'timeout', feedback: 'Plan review timeout' });
+      }, timeoutMs);
+
+      // Store the promise handlers
+      this.responseHandlers.set(promptId, {
+        resolve,
+        reject,
+        timeout
+      });
+
+      this.logger.info(`Waiting for plan review response via WebSocket`, { 
+        promptId, 
+        timeoutMs: timeoutMs / 1000 
+      });
+    });
   }
 
   /**
-   * Escalate permission notification
+   * Escalate permission notification via WebSocket
    */
   private async escalatePermissionNotification(promptId: string, toolName: string, riskLevel: RiskLevel, stage: number): Promise<void> {
     try {
-      await fetch(`${this.backendUrl}/api/chat/prompts/${promptId}/escalate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          stage,
-          toolName,
-          riskLevel,
-          escalationType: stage === 1 ? 'reminder' : stage === 2 ? 'urgent' : 'critical',
-          timestamp: Date.now()
-        })
+      if (!this.backendSocket) {
+        this.logger.warn('No backend WebSocket connection for escalation');
+        return;
+      }
+
+      this.backendSocket.emit('permission:escalate', {
+        promptId,
+        stage,
+        toolName,
+        riskLevel,
+        escalationType: stage === 1 ? 'reminder' : stage === 2 ? 'urgent' : 'critical',
+        timestamp: Date.now()
       });
+
+      this.logger.info('Permission escalation sent via WebSocket', { promptId, stage, toolName });
     } catch (error) {
-      this.logger.warn(`Failed to send escalation notification`, { promptId, stage }, error);
+      this.logger.warn(`Failed to send escalation notification via WebSocket`, { promptId, stage }, error);
     }
   }
 
@@ -551,37 +615,30 @@ export class PermissionManager {
   }
 
   /**
-   * Ensure conversation exists in backend
+   * Check if conversation exists via WebSocket
    */
   private async ensureConversationExists(conversationId: string): Promise<void> {
-    try {
-      // Check if conversation exists
-      const checkResponse = await fetch(`${this.backendUrl}/api/chat/conversations/${conversationId}/permissions`);
-      
-      if (checkResponse.ok) {
-        return;
-      }
-      
-      // Create conversation if it doesn't exist
-      const createResponse = await fetch(`${this.backendUrl}/api/chat/messages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: 'Bridge conversation initialized',
-          requestId: `init-${conversationId}`,
-          conversationId,
-          projectId: 'cmdxumi04000k4yhw92fvsqqa', // Default Baton project
-          userId: 'demo-user-1' // Default demo user
-        })
-      });
-      
-      if (!createResponse.ok) {
-        this.logger.warn(`Failed to create conversation`, { conversationId });
-      }
-      
-    } catch (error) {
-      this.logger.warn(`Error ensuring conversation exists`, { conversationId }, error);
+    if (!this.backendSocket) {
+      this.logger.warn('No backend WebSocket connection to check conversation');
+      return;
     }
+
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        this.logger.warn(`Conversation check timeout for ${conversationId}`);
+        resolve(); // Continue anyway
+      }, 5000);
+
+      this.backendSocket.emit('conversation:check', { conversationId }, (response: any) => {
+        clearTimeout(timeout);
+        
+        if (!response?.exists) {
+          this.logger.info(`Conversation ${conversationId} may not exist, continuing with permission request`);
+        }
+        
+        resolve();
+      });
+    });
   }
 
   /**

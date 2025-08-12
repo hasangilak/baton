@@ -14,6 +14,7 @@ import { useChatIntegration } from "../../../hooks/chat/useChatIntegration";
 import { useParams } from 'react-router-dom';
 import { useFileUpload } from "../../../hooks/useFileUpload";
 import { useInteractivePrompts } from "../../../hooks/useInteractivePrompts";
+import { useConversationItems } from "../../../hooks/useConversationItems";
 
 export const ChatPageDesktop: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -34,9 +35,13 @@ export const ChatPageDesktop: React.FC = () => {
     getAllMessages,
     // Session management
     sessionState,
+    currentSessionId,
     isSessionReady,
     isSessionPending,
     initializeSession,
+    // WebSocket connection
+    socket,
+    isConnected,
     // Bridge service management
     retryBridgeMessage,
     // Utility
@@ -50,8 +55,13 @@ export const ChatPageDesktop: React.FC = () => {
     onError: (err) => console.error("File upload error:", err),
   });
 
-  // const { pendingPrompts, isRespondingToPrompt, handlePromptResponse } =
-  //   useInteractivePrompts({ conversationId: state.selectedConversationId });
+  const { pendingPrompts, isRespondingToPrompt, handlePromptResponse } =
+    useInteractivePrompts({ 
+      conversationId: state.selectedConversationId,
+      sessionId: currentSessionId,
+      socket,
+      enableAnalytics: true 
+    });
 
   // State for ESC key abort feedback
   const [showAbortFeedback, setShowAbortFeedback] = React.useState(false);
@@ -66,17 +76,28 @@ export const ChatPageDesktop: React.FC = () => {
   const [showConnectionBanner, setShowConnectionBanner] = React.useState(false);
   
   // Get current messages including optimistic and streaming
-  const currentMessages = getAllMessages();
+  const rawMessages = getAllMessages();
   
-  // Debug: Track message changes
+  // Use unified conversation items that include interactive prompts
+  const conversationItems = useConversationItems({
+    dbMessages: rawMessages,
+    streamingMessage: state.streamingMessage,
+    optimisticUserMessage: state.optimisticUserMessage,
+    isStreaming: state.isStreaming,
+    pendingPrompts,
+    selectedConversationId: state.selectedConversationId
+  });
+  
+  // Debug: Track conversation items changes
   React.useEffect(() => {
-    console.log('🖥️ ChatPageDesktop messages updated:', {
-      messageCount: currentMessages.length,
+    console.log('🖥️ ChatPageDesktop conversation items updated:', {
+      itemCount: conversationItems.length,
       isStreaming: state.isStreaming,
-      lastMessageType: currentMessages[currentMessages.length - 1]?.type,
-      messageIds: currentMessages.map(m => ({ id: m.id, type: m.type }))
+      lastItemType: conversationItems[conversationItems.length - 1]?.type,
+      itemTypes: conversationItems.map(item => item.type),
+      pendingPromptCount: pendingPrompts.length
     });
-  }, [currentMessages, state.isStreaming]);
+  }, [conversationItems, state.isStreaming, pendingPrompts.length]);
   
   // Debug: Track re-renders
   React.useEffect(() => {
@@ -164,7 +185,7 @@ export const ChatPageDesktop: React.FC = () => {
         el.scrollTop = el.scrollHeight;
       }
     });
-  }, [currentMessages.length, state.isStreaming]);
+  }, [conversationItems.length, state.isStreaming]);
 
   // ESC key handler for aborting conversations (Claude Code style)
   React.useEffect(() => {
@@ -430,19 +451,64 @@ export const ChatPageDesktop: React.FC = () => {
                     </div>
                   </div>
                 )}
-                {currentMessages.map((message) => (
-                  <SimpleMessageRenderer
-                    key={message.id}
-                    message={message}
-                    isStreaming={
-                      state.isStreaming &&
-                      !message.metadata?.isComplete
-                    }
-                    onCopy={(content, messageId) => {
-                      navigator.clipboard.writeText(content);
-                    }}
-                  />
-                ))}
+                {conversationItems.map((item) => {
+                  // Handle different conversation item types
+                  if (item.type === 'prompt') {
+                    // TODO: Render interactive prompt component
+                    return (
+                      <div key={item.id} className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p className="text-sm text-blue-800">Interactive Prompt: {item.data.message}</p>
+                        <div className="mt-2 space-x-2">
+                          {item.data.options.map((option) => (
+                            <button
+                              key={option.id}
+                              onClick={() => handlePromptResponse(item.data.id, option.id)}
+                              disabled={isRespondingToPrompt}
+                              className="px-3 py-1 text-sm bg-blue-100 hover:bg-blue-200 border border-blue-300 rounded"
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  }
+                  
+                  // Handle loading state
+                  if (item.type === 'loading') {
+                    return (
+                      <div key={item.id} className="flex items-center justify-center py-4">
+                        <div className="text-sm text-gray-500">
+                          Claude is thinking...
+                        </div>
+                      </div>
+                    );
+                  }
+                  
+                  // Handle message types (use 'data' property for message data)
+                  if (item.type === 'message' && item.data) {
+                    return (
+                      <SimpleMessageRenderer
+                        key={item.id}
+                        message={item.data}
+                        isStreaming={
+                          state.isStreaming &&
+                          !item.data.metadata?.isComplete
+                        }
+                        onCopy={(content, messageId) => {
+                          navigator.clipboard.writeText(content);
+                        }}
+                      />
+                    );
+                  }
+                  
+                  // Fallback for unknown types
+                  return (
+                    <div key={item.id} className="mb-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <p className="text-sm text-yellow-800">Unknown conversation item type: {item.type}</p>
+                    </div>
+                  );
+                })}
                 <div style={{ height: 1 }} />
               </div>
             </div>
@@ -456,7 +522,7 @@ export const ChatPageDesktop: React.FC = () => {
               permissionMode={state.permissionMode}
               onCyclePermissionMode={cyclePermissionMode}
               conversationId={state.selectedConversationId}
-              messageCount={currentMessages.length}
+              messageCount={conversationItems.length}
             />
           </>
         )}

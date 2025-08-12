@@ -32,17 +32,24 @@ export const useChatPageLogic = () => {
     setSidebarVisible,
     setPermissionMode,
     isNewChat,
+    socket,
+    currentSessionId,
   } = useChatContext();
 
   // Get URL session ID
   const urlSessionId = searchParams.get('sessionId');
 
-  // Interactive prompts (keep existing functionality)
+  // Interactive prompts with session ID and socket
   const {
     pendingPrompts,
     isRespondingToPrompt,
     handlePromptResponse,
-  } = useInteractivePrompts({ conversationId: state.selectedConversationId });
+  } = useInteractivePrompts({ 
+    conversationId: state.selectedConversationId,
+    sessionId: currentSessionId,
+    socket,
+    enableAnalytics: true
+  });
 
   // File upload functionality
   const fileUpload = useFileUpload({
