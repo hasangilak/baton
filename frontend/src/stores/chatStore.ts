@@ -40,7 +40,7 @@ interface ChatState {
   sessionState: {[conversationId: string]: {sessionId?: string; initialized: boolean; pending: boolean}};
   
   // Last message retry data
-  lastMessageData: {content: string; attachments?: any[]; conversationId: string} | null;
+  lastMessageData: {content: string; attachments?: any[]; conversationId: string; permissionMode?: 'default' | 'plan' | 'acceptEdits'} | null;
 }
 
 // Store interface with actions
@@ -328,7 +328,8 @@ export const useChatStore = create<ChatStore>()(
           lastMessageData: {
             content: data.content,
             attachments: data.attachments,
-            conversationId: data.conversationId
+            conversationId: data.conversationId,
+            permissionMode: data.permissionMode
           }
         });
         
@@ -375,6 +376,7 @@ export const useChatStore = create<ChatStore>()(
         attachments: lastMessageData.attachments,
         requestId,
         sessionId: session?.sessionId,
+        permissionMode: lastMessageData.permissionMode,
       });
     },
 

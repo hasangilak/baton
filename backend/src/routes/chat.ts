@@ -190,6 +190,52 @@ router.get('/conversation/:conversationId', async (req: Request, res: Response) 
 });
 
 /**
+ * GET /api/chat/conversations/by-session/:sessionId
+ * Find conversation by Claude session ID
+ */
+router.get('/conversations/by-session/:sessionId', async (req: Request, res: Response) => {
+  try {
+    const sessionId = req.params.sessionId;
+
+    if (!sessionId) {
+      return res.status(400).json({
+        error: 'Session ID is required',
+      });
+    }
+
+    const conversation = await prisma.conversation.findFirst({
+      where: { claudeSessionId: sessionId },
+      select: {
+        id: true,
+        title: true,
+        projectId: true,
+        claudeSessionId: true,
+        contextTokens: true,
+        lastCompacted: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!conversation) {
+      return res.status(404).json({
+        error: 'Conversation not found for this session ID',
+      });
+    }
+
+    return res.json({
+      success: true,
+      conversation,
+    });
+  } catch (error) {
+    console.error('Error fetching conversation by session ID:', error);
+    return res.status(500).json({
+      error: 'Failed to fetch conversation by session ID',
+    });
+  }
+});
+
+/**
  * GET /api/chat/conversation/:conversationId/messages
  * Get all messages for a conversation (used by frontend Zustand store)
  */

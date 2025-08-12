@@ -15,7 +15,7 @@ import { useInteractivePrompts } from './useInteractivePrompts';
 
 export const useChatPageLogic = () => {
   const navigate = useNavigate();
-  const { conversationId } = useParams<{ conversationId?: string }>();
+  const { projectId } = useParams<{ projectId?: string }>();
   const [searchParams] = useSearchParams();
   
   // Use our new chat context
@@ -53,25 +53,8 @@ export const useChatPageLogic = () => {
     }
   });
 
-  // Sync conversation ID from URL params
-  useEffect(() => {
-    if (conversationId !== state.selectedConversationId) {
-      selectConversation(conversationId || null);
-    }
-  }, [conversationId, state.selectedConversationId, selectConversation]);
-
-  // Update URL when conversation changes
-  useEffect(() => {
-    if (state.selectedConversationId) {
-      const sessionId = state.conversationDetails?.claudeSessionId;
-      const url = sessionId 
-        ? `/chat/${state.selectedConversationId}?sessionId=${sessionId}`
-        : `/chat/${state.selectedConversationId}`;
-      navigate(url, { replace: true });
-    } else {
-      navigate('/chat', { replace: true });
-    }
-  }, [state.selectedConversationId, state.conversationDetails?.claudeSessionId, navigate]);
+  // URL navigation is now handled by useChatIntegration.ts
+  // No need for conversation URL sync here since sessionId is the primary identifier
 
   // Greeting helper
   const getGreeting = () => {

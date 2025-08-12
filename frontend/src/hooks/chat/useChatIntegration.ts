@@ -87,28 +87,67 @@ export const useChatIntegration = (projectId: string) => {
     }
   }, [conversationDetails, conversationDetailsFromStore]);
 
-  // Load messages when conversation is selected
+  // Handle two scenarios: new conversation vs existing conversation with sessionId
   useEffect(() => {
-    if (selectedConversationId) {
-      console.log('🔄 Loading messages for conversation:', selectedConversationId);
+    const urlSessionId = searchParams.get('sessionId');
+    
+    if (urlSessionId) {
+      // Scenario 2: Existing conversation - find conversation by sessionId and load messages
+      console.log('🔄 Scenario 2: Loading existing conversation for sessionId:', urlSessionId);
       
-      const loadMessagesWithSession = async () => {
+      const loadExistingConversation = async () => {
+        try {
+          const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+          const response = await fetch(`${API_BASE_URL}/api/chat/conversations/by-session/${urlSessionId}`);
+          
+          if (response.ok) {
+            const result = await response.json();
+            const conversation = result.conversation;
+            
+            console.log('✅ Found conversation for session:', conversation.id);
+            
+            // Set up the conversation and session state
+            const store = useChatStore.getState();
+            store.selectConversation(conversation.id);
+            store.setConversationDetails(conversation);
+            store.setSessionState(conversation.id, {
+              sessionId: urlSessionId,
+              initialized: true,
+              pending: false
+            });
+            
+            // Load messages for this conversation
+            await store.fetchAndLoadMessages(conversation.id);
+          } else {
+            console.error('❌ Conversation not found for sessionId:', urlSessionId);
+            // Could handle this by creating a new conversation or showing an error
+          }
+        } catch (error) {
+          console.error('❌ Error loading conversation by sessionId:', error);
+        }
+      };
+      
+      loadExistingConversation();
+    } else if (selectedConversationId) {
+      // Scenario 1: New conversation - don't load messages, just set up session when available
+      console.log('🔄 Scenario 1: New conversation for conversationId:', selectedConversationId);
+      
+      const setupNewConversation = async () => {
         const store = useChatStore.getState();
         
-        // First, try to initialize session if we don't have one
+        // Only initialize session if we don't have one yet
         const currentSession = store.sessionState[selectedConversationId];
         if (!currentSession?.sessionId && !currentSession?.pending) {
-          console.log('🆔 No session found, attempting to initialize session for conversation:', selectedConversationId);
+          console.log('🆔 Setting up new conversation session for:', selectedConversationId);
           await store.initializeSession(selectedConversationId);
         }
         
-        // Then load messages (will use session ID if available)
-        await store.fetchAndLoadMessages(selectedConversationId);
+        // For new conversations, DO NOT load messages - they will come from Claude responses
       };
       
-      loadMessagesWithSession();
+      setupNewConversation();
     }
-  }, [selectedConversationId]);
+  }, [selectedConversationId, searchParams]);
 
   // Enhanced conversation management that integrates with mutations
   const createConversation = async (title?: string): Promise<string | null> => {
@@ -196,6 +235,7 @@ export const useChatIntegration = (projectId: string) => {
         attachments,
         requestId,
         sessionId: session?.sessionId, // Include session ID when available
+        permissionMode, // Include current permission mode
       });
       
       useChatStore.getState().setInputValue('');
