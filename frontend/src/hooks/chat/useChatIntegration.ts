@@ -92,14 +92,17 @@ export const useChatIntegration = (projectId: string) => {
     deleteConversation: deleteConversationMutation,
   } = useConversations(projectId);
 
-  const { data: conversationDetails, refetch: refetchConversation } = useConversation(selectedConversationId);
-
-  // Sync conversation details with store when they change
+  // Note: After migration, selectedConversationId is actually projectId
+  // We don't need individual conversation details since we work with projects directly
+  // Individual conversations are managed within the project context
+  
+  // Sync project details as conversation details for backward compatibility
   useEffect(() => {
-    if (conversationDetails !== conversationDetailsFromStore) {
-      useChatStore.getState().setConversationDetails(conversationDetails);
+    // Clear conversation details since we're working with project-level context
+    if (conversationDetailsFromStore !== null) {
+      useChatStore.getState().setConversationDetails(null);
     }
-  }, [conversationDetails, conversationDetailsFromStore]);
+  }, [conversationDetailsFromStore]);
 
   // Extract sessionId outside useEffect to prevent unnecessary re-renders
   const urlSessionId = searchParams.get('sessionId');
