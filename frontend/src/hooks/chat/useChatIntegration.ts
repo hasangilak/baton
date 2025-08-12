@@ -91,6 +91,28 @@ export const useChatIntegration = (projectId: string) => {
   // Extract sessionId outside useEffect to prevent unnecessary re-renders
   const urlSessionId = searchParams.get('sessionId');
   
+  // Create effective session ID resolver with URL priority
+  const getEffectiveSessionId = useCallback((conversationId: string | null): string | null => {
+    if (!conversationId) return null;
+    
+    // 1. URL sessionId takes highest priority (for resume scenarios)
+    if (urlSessionId) {
+      console.log('🔗 Using URL sessionId (priority 1):', urlSessionId);
+      return urlSessionId;
+    }
+    
+    // 2. Stored sessionState as fallback (for continued conversations)
+    const storedSessionId = sessionState[conversationId]?.sessionId;
+    if (storedSessionId) {
+      console.log('💾 Using stored sessionId (priority 2):', storedSessionId);
+      return storedSessionId;
+    }
+    
+    // 3. No sessionId available
+    console.log('🚫 No sessionId available for conversation:', conversationId);
+    return null;
+  }, [urlSessionId, sessionState]);
+  
   // Track processed sessionId to prevent duplicate API calls
   const processedSessionRef = useRef<string | null>(null);
 
@@ -199,13 +221,16 @@ export const useChatIntegration = (projectId: string) => {
         console.log('✅ [DEBUG] Created new conversation:', conversationId);
       }
       
-      // Get session information
+      // Get effective session information (URL sessionId takes priority)
+      const effectiveSessionId = getEffectiveSessionId(conversationId);
       const session = sessionState[conversationId];
       const isFirstMessage = messages.length === 0;
       
       console.log('🔍 [DEBUG] Session info:', {
         conversationId,
-        sessionId: session?.sessionId,
+        urlSessionId,
+        storedSessionId: session?.sessionId,
+        effectiveSessionId,
         isFirstMessage,
         sessionReady: useChatStore.getState().isSessionReady(conversationId),
         sessionPending: useChatStore.getState().isSessionPending(conversationId),
@@ -222,7 +247,7 @@ export const useChatIntegration = (projectId: string) => {
       
       console.log('🔍 [DEBUG] Sending message via WebSocket:', {
         conversationId,
-        sessionId: session?.sessionId,
+        effectiveSessionId,
         requestId,
         isFirstMessage,
       });
@@ -232,7 +257,7 @@ export const useChatIntegration = (projectId: string) => {
         content: content, // Backend expects 'content', not 'message'
         attachments,
         requestId,
-        sessionId: session?.sessionId, // Include session ID when available
+        sessionId: effectiveSessionId, // Use effective sessionId (URL priority)
         permissionMode, // Include current permission mode
       });
       
@@ -327,7 +352,7 @@ export const useChatIntegration = (projectId: string) => {
     
     // Session management
     sessionState: sessionState,
-    currentSessionId: sessionState[selectedConversationId]?.sessionId || null,
+    currentSessionId: getEffectiveSessionId(selectedConversationId),
     isSessionReady: useChatStore.getState().isSessionReady,
     isSessionPending: useChatStore.getState().isSessionPending,
     initializeSession: useChatStore.getState().initializeSession,

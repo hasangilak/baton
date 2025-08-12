@@ -86,6 +86,32 @@ export class ClaudeSDK {
         const timeSinceLastMessage = now - lastMessageTime;
         lastMessageTime = now;
 
+        // Enhanced logging for session ID tracking
+        if (sdkMessage.session_id) {
+          if (sessionId && sessionId !== sdkMessage.session_id) {
+            contextLogger.warn('🚨 Claude returned DIFFERENT session ID than requested', {
+              requestedSessionId: sessionId,
+              claudeReturnedSessionId: sdkMessage.session_id,
+              messageType: sdkMessage.type,
+              messageCount,
+              resumeAttempted: !!sessionId
+            });
+          } else if (sessionId && sessionId === sdkMessage.session_id) {
+            contextLogger.info('✅ Claude returned SAME session ID as requested', {
+              sessionId: sdkMessage.session_id,
+              messageType: sdkMessage.type,
+              messageCount,
+              resumeSuccessful: true
+            });
+          } else if (!sessionId) {
+            contextLogger.info('🆕 Claude created new session ID', {
+              newSessionId: sdkMessage.session_id,
+              messageType: sdkMessage.type,
+              messageCount
+            });
+          }
+        }
+
         // Log message details
         this.logMessage(sdkMessage, messageCount, requestId, timeSinceLastMessage);
 
@@ -184,6 +210,16 @@ export class ClaudeSDK {
     // Add session resume if provided
     if (sessionId && sessionId.trim() !== "") {
       claudeOptions.resume = sessionId;
+      this.logger.info('🔄 Setting Claude resume sessionId', { 
+        sessionId, 
+        requestId: request.requestId,
+        projectId: request.projectId
+      });
+    } else {
+      this.logger.info('🆕 New Claude session (no sessionId to resume)', { 
+        requestId: request.requestId,
+        projectId: request.projectId
+      });
     }
 
     // Add working directory

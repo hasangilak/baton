@@ -37,7 +37,7 @@ interface ChatState {
   bridgeServiceError: boolean;
   
   // Session state for Claude Code continuity
-  sessionState: {[conversationId: string]: {sessionId?: string; initialized: boolean; pending: boolean}};
+  sessionState: {[conversationId: string]: {sessionId?: string; initialized: boolean; pending: boolean; source?: 'url-resume' | 'claude-new' | 'manual'}};
   
   // Last message retry data
   lastMessageData: {content: string; attachments?: any[]; conversationId: string; permissionMode?: 'default' | 'plan' | 'acceptEdits'} | null;
@@ -58,7 +58,7 @@ interface ChatStore extends ChatState {
   setCreatingConversation: (creating: boolean) => void;
   setError: (error: string | null) => void;
   setBridgeServiceError: (error: boolean) => void;
-  setSessionState: (conversationId: string, sessionData: {sessionId?: string; initialized: boolean; pending: boolean}) => void;
+  setSessionState: (conversationId: string, sessionData: {sessionId?: string; initialized: boolean; pending: boolean; source?: 'url-resume' | 'claude-new' | 'manual'}) => void;
   
   // Complex actions
   selectConversation: (id: string | null) => void;
@@ -165,7 +165,7 @@ export const useChatStore = create<ChatStore>()(
     setBridgeServiceError: (bridgeServiceError: boolean) => 
       set({ bridgeServiceError }),
     
-    setSessionState: (conversationId: string, sessionData: {sessionId?: string; initialized: boolean; pending: boolean}) =>
+    setSessionState: (conversationId: string, sessionData: {sessionId?: string; initialized: boolean; pending: boolean; source?: 'url-resume' | 'claude-new' | 'manual'}) =>
       set((state) => ({
         sessionState: {
           ...state.sessionState,
@@ -209,7 +209,8 @@ export const useChatStore = create<ChatStore>()(
       // Set pending
       setSessionState(conversationId, {
         initialized: false,
-        pending: true
+        pending: true,
+        source: 'manual' // Manual session initialization
       });
 
       try {
@@ -224,7 +225,8 @@ export const useChatStore = create<ChatStore>()(
             setSessionState(conversationId, {
               sessionId: conversation.claudeSessionId,
               initialized: true,
-              pending: false
+              pending: false,
+              source: 'manual' // Session retrieved from database
             });
             
             return conversation.claudeSessionId;
@@ -237,7 +239,8 @@ export const useChatStore = create<ChatStore>()(
       // Clear pending on failure
       setSessionState(conversationId, {
         initialized: false,
-        pending: false
+        pending: false,
+        source: 'manual' // Failed manual initialization
       });
       
       return null;
@@ -283,7 +286,8 @@ export const useChatStore = create<ChatStore>()(
               get().setSessionState(conversation.id, {
                 sessionId: sessionId,
                 initialized: true,
-                pending: false
+                pending: false,
+                source: 'url-resume' // This session was loaded from URL for resuming
               });
             }
           }
@@ -533,20 +537,48 @@ export const useChatStore = create<ChatStore>()(
       const handleSessionAvailable = (data: any) => {
         const currentState = get();
         if (data.conversationId === currentState.selectedConversationId) {
-          // Update conversation details with session ID
-          setConversationDetails({
-            ...currentState.conversationDetails,
-            claudeSessionId: data.sessionId
-          });
+          const currentSession = currentState.sessionState[data.conversationId];
+          const hasExistingSessionId = currentSession?.sessionId && currentSession.initialized;
           
-          // Update session state to mark as initialized
-          get().setSessionState(data.conversationId, {
-            sessionId: data.sessionId,
-            initialized: true,
-            pending: false
-          });
-          
-          console.log('💬 Session available and state updated:', data.sessionId);
+          // Only update sessionId if we don't already have one (new conversations)
+          // For resume conversations, preserve the original URL sessionId
+          if (!hasExistingSessionId) {
+            console.log('💬 New conversation - setting session ID:', data.sessionId);
+            
+            // Update conversation details with session ID
+            setConversationDetails({
+              ...currentState.conversationDetails,
+              claudeSessionId: data.sessionId
+            });
+            
+            // Update session state for new conversations
+            get().setSessionState(data.conversationId, {
+              sessionId: data.sessionId,
+              initialized: true,
+              pending: false,
+              source: 'claude-new' // New session created by Claude Code
+            });
+            
+            console.log('💬 Session available and state updated:', data.sessionId);
+          } else {
+            console.log('💬 Resume conversation - preserving existing session ID:', currentSession.sessionId, 'ignoring Claude session ID:', data.sessionId);
+            
+            // Update conversation details but preserve our sessionId
+            setConversationDetails({
+              ...currentState.conversationDetails,
+              claudeSessionId: currentSession.sessionId // Use our existing sessionId
+            });
+            
+            // Just mark as initialized if not already
+            if (!currentSession.initialized) {
+              get().setSessionState(data.conversationId, {
+                sessionId: currentSession.sessionId, // Keep our existing sessionId
+                initialized: true,
+                pending: false,
+                source: currentSession.source || 'url-resume' // Preserve source or default to url-resume
+              });
+            }
+          }
           
           // Clear session-related errors only (not bridge service errors)
           if (currentState.error && !currentState.bridgeServiceError) {
