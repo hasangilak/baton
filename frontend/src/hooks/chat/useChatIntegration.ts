@@ -22,7 +22,8 @@ import {
   useShowSidebar,
   usePermissionMode,
   useInputValue,
-  useSessionState
+  useSessionState,
+  useBridgeServiceError
 } from '../../stores/chatStore';
 import { useSocketStore } from '../../stores/socketStore';
 import { useConversations, useConversation } from './useConversations';
@@ -48,6 +49,7 @@ export const useChatIntegration = (projectId: string) => {
   const inputValue = useInputValue();
   
   const sessionState = useSessionState();
+  const bridgeServiceError = useBridgeServiceError();
   
   // Get socket connection state
   const isConnected = useSocketStore((state) => state.isConnected);
@@ -67,6 +69,7 @@ export const useChatIntegration = (projectId: string) => {
     permissionMode,
     inputValue,
     isConnected,
+    bridgeServiceError,
   };
 
   // Get conversation management hooks
@@ -248,6 +251,12 @@ export const useChatIntegration = (projectId: string) => {
     return useChatStore.getState().isNewChat();
   }, [selectedConversationId, messages.length, optimisticUserMessage, isStreaming]);
 
+  // Bridge service retry function
+  const retryBridgeMessage = () => {
+    console.log('🔄 Attempting to retry bridge message');
+    return useChatStore.getState().retryLastMessage();
+  };
+
   // Return a ChatContext-compatible interface
   return {
     // State
@@ -271,6 +280,9 @@ export const useChatIntegration = (projectId: string) => {
     isSessionReady: useChatStore.getState().isSessionReady,
     isSessionPending: useChatStore.getState().isSessionPending,
     initializeSession: useChatStore.getState().initializeSession,
+    
+    // Bridge service management
+    retryBridgeMessage,
     
     // UI actions
     setInputValue: useChatStore.getState().setInputValue,

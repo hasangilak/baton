@@ -36,9 +36,13 @@ interface ChatState {
   
   // Error state
   error: string | null;
+  bridgeServiceError: boolean;
   
   // Session state for Claude Code continuity
   sessionState: {[conversationId: string]: {sessionId?: string; initialized: boolean; pending: boolean}};
+  
+  // Last message retry data
+  lastMessageData: {content: string; attachments?: any[]; conversationId: string} | null;
 }
 
 // Store interface with actions
@@ -55,6 +59,7 @@ interface ChatStore extends ChatState {
   setLoadingMessages: (loading: boolean) => void;
   setCreatingConversation: (creating: boolean) => void;
   setError: (error: string | null) => void;
+  setBridgeServiceError: (error: boolean) => void;
   setSessionState: (conversationId: string, sessionData: {sessionId?: string; initialized: boolean; pending: boolean}) => void;
   
   // Complex actions
@@ -75,6 +80,7 @@ interface ChatStore extends ChatState {
   joinConversationWithSession: (conversationId: string) => Promise<void>;
   sendWebSocketMessage: (data: any) => void;
   abortMessage: () => void;
+  retryLastMessage: () => void;
   
   // Computed values
   isNewChat: () => boolean;
@@ -98,7 +104,9 @@ const initialState: ChatState = {
   isLoadingMessages: false,
   isCreatingConversation: false,
   error: null,
+  bridgeServiceError: false,
   sessionState: {},
+  lastMessageData: null,
 };
 
 export const useChatStore = create<ChatStore>()(
@@ -139,6 +147,9 @@ export const useChatStore = create<ChatStore>()(
     setError: (error: string | null) => 
       set({ error }),
     
+    setBridgeServiceError: (bridgeServiceError: boolean) => 
+      set({ bridgeServiceError }),
+    
     setSessionState: (conversationId: string, sessionData: {sessionId?: string; initialized: boolean; pending: boolean}) =>
       set((state) => ({
         sessionState: {
@@ -156,7 +167,7 @@ export const useChatStore = create<ChatStore>()(
       });
     },
     
-    clearError: () => set({ error: null }),
+    clearError: () => set({ error: null, bridgeServiceError: false }),
     
     resetState: () => set({ ...initialState }),
 
@@ -170,7 +181,7 @@ export const useChatStore = create<ChatStore>()(
     isSessionPending: (conversationId: string) => {
       const { sessionState } = get();
       const session = sessionState[conversationId];
-      return session?.pending || false;
+      return Boolean(session?.pending);
     },
     
     initializeSession: async (conversationId: string) => {
@@ -266,6 +277,15 @@ export const useChatStore = create<ChatStore>()(
       const { socket, isConnected, emit } = socketStore;
       
       if (socket && isConnected) {
+        // Store last message data for potential retry
+        set({ 
+          lastMessageData: {
+            content: data.content,
+            attachments: data.attachments,
+            conversationId: data.conversationId
+          }
+        });
+        
         emit('chat:send-message', data);
         console.log('📤 Sent WebSocket message:', data);
       } else {
@@ -281,6 +301,36 @@ export const useChatStore = create<ChatStore>()(
         emit('chat:abort');
         console.log('⏹️ Aborted current message');
       }
+    },
+    
+    retryLastMessage: () => {
+      const { lastMessageData, bridgeServiceError } = get();
+      
+      if (!lastMessageData) {
+        console.log('⚠️ No last message data available for retry');
+        return;
+      }
+      
+      if (bridgeServiceError) {
+        // Clear bridge service error before retry
+        get().setBridgeServiceError(false);
+        get().setError(null);
+      }
+      
+      console.log('🔄 Retrying last message:', lastMessageData);
+      
+      // Recreate the message request data
+      const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const { sessionState } = get();
+      const session = sessionState[lastMessageData.conversationId];
+      
+      get().sendWebSocketMessage({
+        conversationId: lastMessageData.conversationId,
+        content: lastMessageData.content,
+        attachments: lastMessageData.attachments,
+        requestId,
+        sessionId: session?.sessionId,
+      });
     },
 
     // Computed values
@@ -402,10 +452,24 @@ export const useChatStore = create<ChatStore>()(
         }
       };
 
-      // Error handler
+      // Enhanced error handler with bridge service detection
       const handleError = (data: any) => {
         setStreamingState(false, null);
-        setError(data.error);
+        
+        // Clear optimistic message on any error
+        setOptimisticMessage(null);
+        
+        // Check if this is a bridge service error
+        const isBridgeError = data.error && data.error.includes('No bridge service connected');
+        
+        if (isBridgeError) {
+          console.log('🌉 Bridge service disconnected, setting bridge error state');
+          get().setBridgeServiceError(true);
+          setError('Bridge service required for Claude Code integration');
+        } else {
+          get().setBridgeServiceError(false);
+          setError(data.error);
+        }
       };
 
       // Abort handler
@@ -448,6 +512,7 @@ export const usePermissionMode = () => useChatStore((state) => state.permissionM
 export const useInputValue = () => useChatStore((state) => state.inputValue);
 
 export const useSessionState = () => useChatStore((state) => state.sessionState);
+export const useBridgeServiceError = () => useChatStore((state) => state.bridgeServiceError);
 
 // DEPRECATED: Use individual selectors or direct store access instead
 // These composite selectors create new objects on every call and cause infinite loops

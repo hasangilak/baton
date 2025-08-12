@@ -9,6 +9,7 @@ import { SimpleMessageRenderer } from "../messages/SimpleMessageRenderer";
 import { SessionStatusIndicator } from "../shared/SessionStatusIndicator";
 import { SessionErrorBanner } from "../shared/SessionErrorBanner";
 import { ConnectionStatusIndicator, ConnectionLostBanner } from "../shared/ConnectionStatusIndicator";
+import { BridgeServiceBanner, BridgeServiceIndicator } from "../shared/BridgeServiceBanner";
 import { useChatIntegration } from "../../../hooks/chat/useChatIntegration";
 import { useParams } from 'react-router-dom';
 import { useFileUpload } from "../../../hooks/useFileUpload";
@@ -36,6 +37,10 @@ export const ChatPageDesktop: React.FC = () => {
     isSessionReady,
     isSessionPending,
     initializeSession,
+    // Bridge service management
+    retryBridgeMessage,
+    // Utility
+    clearError,
   } = useChatIntegration(projectId || '');
 
   const fileUpload = useFileUpload({
@@ -334,6 +339,10 @@ export const ChatPageDesktop: React.FC = () => {
               
               <div className="flex items-center gap-3">
                 <ConnectionStatusIndicator compact />
+                <BridgeServiceIndicator 
+                  isError={state.bridgeServiceError} 
+                  onClick={() => console.log('Bridge service indicator clicked')} 
+                />
                 <SessionStatusIndicator 
                   conversationId={state.selectedConversationId}
                 />
@@ -348,6 +357,18 @@ export const ChatPageDesktop: React.FC = () => {
                   onRetry={() => {
                     // Unified WebSocket will handle automatic reconnection
                     console.log('Manual retry requested');
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Bridge service error banner */}
+            {state.bridgeServiceError && (
+              <div className="p-4 bg-[#1E1F22]">
+                <BridgeServiceBanner
+                  onRetry={retryBridgeMessage}
+                  onDismiss={() => {
+                    clearError();
                   }}
                 />
               </div>
