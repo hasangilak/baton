@@ -388,8 +388,14 @@ export const useChatStore = create<ChatStore>()(
             claudeSessionId: data.sessionId
           });
           
-          // Note: URL updates will need to be handled externally
-          console.log('💬 Session available:', data.sessionId);
+          // Update session state to mark as initialized
+          get().setSessionState(data.conversationId, {
+            sessionId: data.sessionId,
+            initialized: true,
+            pending: false
+          });
+          
+          console.log('💬 Session available and state updated:', data.sessionId);
           
           // Clear any session-related errors
           get().clearError();
