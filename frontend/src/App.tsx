@@ -1,11 +1,10 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Layout } from './components/layout/Layout';
 import { AppRouter } from './components/router';
 import { queryClient } from './lib/queryClient';
 import { useProjects } from './hooks/useProjects';
-import { SocketProvider, useSocket } from './contexts/SocketContext';
 import { ToastProvider } from './hooks/useToast';
 import { ThemeProvider } from './hooks/useTheme';
 
@@ -15,28 +14,16 @@ interface AppContentProps {
 }
 
 function AppContent({ activeProjectId, setCurrentProjectId }: AppContentProps) {
-
-  // Use the new SocketContext
-  const { isConnected, isConnecting, error } = useSocket();
-
   // Memoized sync handler to prevent unnecessary re-renders
   const handleSync = useCallback(() => {
     // This could trigger a sync modal or action
     console.log('Sync requested');
   }, []);
 
-  // Memoized websocket status to prevent object recreation
-  const websocketStatus = useMemo(() => ({
-    connected: isConnected,
-    connecting: isConnecting,
-    error
-  }), [isConnected, isConnecting, error]);
-
   return (
     <Layout
       currentProjectId={activeProjectId}
       onProjectChange={setCurrentProjectId}
-      websocketStatus={websocketStatus}
     >
       <div className="h-full flex flex-col">
         {/* Router content */}
@@ -51,7 +38,7 @@ function AppContent({ activeProjectId, setCurrentProjectId }: AppContentProps) {
   );
 }
 
-function App() {
+function AppWrapper() {
   const { data: projects } = useProjects();
   const [currentProjectId, setCurrentProjectId] = useState<string>('');
 
@@ -59,16 +46,20 @@ function App() {
   const activeProjectId = currentProjectId || projects?.[0]?.id || '';
 
   return (
+    <AppContent 
+      activeProjectId={activeProjectId}
+      setCurrentProjectId={setCurrentProjectId}
+    />
+  );
+}
+
+function App() {
+  return (
     <BrowserRouter>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
           <ToastProvider>
-            <SocketProvider autoConnect={true} activeProjectId={activeProjectId}>
-              <AppContent 
-                activeProjectId={activeProjectId}
-                setCurrentProjectId={setCurrentProjectId}
-              />
-            </SocketProvider>
+            <AppWrapper />
           </ToastProvider>
         </ThemeProvider>
       </QueryClientProvider>

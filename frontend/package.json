@@ -40,7 +40,8 @@
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^4.1.11",
     "unified": "^11.0.5",
-    "unist-util-visit": "^5.0.0"
+    "unist-util-visit": "^5.0.0",
+    "zustand": "^5.0.7"
   },
   "devDependencies": {
     "@eslint/js": "^9.30.1",

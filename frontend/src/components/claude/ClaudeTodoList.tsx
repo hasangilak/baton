@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   CheckCircle2,
   Circle,
@@ -10,13 +10,17 @@ import {
   ExternalLink,
   FileText,
   Eye,
-  Trash2
-} from 'lucide-react';
-import clsx from 'clsx';
-import type { ClaudeTodo } from '../../types';
-import { useClaudeTodos, useDeleteClaudeTodo } from '../../hooks/useClaudeTodos';
-import { useClaudeModal } from '../../hooks/useClaudeModal';
-import { ClaudeTodoModal } from './ClaudeTodoModal';
+  Trash2,
+} from "lucide-react";
+import clsx from "clsx";
+import type { ClaudeTodo } from "../../types";
+import {
+  useClaudeTodos,
+  useDeleteClaudeTodo,
+} from "../../hooks/useClaudeTodos";
+import { useClaudeModal } from "../../hooks/useClaudeModal";
+import { ClaudeTodoModal } from "./ClaudeTodoModal";
+import { useSocketStore } from "../../stores/socketStore";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,7 +30,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+} from "@/components/ui/alert-dialog";
 
 interface ClaudeTodoListProps {
   projectId: string;
@@ -40,38 +44,36 @@ const statusIcons = {
 };
 
 const priorityColors = {
-  high: 'text-red-500 bg-red-50 border-red-200',
-  medium: 'text-yellow-500 bg-yellow-50 border-yellow-200',
-  low: 'text-green-500 bg-green-50 border-green-200',
+  high: "text-red-500 bg-red-50 border-red-200",
+  medium: "text-yellow-500 bg-yellow-50 border-yellow-200",
+  low: "text-green-500 bg-green-50 border-green-200",
 };
 
 const statusColors = {
-  pending: 'text-gray-500',
-  in_progress: 'text-blue-500',
-  completed: 'text-green-500',
+  pending: "text-gray-500",
+  in_progress: "text-blue-500",
+  completed: "text-green-500",
 };
 
 export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
   projectId,
-  onSync
+  onSync,
 }) => {
   const { data: todosResponse, isLoading, refetch } = useClaudeTodos(projectId);
   const deleteTodoMutation = useDeleteClaudeTodo();
   const [selectedTodos, setSelectedTodos] = useState<string[]>([]);
   const [deletingTodo, setDeletingTodo] = useState<ClaudeTodo | null>(null);
 
+  // Note: We'll get on/off directly in useEffect to avoid dependency issues
+
   // Modal state management
-  const {
-    selectedTodo,
-    isTodoModalOpen,
-    openTodoModal,
-    closeTodoModal
-  } = useClaudeModal();
+  const { selectedTodo, isTodoModalOpen, openTodoModal, closeTodoModal } =
+    useClaudeModal();
 
   const [localTodos, setLocalTodos] = useState<ClaudeTodo[]>([]);
 
   // Use WebSocket data if available, otherwise fall back to React Query data
-  const todos = localTodos.length > 0 ? localTodos : (todosResponse?.todos ?? []);
+  const todos = localTodos.length > 0 ? localTodos : todosResponse?.todos ?? [];
 
   // Sync local todos with React Query data when it changes
   useEffect(() => {
@@ -79,88 +81,110 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
       setLocalTodos(todosResponse.todos);
     }
   }, [todosResponse?.todos]);
-
+  const { on, off } = useSocketStore.getState();
   // WebSocket event listeners for real-time updates
   useEffect(() => {
+    // Get socket actions directly from store to avoid dependency issues
     if (!on || !off) return;
 
-    const handleBatchUpdate = (data: { projectId: string; todos: ClaudeTodo[]; action: string }) => {
-      console.log('🤖 ClaudeTodoList received batch update:', data);
+    const handleBatchUpdate = (data: {
+      projectId: string;
+      todos: ClaudeTodo[];
+      action: string;
+    }) => {
+      console.log("🤖 ClaudeTodoList received batch update:", data);
       if (data.projectId === projectId && data.todos) {
         setLocalTodos(data.todos);
       }
     };
 
     const handleTodoCreated = (todo: ClaudeTodo) => {
-      console.log('🤖 ClaudeTodoList received todo created:', todo);
+      console.log("🤖 ClaudeTodoList received todo created:", todo);
       if (todo.projectId === projectId) {
-        setLocalTodos(prev => [...prev, todo]);
+        setLocalTodos((prev) => [...prev, todo]);
       }
     };
 
     const handleTodoUpdated = (todo: ClaudeTodo) => {
-      console.log('🤖 ClaudeTodoList received todo updated:', todo);
+      console.log("🤖 ClaudeTodoList received todo updated:", todo);
       if (todo.projectId === projectId) {
-        setLocalTodos(prev => prev.map(t => t.id === todo.id ? todo : t));
+        setLocalTodos((prev) => prev.map((t) => (t.id === todo.id ? todo : t)));
       }
     };
 
-    const handleTodoDeleted = (data: { projectId: string; todoId: string; deletedTodo: any }) => {
-      console.log('🤖 ClaudeTodoList received todo deleted:', data);
+    const handleTodoDeleted = (data: {
+      projectId: string;
+      todoId: string;
+      deletedTodo: any;
+    }) => {
+      console.log("🤖 ClaudeTodoList received todo deleted:", data);
       if (data.projectId === projectId) {
-        setLocalTodos(prev => prev.filter(t => t.id !== data.todoId));
+        setLocalTodos((prev) => prev.filter((t) => t.id !== data.todoId));
       }
     };
 
-    const handleSyncToTasks = (data: { projectId: string; syncedTasks: any[]; action: string }) => {
-      console.log('🤖 ClaudeTodoList received sync to tasks:', data);
+    const handleSyncToTasks = (data: {
+      projectId: string;
+      syncedTasks: any[];
+      action: string;
+    }) => {
+      console.log("🤖 ClaudeTodoList received sync to tasks:", data);
       if (data.projectId === projectId) {
         // Refetch todos to get updated sync status
         refetch();
       }
     };
 
-    const handleSyncFromTasks = (data: { projectId: string; syncedTodos: ClaudeTodo[]; action: string }) => {
-      console.log('🤖 ClaudeTodoList received sync from tasks:', data);
+    const handleSyncFromTasks = (data: {
+      projectId: string;
+      syncedTodos: ClaudeTodo[];
+      action: string;
+    }) => {
+      console.log("🤖 ClaudeTodoList received sync from tasks:", data);
       if (data.projectId === projectId) {
         // Refetch todos to get the complete updated list
         refetch();
       }
     };
 
-    const handleMCPOperation = (data: { projectId: string; operation: string; count: number; action: string }) => {
-      console.log('🤖 ClaudeTodoList received MCP operation:', data);
-      if (data.projectId === projectId && data.operation === 'TodoWrite') {
+    const handleMCPOperation = (data: {
+      projectId: string;
+      operation: string;
+      count: number;
+      action: string;
+    }) => {
+      console.log("🤖 ClaudeTodoList received MCP operation:", data);
+      if (data.projectId === projectId && data.operation === "TodoWrite") {
         // MCP TodoWrite operation completed, refetch todos to get updated data
         refetch();
       }
     };
 
     // Register WebSocket event listeners
-    on('claude-todos-batch-updated', handleBatchUpdate);
-    on('claude-todo-created', handleTodoCreated);
-    on('claude-todo-updated', handleTodoUpdated);
-    on('claude-todo-deleted', handleTodoDeleted);
-    on('claude-todos-synced-to-tasks', handleSyncToTasks);
-    on('claude-tasks-synced-to-todos', handleSyncFromTasks);
-    on('claude-mcp-operation-completed', handleMCPOperation);
+    on("claude-todos-batch-updated", handleBatchUpdate);
+    on("claude-todo-created", handleTodoCreated);
+    on("claude-todo-updated", handleTodoUpdated);
+    on("claude-todo-deleted", handleTodoDeleted);
+    on("claude-todos-synced-to-tasks", handleSyncToTasks);
+    on("claude-tasks-synced-to-todos", handleSyncFromTasks);
+    on("claude-mcp-operation-completed", handleMCPOperation);
 
     // Cleanup event listeners on unmount
     return () => {
-      off('claude-todos-batch-updated', handleBatchUpdate);
-      off('claude-todo-created', handleTodoCreated);
-      off('claude-todo-updated', handleTodoUpdated);
-      off('claude-todo-deleted', handleTodoDeleted);
-      off('claude-todos-synced-to-tasks', handleSyncToTasks);
-      off('claude-tasks-synced-to-todos', handleSyncFromTasks);
-      off('claude-mcp-operation-completed', handleMCPOperation);
+      off("claude-todos-batch-updated", handleBatchUpdate);
+      off("claude-todo-created", handleTodoCreated);
+      off("claude-todo-updated", handleTodoUpdated);
+      off("claude-todo-deleted", handleTodoDeleted);
+      off("claude-todos-synced-to-tasks", handleSyncToTasks);
+      off("claude-tasks-synced-to-todos", handleSyncFromTasks);
+      off("claude-mcp-operation-completed", handleMCPOperation);
     };
-  }, [on, off, projectId, refetch]);
+  }, [projectId, refetch]); // Removed on/off from dependencies to prevent infinite loops
 
   const handleTodoSelect = (todoId: string) => {
-    setSelectedTodos(prev =>
+    setSelectedTodos((prev) =>
       prev.includes(todoId)
-        ? prev.filter(id => id !== todoId)
+        ? prev.filter((id) => id !== todoId)
         : [...prev, todoId]
     );
   };
@@ -184,11 +208,11 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
       <div
         key={todo.id}
         className={clsx(
-          'group flex items-start space-x-3 p-3 md:p-4 rounded-lg border transition-all duration-200',
-          'min-h-[80px] md:min-h-auto', // Touch-friendly minimum height
+          "group flex items-start space-x-3 p-3 md:p-4 rounded-lg border transition-all duration-200",
+          "min-h-[80px] md:min-h-auto", // Touch-friendly minimum height
           isSelected
-            ? 'bg-blue-50 border-blue-200'
-            : 'bg-white border-gray-200 hover:border-gray-300'
+            ? "bg-blue-50 border-blue-200"
+            : "bg-white border-gray-200 hover:border-gray-300"
         )}
         data-testid={`claude-todo-item-${todo.id}`}
       >
@@ -198,26 +222,34 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
               <div className="flex items-center space-x-3 mb-6">
                 <StatusIcon
                   className={clsx(
-                    'w-5 h-5 md:w-5 md:h-5 transition-colors duration-200',
+                    "w-5 h-5 md:w-5 md:h-5 transition-colors duration-200",
                     statusColors[todo.status]
                   )}
                   onClick={() => handleTodoSelect(todo.id)}
                 />
-                <p className={clsx(
-                  'text-sm md:text-base font-medium leading-tight',
-                  todo.status === 'completed' ? 'line-through text-gray-500' : 'text-gray-900'
-                )}>
+                <p
+                  className={clsx(
+                    "text-sm md:text-base font-medium leading-tight",
+                    todo.status === "completed"
+                      ? "line-through text-gray-500"
+                      : "text-gray-900"
+                  )}
+                >
                   {todo.content}
                 </p>
               </div>
               <div className="flex items-center flex-wrap gap-2 md:gap-4 mt-2">
-                <span className={clsx(
-                  'inline-flex items-center px-2 py-1 rounded-md text-xs font-medium border',
-                  priorityColors[todo.priority]
-                )}>
+                <span
+                  className={clsx(
+                    "inline-flex items-center px-2 py-1 rounded-md text-xs font-medium border",
+                    priorityColors[todo.priority]
+                  )}
+                >
                   <AlertCircle className="w-3 h-3 mr-1" />
                   <span className="hidden sm:inline">{todo.priority}</span>
-                  <span className="sm:hidden">{todo.priority.charAt(0).toUpperCase()}</span>
+                  <span className="sm:hidden">
+                    {todo.priority.charAt(0).toUpperCase()}
+                  </span>
                 </span>
 
                 <span className="text-xs text-gray-500 hidden md:inline">
@@ -236,7 +268,9 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
                 {todo.linkedPlan && (
                   <div className="flex items-center space-x-1 text-xs text-purple-600">
                     <FileText className="w-3 h-3" />
-                    <span className="hidden sm:inline">Plan: {todo.linkedPlan.title}</span>
+                    <span className="hidden sm:inline">
+                      Plan: {todo.linkedPlan.title}
+                    </span>
                     <span className="sm:hidden">Planned</span>
                   </div>
                 )}
@@ -268,16 +302,22 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
         </div>
 
         {/* Delete Confirmation Modal */}
-        <AlertDialog open={deletingTodo?.id === todo.id} onOpenChange={(open) => !open && setDeletingTodo(null)}>
+        <AlertDialog
+          open={deletingTodo?.id === todo.id}
+          onOpenChange={(open) => !open && setDeletingTodo(null)}
+        >
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Delete Todo</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to delete "{todo.content}"? This action cannot be undone.
+                Are you sure you want to delete "{todo.content}"? This action
+                cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel data-testid={`claude-todo-delete-cancel-${todo.id}`}>
+              <AlertDialogCancel
+                data-testid={`claude-todo-delete-cancel-${todo.id}`}
+              >
                 Cancel
               </AlertDialogCancel>
               <AlertDialogAction
@@ -286,7 +326,7 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
                 className="bg-red-600 hover:bg-red-700 focus:ring-red-500"
                 data-testid={`claude-todo-delete-confirm-${todo.id}`}
               >
-                {deleteTodoMutation.isPending ? 'Deleting...' : 'Delete Todo'}
+                {deleteTodoMutation.isPending ? "Deleting..." : "Delete Todo"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -319,7 +359,9 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center space-x-3">
           <Bot className="w-5 h-5 text-blue-600" />
-          <h3 className="text-lg font-semibold text-gray-900">Claude Code Todos</h3>
+          <h3 className="text-lg font-semibold text-gray-900">
+            Claude Code Todos
+          </h3>
           <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded-md text-sm font-medium">
             {todos.length}
           </span>
@@ -342,7 +384,9 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
               data-testid="claude-todo-sync-button"
             >
               <ArrowUpDown className="w-4 h-4" />
-              <span className="hidden sm:inline">Sync to Tasks ({selectedTodos.length})</span>
+              <span className="hidden sm:inline">
+                Sync to Tasks ({selectedTodos.length})
+              </span>
               <span className="sm:hidden">Sync ({selectedTodos.length})</span>
             </button>
           )}
@@ -351,20 +395,22 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
 
       {/* Todos List */}
       {todos.length > 0 ? (
-        <div className="space-y-3">
-          {todos.map(renderTodo)}
-        </div>
+        <div className="space-y-3">{todos.map(renderTodo)}</div>
       ) : (
         <div className="text-center py-12">
           <Bot className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-          <h4 className="text-lg font-medium text-gray-900 mb-2">No Claude Code todos</h4>
+          <h4 className="text-lg font-medium text-gray-900 mb-2">
+            No Claude Code todos
+          </h4>
           <p className="text-gray-500 mb-6">
-            Todos created in Claude Code plan mode will appear here automatically.
+            Todos created in Claude Code plan mode will appear here
+            automatically.
           </p>
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 max-w-md mx-auto">
             <p className="text-sm text-blue-800">
-              <strong>Tip:</strong> Use Claude Code's plan mode to create todos that sync with Baton.
-              Your todos will persist across Claude Code sessions.
+              <strong>Tip:</strong> Use Claude Code's plan mode to create todos
+              that sync with Baton. Your todos will persist across Claude Code
+              sessions.
             </p>
           </div>
         </div>
@@ -377,19 +423,19 @@ export const ClaudeTodoList: React.FC<ClaudeTodoListProps> = ({
         onClose={closeTodoModal}
         onStatusChange={(todoId, newStatus) => {
           // Handle status change - you may want to add mutation logic here
-          console.log('Todo status change:', todoId, newStatus);
+          console.log("Todo status change:", todoId, newStatus);
         }}
         onPriorityChange={(todoId, newPriority) => {
           // Handle priority change - you may want to add mutation logic here
-          console.log('Todo priority change:', todoId, newPriority);
+          console.log("Todo priority change:", todoId, newPriority);
         }}
         onSync={(todoId) => {
           // Handle sync to tasks
-          console.log('Sync todo to task:', todoId);
+          console.log("Sync todo to task:", todoId);
         }}
         onPlanClick={(planId) => {
           // Handle plan navigation
-          console.log('Navigate to plan:', planId);
+          console.log("Navigate to plan:", planId);
         }}
       />
     </div>

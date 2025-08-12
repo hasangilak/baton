@@ -10,15 +10,15 @@ import type { Socket } from 'socket.io-client';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
-// Import the socket context functions
-import { useSocket } from '../contexts/SocketContext';
+// Import the socket store functions
+import { useSocketStore } from '../stores/socketStore';
 
-// Socket reference is now managed by SocketContext
-// This will be retrieved from the context when needed
-let socketContextRef: (() => ReturnType<typeof useSocket>) | null = null;
+// Socket reference is now managed by Zustand store
+// This will be retrieved from the store when needed
+let socketContextRef: (() => { socket: any; isConnected: boolean; emit: Function; on: Function; off: Function }) | null = null;
 
 // Function to set the socket context reference (called by components using ChatService)
-export const setSocketContext = (getSocketContext: () => ReturnType<typeof useSocket>) => {
+export const setSocketContext = (getSocketContext: () => { socket: any; isConnected: boolean; emit: Function; on: Function; off: Function }) => {
   socketContextRef = getSocketContext;
 };
 
@@ -55,18 +55,26 @@ class ChatService {
   }
 
   private ensureSocketConnection(): Socket {
-    // Use the socket from SocketContext if available
+    // Use the socket from Zustand store if available
     if (socketContextRef) {
       const socketContext = socketContextRef();
-      if (socketContext.socket?.connected) {
-        console.log('💬 Chat service using SocketContext connection:', socketContext.socket.id);
+      if (socketContext.socket && socketContext.isConnected) {
+        console.log('💬 Chat service using Zustand store connection:', socketContext.socket.id);
         this.socket = socketContext.socket;
         return socketContext.socket;
       }
     }
     
-    // Fallback: throw error if socket context is not available
-    throw new Error('SocketContext not available. Make sure SocketProvider is initialized and setSocketContext is called.');
+    // Fallback: get directly from Zustand store
+    const store = useSocketStore.getState();
+    if (store.socket && store.isConnected) {
+      console.log('💬 Chat service using direct Zustand store connection:', store.socket.id);
+      this.socket = store.socket;
+      return store.socket;
+    }
+    
+    // Fallback: throw error if socket is not available
+    throw new Error('Socket not available. Make sure socket is initialized and connected.');
   }
 
   // Conversations
@@ -287,7 +295,10 @@ class ChatService {
       const socketContext = socketContextRef();
       return socketContext.socket;
     }
-    return null;
+    
+    // Fallback: get directly from Zustand store
+    const store = useSocketStore.getState();
+    return store.socket;
   }
   
   // Create conversation via WebSocket
@@ -317,8 +328,8 @@ class ChatService {
   
   // Clean up WebSocket connection
   disconnect(): void {
-    // Don't disconnect the socket from here - it's managed by the SocketProvider
-    console.warn('ChatService.disconnect() called - WebSocket is managed by SocketProvider');
+    // Don't disconnect the socket from here - it's managed by the Zustand store
+    console.warn('ChatService.disconnect() called - WebSocket is managed by Zustand store');
     this.socket = null;
   }
 }

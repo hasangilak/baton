@@ -1,0 +1,336 @@
+/**
+ * WebSocket Store using Zustand
+ * 
+ * Manages WebSocket connection state and operations globally
+ * Eliminates React Context re-render issues and provides better performance
+ */
+
+import { create } from 'zustand';
+import { subscribeWithSelector } from 'zustand/middleware';
+import { io, Socket } from 'socket.io-client';
+
+interface SocketState {
+  // Connection state
+  socket: Socket | null;
+  isConnected: boolean;
+  isConnecting: boolean;
+  error: string | null;
+  
+  // Connection info
+  socketId: string | null;
+  transport: string | null;
+  reconnectAttempts: number;
+  lastConnected: number | null;
+  
+  // Room management
+  rooms: Set<string>;
+  
+  // Actions
+  connect: (url?: string, options?: any) => void;
+  disconnect: () => void;
+  
+  // Event handling
+  emit: (event: string, data?: any) => void;
+  on: (event: string, handler: Function) => void;
+  off: (event: string, handler: Function) => void;
+  
+  // Room management
+  joinRoom: (room: string) => void;
+  leaveRoom: (room: string) => void;
+  joinProject: (projectId: string) => void;
+  leaveProject: (projectId: string) => void;
+  joinConversation: (conversationId: string) => void;
+  leaveConversation: (conversationId: string) => void;
+  
+  // Internal state management
+  setConnected: (connected: boolean) => void;
+  setConnecting: (connecting: boolean) => void;
+  setError: (error: string | null) => void;
+  setSocketInfo: (socketId: string | null, transport: string | null) => void;
+  addRoom: (room: string) => void;
+  removeRoom: (room: string) => void;
+  incrementReconnectAttempts: () => void;
+  resetReconnectAttempts: () => void;
+  setLastConnected: (timestamp: number) => void;
+}
+
+export const useSocketStore = create<SocketState>()(
+  subscribeWithSelector((set, get) => ({
+    // Initial state
+    socket: null,
+    isConnected: false,
+    isConnecting: false,
+    error: null,
+    socketId: null,
+    transport: null,
+    reconnectAttempts: 0,
+    lastConnected: null,
+    rooms: new Set<string>(),
+
+    // Connection management
+    connect: (url = 'http://localhost:3001', options = {}) => {
+      const state = get();
+      
+      // Prevent multiple connections
+      if (state.isConnected || state.isConnecting) {
+        console.log('🔌 [SocketStore] Already connected or connecting, skipping');
+        return;
+      }
+
+      console.log('🔌 [SocketStore] Creating WebSocket connection to:', url);
+      set({ isConnecting: true, error: null });
+
+      const defaultOptions = {
+        transports: ['websocket', 'polling'],
+        timeout: 10000,
+        reconnection: true,
+        reconnectionDelay: 1000,
+        reconnectionDelayMax: 5000,
+        reconnectionAttempts: 5,
+        forceNew: false,
+        autoConnect: true,
+        query: {
+          client: 'baton-unified',
+          namespace: 'both',
+        },
+      };
+
+      const socket = io(url, { ...defaultOptions, ...options });
+
+      // Connection event handlers
+      socket.on('connect', () => {
+        const state = get();
+        console.log('🔌 [SocketStore] Connected:', socket.id, {
+          transport: socket.io.engine?.transport?.name,
+        });
+        
+        set({
+          isConnected: true,
+          isConnecting: false,
+          error: null,
+          socketId: socket.id || null,
+          transport: socket.io.engine?.transport?.name || null,
+          lastConnected: Date.now(),
+          reconnectAttempts: 0,
+        });
+
+        // Re-join all rooms after reconnection
+        state.rooms.forEach(room => {
+          socket.emit('join', room);
+          console.log('🏠 [SocketStore] Re-joined room:', room);
+        });
+      });
+
+      socket.on('disconnect', (reason) => {
+        console.log('🔌 [SocketStore] Disconnected:', reason);
+        set({
+          isConnected: false,
+          isConnecting: false,
+          socketId: null,
+          transport: null,
+        });
+        
+        // Don't set error for normal disconnections
+        if (reason !== 'io client disconnect' && reason !== 'io server disconnect') {
+          set({ error: `Connection lost: ${reason}` });
+        }
+      });
+
+      socket.on('connect_error', (error) => {
+        console.error('🔌 [SocketStore] Connection error:', error.message);
+        set({
+          isConnected: false,
+          isConnecting: false,
+          error: `Connection failed: ${error.message}`,
+        });
+        get().incrementReconnectAttempts();
+      });
+
+      socket.on('reconnect', (attemptNumber) => {
+        console.log('🔌 [SocketStore] Reconnected after', attemptNumber, 'attempts');
+        set({
+          reconnectAttempts: attemptNumber,
+          error: null,
+        });
+      });
+
+      socket.on('reconnect_failed', () => {
+        console.error('🔌 [SocketStore] Reconnection failed');
+        set({
+          error: 'Failed to reconnect to server',
+          isConnecting: false,
+        });
+      });
+
+      // Store socket reference
+      set({ socket });
+    },
+
+    disconnect: () => {
+      const { socket } = get();
+      if (socket) {
+        console.log('🔌 [SocketStore] Disconnecting socket');
+        socket.disconnect();
+        set({
+          socket: null,
+          isConnected: false,
+          isConnecting: false,
+          socketId: null,
+          transport: null,
+          error: null,
+          rooms: new Set(),
+        });
+      }
+    },
+
+    // Event handling
+    emit: (event: string, data?: any) => {
+      const { socket, isConnected } = get();
+      if (socket && isConnected) {
+        socket.emit(event, data);
+      } else {
+        console.warn('🔌 [SocketStore] Cannot emit event, socket not connected:', event);
+      }
+    },
+
+    on: (event: string, handler: Function) => {
+      const { socket } = get();
+      if (socket) {
+        socket.on(event, handler as any);
+      }
+    },
+
+    off: (event: string, handler: Function) => {
+      const { socket } = get();
+      if (socket) {
+        socket.off(event, handler as any);
+      }
+    },
+
+    // Room management
+    joinRoom: (room: string) => {
+      const { socket, isConnected } = get();
+      if (socket && isConnected) {
+        socket.emit('join', room);
+        get().addRoom(room);
+        console.log('🏠 [SocketStore] Joined room:', room);
+      }
+    },
+
+    leaveRoom: (room: string) => {
+      const { socket, isConnected } = get();
+      if (socket && isConnected) {
+        socket.emit('leave', room);
+        get().removeRoom(room);
+        console.log('🏠 [SocketStore] Left room:', room);
+      }
+    },
+
+    joinProject: (projectId: string) => {
+      const { socket, isConnected } = get();
+      if (socket && isConnected && projectId) {
+        socket.emit('join-project', projectId);
+        get().addRoom(`project-${projectId}`);
+        console.log('📋 [SocketStore] Joined project:', projectId);
+      }
+    },
+
+    leaveProject: (projectId: string) => {
+      const { socket, isConnected } = get();
+      if (socket && isConnected && projectId) {
+        socket.emit('leave-project', projectId);
+        get().removeRoom(`project-${projectId}`);
+        console.log('📋 [SocketStore] Left project:', projectId);
+      }
+    },
+
+    joinConversation: (conversationId: string) => {
+      const { socket, isConnected } = get();
+      if (socket && isConnected && conversationId) {
+        socket.emit('join-conversation', conversationId);
+        get().addRoom(`conversation-${conversationId}`);
+        console.log('💬 [SocketStore] Joined conversation:', conversationId);
+      }
+    },
+
+    leaveConversation: (conversationId: string) => {
+      const { socket, isConnected } = get();
+      if (socket && isConnected && conversationId) {
+        socket.emit('leave-conversation', conversationId);
+        get().removeRoom(`conversation-${conversationId}`);
+        console.log('💬 [SocketStore] Left conversation:', conversationId);
+      }
+    },
+
+    // Internal state management
+    setConnected: (connected: boolean) => set({ isConnected: connected }),
+    setConnecting: (connecting: boolean) => set({ isConnecting: connecting }),
+    setError: (error: string | null) => set({ error }),
+    setSocketInfo: (socketId: string | null, transport: string | null) => 
+      set({ socketId, transport }),
+    
+    addRoom: (room: string) => set((state) => ({
+      rooms: new Set([...state.rooms, room])
+    })),
+    
+    removeRoom: (room: string) => set((state) => {
+      const newRooms = new Set(state.rooms);
+      newRooms.delete(room);
+      return { rooms: newRooms };
+    }),
+    
+    incrementReconnectAttempts: () => set((state) => ({
+      reconnectAttempts: state.reconnectAttempts + 1
+    })),
+    
+    resetReconnectAttempts: () => set({ reconnectAttempts: 0 }),
+    setLastConnected: (timestamp: number) => set({ lastConnected: timestamp }),
+  }))
+);
+
+// Selectors for common use cases
+export const useSocketConnection = () => useSocketStore((state) => ({
+  isConnected: state.isConnected,
+  isConnecting: state.isConnecting,
+  error: state.error,
+}));
+
+export const useSocketActions = () => useSocketStore((state) => ({
+  connect: state.connect,
+  disconnect: state.disconnect,
+  emit: state.emit,
+  on: state.on,
+  off: state.off,
+}));
+
+export const useSocketRooms = () => useSocketStore((state) => ({
+  joinRoom: state.joinRoom,
+  leaveRoom: state.leaveRoom,
+  joinProject: state.joinProject,
+  leaveProject: state.leaveProject,
+  joinConversation: state.joinConversation,
+  leaveConversation: state.leaveConversation,
+}));
+
+// Utility function to initialize socket connection for chat routes
+export const initializeSocketForChat = (projectId?: string) => {
+  const store = useSocketStore.getState();
+  
+  if (!store.isConnected && !store.isConnecting) {
+    store.connect();
+    
+    // Join project room if provided
+    if (projectId) {
+      // Wait for connection before joining room
+      const unsubscribe = useSocketStore.subscribe(
+        (state) => state.isConnected,
+        (isConnected) => {
+          if (isConnected) {
+            store.joinProject(projectId);
+            unsubscribe();
+          }
+        }
+      );
+    }
+  }
+};

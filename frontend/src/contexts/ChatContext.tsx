@@ -10,7 +10,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useConversations, useConversation } from '../hooks/chat/useConversations';
 import { MessageProcessor, type ProcessedMessage } from '../services/chat/messages';
-import { useSocket } from './SocketContext';
+import { useSocketStore, initializeSocketForChat } from '../stores/socketStore';
 import { setSocketContext } from '../services/chat.service';
 
 // Chat state interface
@@ -24,9 +24,6 @@ interface ChatState {
   isStreaming: boolean;
   streamingMessage: ProcessedMessage | null;
   optimisticUserMessage: ProcessedMessage | null;
-  
-  // Connection
-  isConnected: boolean;
   
   // UI state
   showSidebar: boolean;
@@ -50,7 +47,6 @@ type ChatAction =
   | { type: 'SET_MESSAGES'; payload: ProcessedMessage[] }
   | { type: 'SET_STREAMING_STATE'; payload: { isStreaming: boolean; message?: ProcessedMessage | null } }
   | { type: 'SET_OPTIMISTIC_MESSAGE'; payload: ProcessedMessage | null }
-  | { type: 'SET_CONNECTION_STATE'; payload: boolean }
   | { type: 'SET_SIDEBAR_VISIBLE'; payload: boolean }
   | { type: 'SET_PERMISSION_MODE'; payload: 'default' | 'plan' | 'acceptEdits' }
   | { type: 'SET_INPUT_VALUE'; payload: string }
@@ -67,7 +63,6 @@ const initialState: ChatState = {
   isStreaming: false,
   streamingMessage: null,
   optimisticUserMessage: null,
-  isConnected: false,
   showSidebar: false,
   permissionMode: 'default',
   inputValue: '',
@@ -101,9 +96,6 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
     
     case 'SET_OPTIMISTIC_MESSAGE':
       return { ...state, optimisticUserMessage: action.payload };
-    
-    case 'SET_CONNECTION_STATE':
-      return { ...state, isConnected: action.payload };
     
     case 'SET_SIDEBAR_VISIBLE':
       return { ...state, showSidebar: action.payload };
@@ -202,14 +194,25 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
   // URL parameter management for session ID
   const [searchParams, setSearchParams] = useSearchParams();
   
-  // Use the new SocketContext
-  const socketContext = useSocket();
-  const { socket, isConnected, emit, on, off, joinConversation: joinRoom } = socketContext;
+  // Use Zustand store for WebSocket management
+  const { socket, isConnected } = useSocketStore();
   
-  // Set socket context reference for chat service
+  // Initialize socket connection when ChatContext is used
   useEffect(() => {
-    setSocketContext(() => socketContext);
-  }, [socketContext]);
+    initializeSocketForChat(projectId);
+  }, [projectId]);
+  
+  // Set socket context reference for chat service (only once)
+  useEffect(() => {
+    const socketStore = useSocketStore.getState();
+    setSocketContext(() => ({
+      socket: socketStore.socket,
+      isConnected: socketStore.isConnected,
+      emit: socketStore.emit,
+      on: socketStore.on,
+      off: socketStore.off,
+    }));
+  }, []); // Remove dependencies to prevent re-runs
   
   // Session state management for Claude Code continuity
   const [sessionState, setSessionState] = useState<{[conversationId: string]: {sessionId?: string; initialized: boolean; pending: boolean}}>({});
@@ -274,8 +277,9 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // Join conversation room
   const joinConversationWithSession = useCallback(async (conversationId: string) => {
-    if (socket?.connected) {
-      joinRoom(conversationId);
+    if (socket && isConnected) {
+      const { joinConversation } = useSocketStore.getState();
+      joinConversation(conversationId);
       console.log('🏠 Joined conversation room:', conversationId);
       
       // Try to initialize session if needed
@@ -285,41 +289,32 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
         await initializeSession(conversationId);
       }
     }
-  }, [socket, joinRoom, sessionState, initializeSession]);
+  }, [socket, isConnected, sessionState, initializeSession]);
 
   // Send message via WebSocket
   const sendWebSocketMessage = useCallback((data: any) => {
-    if (socket?.connected) {
-      socket.emit('chat:send-message', data);
+    if (socket && isConnected) {
+      const { emit } = useSocketStore.getState();
+      emit('chat:send-message', data);
       console.log('📤 Sent WebSocket message:', data);
     } else {
       throw new Error('Not connected to chat service');
     }
-  }, [socket]);
+  }, [socket, isConnected]);
 
   // Abort current message
   const abortMessage = useCallback(() => {
-    if (socket?.connected) {
-      socket.emit('chat:abort');
+    if (socket && isConnected) {
+      const { emit } = useSocketStore.getState();
+      emit('chat:abort');
       console.log('⏹️ Aborted current message');
     }
-  }, [socket]);
+  }, [socket, isConnected]);
 
-  // Note: on, off, emit are now provided by useSocket() hook
+  // Note: on, off, emit are now provided by Zustand socketStore
 
-  // Connection state sync with debugging
-  useEffect(() => {
-    console.log('🔍 [DEBUG] ChatContext connection state update:', {
-      previousState: state.isConnected,
-      newState: isConnected,
-      willUpdate: state.isConnected !== isConnected
-    });
-    
-    if (state.isConnected !== isConnected) {
-      console.log('✅ [DEBUG] Updating ChatContext connection state to:', isConnected);
-      dispatch({ type: 'SET_CONNECTION_STATE', payload: isConnected });
-    }
-  }, [isConnected, state.isConnected]);
+  // Note: Removed connection state sync to prevent infinite loops
+  // We use Zustand's isConnected directly instead of syncing with ChatContext state
 
   // Conversation details sync
   useEffect(() => {
@@ -330,7 +325,10 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
 
   // WebSocket event handlers for unified chat system
   useEffect(() => {
-    if (!socket?.connected) return;
+    if (!socket || !isConnected) return;
+    
+    // Get socket actions directly from store to avoid dependency issues
+    const { on, off } = useSocketStore.getState();
 
     // Stream response handler
     const handleStreamResponse = (data: any) => {
@@ -368,11 +366,11 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     // Session available handler
     const handleSessionAvailable = (data: any) => {
       if (data.conversationId === state.selectedConversationId) {
-        // Update conversation details with session ID
+        // Update conversation details with session ID (use conversationDetails from React Query)
         dispatch({ 
           type: 'SET_CONVERSATION_DETAILS', 
           payload: { 
-            ...state.conversationDetails,
+            ...conversationDetails,
             claudeSessionId: data.sessionId 
           }
         });
@@ -422,7 +420,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       off('chat:error', handleError);
       off('chat:aborted', handleAbort);
     };
-  }, [socket, state.selectedConversationId, state.conversationDetails, on, off, queryClient, setSearchParams]);
+  }, [socket, state.selectedConversationId, queryClient, setSearchParams]); // Removed state.conversationDetails to prevent infinite loop with conversation details sync
 
   // Action handlers
   const createConversation = useCallback(async (title?: string): Promise<string | null> => {
@@ -465,16 +463,12 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
       contentLength: content?.length || 0,
       hasAttachments: !!attachments?.length,
       selectedConversationId: state.selectedConversationId,
-      connected,
-      stateConnected: state.isConnected,
-      unifiedWebSocketState: unifiedWebSocket
+      isConnected
     });
     
-    if (!connected) {
+    if (!isConnected) {
       console.error('❌ [DEBUG] WebSocket not connected:', {
-        connected,
-        stateConnected: state.isConnected,
-        webSocketDebug: unifiedWebSocket._debug || 'no debug info'
+        isConnected
       });
       throw new Error('Not connected to chat service');
     }
@@ -567,7 +561,7 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({
     state.selectedConversationId, 
     state.messages.length, 
     state.optimisticUserMessage,
-    connected,
+    isConnected,
     createConversation, 
     sendWebSocketMessage,
     sessionState,
