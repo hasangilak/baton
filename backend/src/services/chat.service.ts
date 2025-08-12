@@ -112,23 +112,21 @@ export class ChatService extends EventEmitter {
   }
 
   /**
-   * Get messages for a conversation with optional session ID validation
+   * Get messages for a conversation with required session ID validation
    */
-  async getMessages(conversationId: string, sessionId?: string) {
-    // If sessionId is provided, validate that the conversation belongs to that session
-    if (sessionId) {
-      const conversation = await prisma.conversation.findUnique({
-        where: { id: conversationId },
-        select: { claudeSessionId: true, title: true },
-      });
+  async getMessages(conversationId: string, sessionId: string) {
+    // Validate that the conversation belongs to the provided session
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { claudeSessionId: true, title: true },
+    });
 
-      if (!conversation) {
-        throw new Error('Conversation not found');
-      }
+    if (!conversation) {
+      throw new Error('Conversation not found');
+    }
 
-      if (conversation.claudeSessionId !== sessionId) {
-        throw new Error(`Conversation does not belong to session ${sessionId}. Expected: ${conversation.claudeSessionId}`);
-      }
+    if (conversation.claudeSessionId !== sessionId) {
+      throw new Error(`Conversation does not belong to session ${sessionId}. Expected: ${conversation.claudeSessionId}`);
     }
 
     const messages = await prisma.message.findMany({

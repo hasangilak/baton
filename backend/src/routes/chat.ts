@@ -85,7 +85,7 @@ router.post('/conversations', async (req: Request, res: Response) => {
   try {
     const { projectId, title } = req.body;
     // For now, use a default user ID - in production, get from auth
-    const userId = 'user_default';
+    const userId = '689affcf10e66a4b10341208';
 
     if (!projectId) {
       return res.status(400).json({
@@ -122,7 +122,7 @@ router.get('/conversations/:projectId', async (req: Request, res: Response) => {
   try {
     const projectId = req.params.projectId;
     // For now, use a default user ID - in production, get from auth
-    const userId = 'user_default';
+    const userId = '689affcf10e66a4b10341208';
 
     if (!projectId) {
       return res.status(400).json({
@@ -224,35 +224,6 @@ router.get('/messages/:conversationId/:sessionId', async (req: Request, res: Res
   }
 });
 
-/**
- * GET /api/chat/messages/:conversationId
- * Get messages for a conversation (backwards compatibility - without session validation)
- * @deprecated Use /messages/:conversationId/:sessionId instead
- */
-router.get('/messages/:conversationId', async (req: Request, res: Response) => {
-  try {
-    const conversationId = req.params.conversationId;
-
-    if (!conversationId) {
-      return res.status(400).json({
-        error: 'Conversation ID is required',
-      });
-    }
-
-    console.warn(`⚠️ Using deprecated endpoint /messages/${conversationId} without session ID`);
-    const messages = await chatService.getMessages(conversationId);
-
-    return res.json({
-      success: true,
-      messages,
-    });
-  } catch (error) {
-    console.error('Error fetching messages:', error);
-    return res.status(500).json({
-      error: 'Failed to fetch messages',
-    });
-  }
-});
 
 /**
  * POST /api/chat/messages
@@ -370,7 +341,7 @@ router.get('/search', async (req: Request, res: Response) => {
   try {
     const { projectId, query } = req.query;
     // For now, use a default user ID - in production, get from auth
-    const userId = 'user_default';
+    const userId = '689affcf10e66a4b10341208';
 
     if (!projectId || !query) {
       return res.status(400).json({
