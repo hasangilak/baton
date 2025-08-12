@@ -221,7 +221,7 @@ io.on('connection', (socket) => {
 
       // 2. Store user message in database
       console.log(`💾 Storing user message for conversation ${conversationId}`);
-      const userMessage = await messageStorage.createUserMessage(conversationId, content, attachments);
+      const userMessage = await messageStorage.createUserMessage(conversationId, content, attachments, sessionId);
       console.log(`✅ User message stored with ID: ${userMessage.id}`);
 
       // 3. Create assistant message placeholder

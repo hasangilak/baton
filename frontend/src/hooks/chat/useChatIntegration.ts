@@ -110,31 +110,10 @@ export const useChatIntegration = (projectId: string) => {
           // Mark as processed to prevent duplicate calls
           processedSessionRef.current = urlSessionId;
           
-          const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-          const response = await fetch(`${API_BASE_URL}/api/chat/conversations/by-session/${urlSessionId}`);
-          
-          if (response.ok) {
-            const result = await response.json();
-            const conversation = result.conversation;
-            
-            console.log('✅ Found conversation for session:', conversation.id);
-            
-            // Set up the conversation and session state
-            const store = useChatStore.getState();
-            store.selectConversation(conversation.id);
-            store.setConversationDetails(conversation);
-            store.setSessionState(conversation.id, {
-              sessionId: urlSessionId,
-              initialized: true,
-              pending: false
-            });
-            
-            // Load messages for this conversation
-            await store.fetchAndLoadMessages(conversation.id);
-          } else {
-            console.error('❌ Conversation not found for sessionId:', urlSessionId);
-            // Could handle this by creating a new conversation or showing an error
-          }
+          // Use chatStore's enhanced fetchAndLoadMessages with sessionId
+          // This will handle: find conversation + set up state + load messages in one call
+          const store = useChatStore.getState();
+          await store.fetchAndLoadMessages(undefined, urlSessionId);
         } catch (error) {
           console.error('❌ Error loading conversation by sessionId:', error);
         }

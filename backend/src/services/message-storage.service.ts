@@ -23,7 +23,8 @@ export class MessageStorageService {
   async createUserMessage(
     conversationId: string, 
     content: string, 
-    attachments?: Array<{ filename: string; mimeType: string; size: number; url: string }>
+    attachments?: Array<{ filename: string; mimeType: string; size: number; url: string }>,
+    sessionId?: string
   ): Promise<Message> {
     logger.storage?.info('Creating user message', { conversationId, contentLength: content.length });
 
@@ -34,6 +35,7 @@ export class MessageStorageService {
           role: 'user',
           content,
           status: 'completed',
+          ...(sessionId && { sessionId }),
           ...(attachments && {
             attachments: {
               create: attachments

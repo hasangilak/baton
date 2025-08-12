@@ -252,37 +252,67 @@ export const useChatStore = create<ChatStore>()(
       set({ messages: processedMessages });
     },
     
-    fetchAndLoadMessages: async (conversationId: string) => {
-      if (!conversationId) return;
+    fetchAndLoadMessages: async (conversationId?: string, sessionId?: string) => {
+      if (!conversationId && !sessionId) return;
       
       set({ isLoadingMessages: true });
       
       try {
         const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
         
-        // Try to get session ID for this conversation
-        const { sessionState } = get();
-        const currentSession = sessionState[conversationId];
-        const sessionId = currentSession?.sessionId;
+        let response;
+        let messages = [];
+        let conversation = null;
         
-        // Always use conversation endpoint - sessionId validation is handled by backend
-        console.log('📥 Fetching messages for conversation:', conversationId, sessionId ? `(session: ${sessionId})` : '(no session)');
-        const response = await fetch(`${API_BASE_URL}/api/chat/conversation/${conversationId}/messages`);
-        
-        if (!response.ok) {
-          throw new Error(`Failed to fetch messages: ${response.status}`);
+        if (sessionId) {
+          // Use by-session endpoint - gets both conversation and messages in one call
+          console.log('📥 Fetching by session ID:', sessionId);
+          response = await fetch(`${API_BASE_URL}/api/chat/conversations/by-session/${sessionId}`);
+          
+          if (response.ok) {
+            const data = await response.json();
+            conversation = data.conversation;
+            messages = data.messages || [];
+            
+            console.log('✅ Found conversation and messages for session:', conversation?.id, `(${messages.length} messages)`);
+            
+            // Set up conversation state if we got it from sessionId
+            if (conversation) {
+              get().setConversationDetails(conversation);
+              get().selectConversation(conversation.id);
+              get().setSessionState(conversation.id, {
+                sessionId: sessionId,
+                initialized: true,
+                pending: false
+              });
+            }
+          }
+        } else if (conversationId) {
+          // Use conversation endpoint for conversationId-based fetching
+          console.log('📥 Fetching messages for conversation:', conversationId);
+          response = await fetch(`${API_BASE_URL}/api/chat/conversation/${conversationId}/messages`);
+          
+          if (response.ok) {
+            const data = await response.json();
+            messages = data.messages || data.data?.messages || [];
+          }
         }
         
-        const data = await response.json();
-        const messages = data.messages || data.data?.messages || [];
+        if (!response || !response.ok) {
+          throw new Error(`Failed to fetch messages: ${response?.status || 'No response'}`);
+        }
         
         // Load messages into store
         get().loadMessages(messages);
         
-        console.log('📥 Loaded', messages.length, 'messages from database for conversation', conversationId, sessionId ? `(session: ${sessionId})` : '(no session)');
+        const logDetails = sessionId 
+          ? `session ${sessionId} (conversation: ${conversation?.id})`
+          : `conversation ${conversationId}`;
+        console.log('📥 Loaded', messages.length, 'messages from database for', logDetails);
         
       } catch (error) {
-        console.error('❌ Failed to fetch messages for conversation', conversationId, ':', error);
+        const errorContext = sessionId ? `session ${sessionId}` : `conversation ${conversationId}`;
+        console.error('❌ Failed to fetch messages for', errorContext, ':', error);
         // Don't throw - just log the error and continue
       } finally {
         set({ isLoadingMessages: false });

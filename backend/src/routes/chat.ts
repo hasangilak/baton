@@ -215,6 +215,19 @@ router.get('/conversations/by-session/:sessionId', async (req: Request, res: Res
         createdAt: true,
         updatedAt: true,
       },
+      include: {
+        messages: {
+          where: {
+            status: { in: ['completed', 'failed'] }
+          },
+          include: {
+            attachments: true,
+          },
+          orderBy: {
+            createdAt: 'asc',
+          },
+        },
+      },
     });
 
     if (!conversation) {
@@ -223,9 +236,13 @@ router.get('/conversations/by-session/:sessionId', async (req: Request, res: Res
       });
     }
 
+    console.log(`📥 Retrieved conversation ${conversation.id} with ${conversation.messages?.length || 0} messages for session ${sessionId}`);
+
     return res.json({
       success: true,
       conversation,
+      messages: conversation.messages,
+      messageCount: conversation.messages?.length || 0,
     });
   } catch (error) {
     console.error('Error fetching conversation by session ID:', error);
@@ -1399,7 +1416,7 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
     }
 
     // Use enhanced message storage with hybrid approach
-    const userMessage = await messageStorage.createUserMessage(conversationId, content);
+    const userMessage = await messageStorage.createUserMessage(conversationId, content, undefined, conversation.claudeSessionId);
     const assistantMessage = await messageStorage.createAssistantMessagePlaceholder(conversationId);
     
     console.log(`📝 Created messages: user=${userMessage.id}, assistant=${assistantMessage.id}`);
