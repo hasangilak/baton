@@ -562,8 +562,12 @@ io.on('connection', (socket) => {
         }
       }
 
-      // Always forward to frontend for real-time updates
-      io.emit('chat:stream-response', data);
+      // Always forward to frontend for real-time updates with conversation ID
+      const frontendMessage = { 
+        ...data, 
+        conversationId: requestInfo?.conversationId 
+      };
+      io.emit('chat:stream-response', frontendMessage);
       console.log(`📤 Forwarded claude:stream to frontend clients`);
 
     } catch (error) {
