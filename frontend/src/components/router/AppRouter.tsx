@@ -6,21 +6,16 @@ import { ChatPageDesktop } from '../chat/layouts/ChatPageDesktop';
 import { ChatPageMobile } from '../chat/layouts/ChatPageMobile';
 import { ChatProvider } from '../../contexts/ChatContext';
 import { useBreakpoints } from '../../hooks/useBreakpoints';
-import type { Socket } from 'socket.io-client';
 
 interface AppRouterProps {
   projectId: string;
   onSync?: () => void;
-  socket: Socket | null;
-  connected: boolean;
 }
 
 // Component to handle project-scoped chat routing
 const ProjectScopedChat: React.FC<{ 
   isMobile: boolean; 
-  socket: Socket | null; 
-  connected: boolean; 
-}> = ({ isMobile, socket, connected }) => {
+}> = ({ isMobile }) => {
   const { projectId: urlProjectId } = useParams<{ projectId: string }>();
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('sessionId');
@@ -29,8 +24,6 @@ const ProjectScopedChat: React.FC<{
     <ChatProvider 
       projectId={urlProjectId || ''} 
       initialSessionId={sessionId}
-      socket={socket}
-      connected={connected}
     >
       {isMobile ? (
         <ChatPageMobile />
@@ -41,7 +34,7 @@ const ProjectScopedChat: React.FC<{
   );
 };
 
-export const AppRouter: React.FC<AppRouterProps> = ({ projectId, onSync, socket, connected }) => {
+export const AppRouter: React.FC<AppRouterProps> = ({ projectId, onSync }) => {
   const { isMobile } = useBreakpoints();
 
   return (
@@ -71,7 +64,7 @@ export const AppRouter: React.FC<AppRouterProps> = ({ projectId, onSync, socket,
       {/* Project-scoped chat route */}
       <Route 
         path="/chat/:projectId" 
-        element={<ProjectScopedChat isMobile={isMobile} socket={socket} connected={connected} />} 
+        element={<ProjectScopedChat isMobile={isMobile} />} 
       />
       
       {/* Other sections - for now redirect to tasks */}

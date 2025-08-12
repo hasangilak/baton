@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { claudeTodosKeys } from './useClaudeTodos';
 import { queryKeys } from '../lib/queryClient';
 import { ChatEvents } from '../services/chat/eventBus';
-import { setUnifiedSocketRef } from '../services/chat.service';
+// Note: setUnifiedSocketRef is deprecated and replaced by SocketContext
 
 interface UnifiedWebSocketOptions {
   url?: string;
@@ -97,11 +97,11 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
       console.log('🔌 [DEBUG] Reusing existing unified WebSocket connection:', {
         socketId: globalUnifiedSocket.id,
         connected: globalUnifiedSocket.connected,
-        readyState: globalUnifiedSocket.io.readyState
+        readyState: globalUnifiedSocket.io._readyState
       });
       socketRef.current = globalUnifiedSocket;
       updateGlobalState({ connected: true, connecting: false, error: null });
-      setUnifiedSocketRef(globalUnifiedSocket);
+      // Note: setUnifiedSocketRef is deprecated - SocketContext handles this now
       setupEventListeners(globalUnifiedSocket);
       return;
     }
@@ -136,13 +136,12 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
     socket.on('connect', () => {
       console.log('🔌 [DEBUG] Unified WebSocket connected:', socket.id, {
         socketConnected: socket.connected,
-        readyState: socket.io.readyState,
+        readyState: socket.io._readyState,
         transport: socket.io.engine?.transport?.name
       });
       updateGlobalState({ connected: true, connecting: false, error: null });
       
-      // Update ChatService reference
-      setUnifiedSocketRef(socket);
+      // Note: setUnifiedSocketRef is deprecated - SocketContext handles this now
       
       // Re-register custom event handlers
       eventHandlers.current.forEach((handlers, event) => {
@@ -156,8 +155,7 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
       console.log('🔌 Unified WebSocket disconnected:', reason);
       updateGlobalState({ connected: false, connecting: false });
       
-      // Clear ChatService reference
-      setUnifiedSocketRef(null);
+      // Note: setUnifiedSocketRef is deprecated - SocketContext handles this now
     });
 
     socket.on('connect_error', (error) => {
@@ -766,7 +764,7 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
       socketRef.current.disconnect();
       socketRef.current = null;
       globalUnifiedSocket = null;
-      setUnifiedSocketRef(null);
+      // Note: setUnifiedSocketRef is deprecated - SocketContext handles this now
       updateGlobalState({ connected: false, connecting: false, error: null });
     } else if (socketRef.current) {
       console.log('🔌 Keeping unified WebSocket alive (other components using it)...');
@@ -1037,7 +1035,7 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
       console.log('🔍 [DEBUG] Syncing state with already connected global socket');
       updateGlobalState({ connected: true, connecting: false, error: null });
       socketRef.current = globalUnifiedSocket;
-      setUnifiedSocketRef(globalUnifiedSocket);
+      // Note: setUnifiedSocketRef is deprecated - SocketContext handles this now
     }
 
     return () => {

@@ -10,13 +10,16 @@ import type { Socket } from 'socket.io-client';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
-// Import the global unified socket from the hook
-// This will be set by the useUnifiedWebSocket hook
-let globalUnifiedSocketRef: Socket | null = null;
+// Import the socket context functions
+import { useSocket } from '../contexts/SocketContext';
 
-// Function to set the unified socket reference (called by useUnifiedWebSocket)
-export const setUnifiedSocketRef = (socket: Socket | null) => {
-  globalUnifiedSocketRef = socket;
+// Socket reference is now managed by SocketContext
+// This will be retrieved from the context when needed
+let socketContextRef: (() => ReturnType<typeof useSocket>) | null = null;
+
+// Function to set the socket context reference (called by components using ChatService)
+export const setSocketContext = (getSocketContext: () => ReturnType<typeof useSocket>) => {
+  socketContextRef = getSocketContext;
 };
 
 class ChatService {
@@ -52,16 +55,18 @@ class ChatService {
   }
 
   private ensureSocketConnection(): Socket {
-    // Use the unified socket if available
-    if (globalUnifiedSocketRef?.connected) {
-      console.log('💬 Chat service using unified WebSocket connection:', globalUnifiedSocketRef.id);
-      this.socket = globalUnifiedSocketRef;
-      return globalUnifiedSocketRef;
+    // Use the socket from SocketContext if available
+    if (socketContextRef) {
+      const socketContext = socketContextRef();
+      if (socketContext.socket?.connected) {
+        console.log('💬 Chat service using SocketContext connection:', socketContext.socket.id);
+        this.socket = socketContext.socket;
+        return socketContext.socket;
+      }
     }
     
-    // Fallback: throw error if unified socket is not available
-    // This should not happen if the unified hook is properly initialized
-    throw new Error('Unified WebSocket connection not available. Make sure useUnifiedWebSocket is initialized.');
+    // Fallback: throw error if socket context is not available
+    throw new Error('SocketContext not available. Make sure SocketProvider is initialized and setSocketContext is called.');
   }
 
   // Conversations
@@ -278,7 +283,11 @@ class ChatService {
   
   // Get WebSocket connection for direct use by hooks
   getSocket(): Socket | null {
-    return globalUnifiedSocketRef;
+    if (socketContextRef) {
+      const socketContext = socketContextRef();
+      return socketContext.socket;
+    }
+    return null;
   }
   
   // Create conversation via WebSocket
@@ -308,8 +317,8 @@ class ChatService {
   
   // Clean up WebSocket connection
   disconnect(): void {
-    // Don't disconnect the unified socket from here - it's managed by the useUnifiedWebSocket hook
-    console.warn('ChatService.disconnect() called - unified WebSocket is managed by useUnifiedWebSocket hook');
+    // Don't disconnect the socket from here - it's managed by the SocketProvider
+    console.warn('ChatService.disconnect() called - WebSocket is managed by SocketProvider');
     this.socket = null;
   }
 }

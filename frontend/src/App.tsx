@@ -1,39 +1,23 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { BrowserRouter } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Layout } from './components/layout/Layout';
 import { AppRouter } from './components/router';
 import { queryClient } from './lib/queryClient';
 import { useProjects } from './hooks/useProjects';
-import { useUnifiedWebSocket } from './hooks/useUnifiedWebSocket';
+import { SocketProvider, useSocket } from './contexts/SocketContext';
 import { ToastProvider } from './hooks/useToast';
 import { ThemeProvider } from './hooks/useTheme';
 
-function AppContent() {
-  const { data: projects } = useProjects();
-  const [currentProjectId, setCurrentProjectId] = useState<string>('');
+interface AppContentProps {
+  activeProjectId: string;
+  setCurrentProjectId: (id: string) => void;
+}
 
-  // Use first available project if baton project doesn't exist
-  const activeProjectId = currentProjectId || projects?.[0]?.id || '';
+function AppContent({ activeProjectId, setCurrentProjectId }: AppContentProps) {
 
-  const { connected, connecting, error, socket, joinProject, leaveProject } = useUnifiedWebSocket({
-    activeProjectId,
-    namespace: 'both' // App-level hook needs both general and chat events
-  });
-
-  // Handle project room subscription when activeProjectId changes
-  useEffect(() => {
-    if (connected && activeProjectId) {
-      // Leave all previous rooms and join the current project room
-      joinProject(activeProjectId);
-
-      return () => {
-        leaveProject(activeProjectId);
-      };
-    }
-    // Explicit return for when condition is not met
-    return undefined;
-  }, [connected, activeProjectId, joinProject, leaveProject]);
+  // Use the new SocketContext
+  const { isConnected, isConnecting, error } = useSocket();
 
   // Memoized sync handler to prevent unnecessary re-renders
   const handleSync = useCallback(() => {
@@ -43,10 +27,10 @@ function AppContent() {
 
   // Memoized websocket status to prevent object recreation
   const websocketStatus = useMemo(() => ({
-    connected,
-    connecting,
+    connected: isConnected,
+    connecting: isConnecting,
     error
-  }), [connected, connecting, error]);
+  }), [isConnected, isConnecting, error]);
 
   return (
     <Layout
@@ -60,8 +44,6 @@ function AppContent() {
           <AppRouter 
             projectId={activeProjectId}
             onSync={handleSync}
-            socket={socket}
-            connected={connected}
           />
         </div>
       </div>
@@ -70,12 +52,23 @@ function AppContent() {
 }
 
 function App() {
+  const { data: projects } = useProjects();
+  const [currentProjectId, setCurrentProjectId] = useState<string>('');
+
+  // Use first available project if baton project doesn't exist
+  const activeProjectId = currentProjectId || projects?.[0]?.id || '';
+
   return (
     <BrowserRouter>
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
           <ToastProvider>
-            <AppContent />
+            <SocketProvider autoConnect={true} activeProjectId={activeProjectId}>
+              <AppContent 
+                activeProjectId={activeProjectId}
+                setCurrentProjectId={setCurrentProjectId}
+              />
+            </SocketProvider>
           </ToastProvider>
         </ThemeProvider>
       </QueryClientProvider>
