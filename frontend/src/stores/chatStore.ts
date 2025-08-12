@@ -265,15 +265,9 @@ export const useChatStore = create<ChatStore>()(
         const currentSession = sessionState[conversationId];
         const sessionId = currentSession?.sessionId;
         
-        // Use different endpoints based on whether we have a sessionId
-        let response;
-        if (sessionId) {
-          console.log('📥 Fetching messages with session ID:', sessionId);
-          response = await fetch(`${API_BASE_URL}/api/chat/messages/${conversationId}/${sessionId}`);
-        } else {
-          console.log('📥 Fetching messages without session ID for conversation:', conversationId);
-          response = await fetch(`${API_BASE_URL}/api/chat/conversation/${conversationId}/messages`);
-        }
+        // Always use conversation endpoint - sessionId validation is handled by backend
+        console.log('📥 Fetching messages for conversation:', conversationId, sessionId ? `(session: ${sessionId})` : '(no session)');
+        const response = await fetch(`${API_BASE_URL}/api/chat/conversation/${conversationId}/messages`);
         
         if (!response.ok) {
           throw new Error(`Failed to fetch messages: ${response.status}`);

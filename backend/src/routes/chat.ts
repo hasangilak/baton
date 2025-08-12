@@ -271,40 +271,11 @@ router.get('/conversation/:conversationId/messages', async (req: Request, res: R
 });
 
 /**
- * GET /api/chat/messages/:conversationId/:sessionId
- * Get messages for a conversation by session ID
+ * REMOVED: GET /api/chat/messages/:conversationId/:sessionId
+ * This route has been replaced by the by-session workflow:
+ * 1. Use GET /api/chat/conversations/by-session/:sessionId to find conversation
+ * 2. Use GET /api/chat/conversation/:conversationId/messages to get messages
  */
-router.get('/messages/:conversationId/:sessionId', async (req: Request, res: Response) => {
-  try {
-    const conversationId = req.params.conversationId;
-    const sessionId = req.params.sessionId;
-
-    if (!conversationId) {
-      return res.status(400).json({
-        error: 'Conversation ID is required',
-      });
-    }
-
-    if (!sessionId) {
-      return res.status(400).json({
-        error: 'Session ID is required',
-      });
-    }
-
-    const messages = await chatService.getMessages(conversationId, sessionId);
-
-    return res.json({
-      success: true,
-      messages,
-    });
-  } catch (error) {
-    console.error('Error fetching messages:', error);
-    return res.status(500).json({
-      error: 'Failed to fetch messages',
-    });
-  }
-});
-
 
 /**
  * POST /api/chat/messages

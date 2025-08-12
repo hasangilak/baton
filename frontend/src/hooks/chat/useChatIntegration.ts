@@ -5,7 +5,7 @@
  * Provides a bridge between the old ChatContext API and the new store architecture
  */
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { 
@@ -87,16 +87,29 @@ export const useChatIntegration = (projectId: string) => {
     }
   }, [conversationDetails, conversationDetailsFromStore]);
 
+  // Extract sessionId outside useEffect to prevent unnecessary re-renders
+  const urlSessionId = searchParams.get('sessionId');
+  
+  // Track processed sessionId to prevent duplicate API calls
+  const processedSessionRef = useRef<string | null>(null);
+
   // Handle two scenarios: new conversation vs existing conversation with sessionId
   useEffect(() => {
-    const urlSessionId = searchParams.get('sessionId');
     
     if (urlSessionId) {
+      // Guard: Skip if we've already processed this sessionId
+      if (processedSessionRef.current === urlSessionId) {
+        console.log('🔄 Skipping duplicate sessionId processing:', urlSessionId);
+        return;
+      }
       // Scenario 2: Existing conversation - find conversation by sessionId and load messages
       console.log('🔄 Scenario 2: Loading existing conversation for sessionId:', urlSessionId);
       
       const loadExistingConversation = async () => {
         try {
+          // Mark as processed to prevent duplicate calls
+          processedSessionRef.current = urlSessionId;
+          
           const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
           const response = await fetch(`${API_BASE_URL}/api/chat/conversations/by-session/${urlSessionId}`);
           
@@ -128,26 +141,31 @@ export const useChatIntegration = (projectId: string) => {
       };
       
       loadExistingConversation();
-    } else if (selectedConversationId) {
-      // Scenario 1: New conversation - don't load messages, just set up session when available
-      console.log('🔄 Scenario 1: New conversation for conversationId:', selectedConversationId);
+    } else {
+      // Reset processed session when no sessionId in URL
+      processedSessionRef.current = null;
       
-      const setupNewConversation = async () => {
-        const store = useChatStore.getState();
+      if (selectedConversationId) {
+        // Scenario 1: New conversation - don't load messages, just set up session when available
+        console.log('🔄 Scenario 1: New conversation for conversationId:', selectedConversationId);
         
-        // Only initialize session if we don't have one yet
-        const currentSession = store.sessionState[selectedConversationId];
-        if (!currentSession?.sessionId && !currentSession?.pending) {
-          console.log('🆔 Setting up new conversation session for:', selectedConversationId);
-          await store.initializeSession(selectedConversationId);
-        }
+        const setupNewConversation = async () => {
+          const store = useChatStore.getState();
+          
+          // Only initialize session if we don't have one yet
+          const currentSession = store.sessionState[selectedConversationId];
+          if (!currentSession?.sessionId && !currentSession?.pending) {
+            console.log('🆔 Setting up new conversation session for:', selectedConversationId);
+            await store.initializeSession(selectedConversationId);
+          }
+          
+          // For new conversations, DO NOT load messages - they will come from Claude responses
+        };
         
-        // For new conversations, DO NOT load messages - they will come from Claude responses
-      };
-      
-      setupNewConversation();
+        setupNewConversation();
+      }
     }
-  }, [selectedConversationId, searchParams]);
+  }, [selectedConversationId, urlSessionId]);
 
   // Enhanced conversation management that integrates with mutations
   const createConversation = async (title?: string): Promise<string | null> => {
