@@ -312,21 +312,47 @@ io.on('connection', (socket) => {
   });
 
   socket.on('permission:request', async (data) => {
-    console.log(`🔐 Received permission request from bridge:`, data.promptId, 'with session ID:', data.sessionId);
-    // Emit to frontend clients in the conversation room with session ID
-    io.to(`conversation-${data.conversationId}`).emit('interactive_prompt', {
-      promptId: data.promptId,
-      conversationId: data.conversationId,
-      sessionId: data.sessionId, // Forward session ID to frontend
-      type: data.type,
-      title: data.title,
-      message: data.message,
-      options: data.options,
-      context: data.context,
-      toolName: data.toolName,
-      riskLevel: data.riskLevel,
-      timestamp: Date.now()
-    });
+    // Check if this is a unified permission request (has permissionType field)
+    if (data.permissionType) {
+      console.log(`🔐 Received unified permission request from bridge:`, {
+        promptId: data.promptId,
+        permissionType: data.permissionType,
+        subtype: data.subtype,
+        sessionId: data.sessionId
+      });
+      
+      // Emit unified permission event to frontend
+      io.to(`conversation-${data.conversationId}`).emit('unified_permission_request', {
+        promptId: data.promptId,
+        conversationId: data.conversationId,
+        sessionId: data.sessionId,
+        permissionType: data.permissionType,
+        subtype: data.subtype,
+        title: data.title,
+        message: data.message,
+        options: data.options,
+        context: data.context,
+        timestamp: data.timestamp || Date.now(),
+        requestId: data.requestId
+      });
+    } else {
+      // Legacy permission request handling
+      console.log(`🔐 Received legacy permission request from bridge:`, data.promptId, 'with session ID:', data.sessionId);
+      // Emit to frontend clients in the conversation room with session ID
+      io.to(`conversation-${data.conversationId}`).emit('interactive_prompt', {
+        promptId: data.promptId,
+        conversationId: data.conversationId,
+        sessionId: data.sessionId, // Forward session ID to frontend
+        type: data.type,
+        title: data.title,
+        message: data.message,
+        options: data.options,
+        context: data.context,
+        toolName: data.toolName,
+        riskLevel: data.riskLevel,
+        timestamp: Date.now()
+      });
+    }
   });
 
   socket.on('plan:review-request', async (data) => {
@@ -359,9 +385,35 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Handle responses from frontend back to bridge
+  // Handle unified permission responses from frontend back to bridge
+  socket.on('unified_permission_response', async (data) => {
+    console.log(`🔐 Received unified permission response from frontend:`, {
+      promptId: data.promptId,
+      selectedOption: data.selectedOption,
+      permissionType: data.permissionType
+    });
+    
+    // Forward unified response to bridge service
+    const bridgeSockets = await io.in('claude-bridge').fetchSockets();
+    if (bridgeSockets && bridgeSockets.length > 0) {
+      bridgeSockets[0]?.emit('permission:response', {
+        promptId: data.promptId,
+        conversationId: data.conversationId,
+        sessionId: data.sessionId,
+        selectedOption: data.selectedOption,
+        selectedValue: data.selectedValue,
+        data: data.data,
+        responseTime: data.responseTime,
+        timestamp: data.timestamp,
+        permissionType: data.permissionType,
+        subtype: data.subtype
+      });
+    }
+  });
+
+  // Handle legacy permission responses from frontend back to bridge
   socket.on('permission:respond', async (data) => {
-    console.log(`📝 Received permission response from frontend:`, data.promptId);
+    console.log(`📝 Received legacy permission response from frontend:`, data.promptId);
     // Forward to bridge service
     const bridgeSockets = await io.in('claude-bridge').fetchSockets();
     if (bridgeSockets && bridgeSockets.length > 0) {

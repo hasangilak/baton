@@ -219,8 +219,71 @@ export const useInteractivePrompts = ({ conversationId, sessionId, enableAnalyti
       // Update real-time analytics dashboard
     };
 
-    // Enhanced event listeners
+    // Unified permission request handler
+    const handleUnifiedPermissionRequest = (data: any) => {
+      console.log('🔐 Received unified permission request:', data);
+      console.log('🔍 Current conversation ID:', conversationId);
+      console.log('🔍 Request conversation ID:', data.conversationId);
+      
+      // Only handle requests for the current conversation
+      if (data.conversationId !== conversationId) {
+        console.log('🚫 Ignoring unified permission request for different conversation:', data.conversationId, 'vs', conversationId);
+        return;
+      }
+
+      // Convert unified permission request to interactive prompt format
+      const prompt: InteractivePrompt & { 
+        permissionType?: string;
+        subtype?: string;
+        unifiedRequest?: boolean;
+      } = {
+        id: data.promptId,
+        conversationId: data.conversationId,
+        sessionId: data.sessionId,
+        type: data.permissionType, // Use permissionType as type for unified requests
+        title: data.title,
+        message: data.message,
+        options: data.options,
+        context: {
+          ...data.context,
+          permissionType: data.permissionType,
+          subtype: data.subtype,
+          originalRequest: data
+        },
+        status: 'pending',
+        selectedOption: undefined,
+        autoHandler: undefined,
+        timeoutAt: new Date(Date.now() + (data.context?.timeout || 30000)).toISOString(),
+        createdAt: new Date().toISOString(),
+        respondedAt: undefined,
+        
+        // Add unified permission metadata
+        permissionType: data.permissionType,
+        subtype: data.subtype,
+        unifiedRequest: true
+      };
+
+      // Add to pending prompts (replacing any existing with same ID)
+      setPendingPrompts(prev => {
+        const filtered = prev.filter(p => p.id !== prompt.id);
+        return [...filtered, prompt];
+      });
+
+      // Track analytics event for unified permission
+      if (enableAnalytics) {
+        trackAnalyticsEvent('unified_permission_received', {
+          permissionType: data.permissionType,
+          subtype: data.subtype,
+          toolName: data.context?.toolName,
+          riskLevel: data.context?.riskLevel,
+          conversationId: data.conversationId
+        });
+      }
+    };
+
+    // Enhanced event listeners including unified permission support
     socket.on('interactive_prompt', handleInteractivePrompt);
+    socket.on('unified_permission_request', handleUnifiedPermissionRequest); // New unified handler
     socket.on('permission_analytics', handlePermissionAnalytics);
     socket.on('permission_request', handlePermissionRequest);
     socket.on('analytics_event', handleAnalyticsEvent);
@@ -228,6 +291,7 @@ export const useInteractivePrompts = ({ conversationId, sessionId, enableAnalyti
 
     return () => {
       socket.off('interactive_prompt', handleInteractivePrompt);
+      socket.off('unified_permission_request', handleUnifiedPermissionRequest); // Cleanup unified handler
       socket.off('permission_analytics', handlePermissionAnalytics);
       socket.off('permission_request', handlePermissionRequest);
       socket.off('analytics_event', handleAnalyticsEvent);
@@ -310,7 +374,7 @@ export const useInteractivePrompts = ({ conversationId, sessionId, enableAnalyti
     }
   }, []);
 
-  // Enhanced respond to prompt via WebSocket with analytics
+  // Enhanced respond to prompt via WebSocket with unified permission support
   const respondToPrompt = useMutation({
     mutationFn: async ({ promptId, optionId, startTime }: { 
       promptId: string; 
@@ -323,33 +387,71 @@ export const useInteractivePrompts = ({ conversationId, sessionId, enableAnalyti
         throw new Error('No WebSocket connection available');
       }
 
-      // Send response via WebSocket instead of HTTP with session correlation
-      socket.emit('permission:respond', {
-        promptId,
-        selectedOption: optionId,
-        conversationId, // Include conversation ID for routing
-        sessionId, // Include session ID for Claude Code correlation
-        metadata: {
-          responseTime,
-          source: 'frontend',
-          timestamp: Date.now()
-        }
-      });
+      // Get the prompt to determine if it's a unified permission request
+      const prompt = pendingPrompts.find(p => p.id === promptId);
+      const isUnifiedRequest = (prompt as any)?.unifiedRequest;
+      const permissionType = (prompt as any)?.permissionType;
+      const selectedOption = prompt?.options.find(opt => opt.id === optionId);
 
-      console.log('✅ Permission response sent via WebSocket', { 
-        promptId, 
-        selectedOption: optionId,
-        conversationId,
-        sessionId 
-      });
+      if (isUnifiedRequest) {
+        // Send unified permission response
+        socket.emit('unified_permission_response', {
+          promptId,
+          conversationId,
+          sessionId,
+          selectedOption: optionId,
+          selectedValue: selectedOption?.value || optionId,
+          data: {
+            feedback: '', // Can be extended for plan reviews
+            metadata: {
+              responseTime,
+              source: 'frontend',
+              timestamp: Date.now()
+            }
+          },
+          responseTime,
+          timestamp: Date.now(),
+          permissionType,
+          subtype: (prompt as any)?.subtype
+        });
+
+        console.log('✅ Unified permission response sent via WebSocket', { 
+          promptId, 
+          selectedOption: optionId,
+          permissionType,
+          conversationId,
+          sessionId 
+        });
+      } else {
+        // Send legacy permission response
+        socket.emit('permission:respond', {
+          promptId,
+          selectedOption: optionId,
+          conversationId, // Include conversation ID for routing
+          sessionId, // Include session ID for Claude Code correlation
+          metadata: {
+            responseTime,
+            source: 'frontend',
+            timestamp: Date.now()
+          }
+        });
+
+        console.log('✅ Legacy permission response sent via WebSocket', { 
+          promptId, 
+          selectedOption: optionId,
+          conversationId,
+          sessionId 
+        });
+      }
       
       // Track response analytics
       if (enableAnalytics) {
-        trackAnalyticsEvent('prompt_responded', {
+        trackAnalyticsEvent(isUnifiedRequest ? 'unified_prompt_responded' : 'prompt_responded', {
           promptId,
           selectedOption: optionId,
           responseTime,
-          method: 'websocket'
+          method: 'websocket',
+          permissionType: isUnifiedRequest ? permissionType : undefined
         });
       }
 

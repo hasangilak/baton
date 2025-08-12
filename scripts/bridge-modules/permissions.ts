@@ -46,6 +46,67 @@ export interface ProgressiveTimeoutRequest {
   requestId?: string;
 }
 
+// Unified Permission System Types
+export interface UnifiedPermissionRequest {
+  // Core identification
+  promptId: string;
+  conversationId: string;
+  sessionId?: string;
+  
+  // Permission type and context
+  permissionType: 'tool_permission' | 'plan_review' | 'file_permission' | 'api_permission' | 'custom';
+  subtype?: string; // For extensibility (e.g., 'escalation')
+  
+  // Display information
+  title: string;
+  message: string;
+  
+  // Options for user to choose from
+  options: Array<{
+    id: string;
+    label: string;
+    value: string;
+    style?: 'default' | 'primary' | 'danger';
+  }>;
+  
+  // Context and metadata
+  context: {
+    toolName?: string;
+    riskLevel?: RiskLevel;
+    parameters?: any;
+    planContent?: string; // For plan reviews
+    escalationType?: 'reminder' | 'urgent' | 'critical';
+    timeout?: number;
+    allowAutoDecision?: boolean;
+    stage?: number; // For escalations
+  };
+  
+  // Tracking
+  timestamp: number;
+  requestId?: string;
+}
+
+export interface UnifiedPermissionResponse {
+  promptId: string;
+  conversationId: string;
+  sessionId?: string;
+  
+  // User decision
+  selectedOption: string;
+  selectedValue: string;
+  
+  // Additional data based on permission type
+  data?: {
+    feedback?: string; // For plan reviews
+    editedPlan?: string; // For plan edits
+    metadata?: any;
+  };
+  
+  // Response tracking
+  responseTime: number;
+  timestamp: number;
+}
+
 export class PermissionManager {
   private permissionCache = new Map<string, PermissionCache>();
   private backendSocket: any; // Socket.IO client socket
@@ -65,28 +126,57 @@ export class PermissionManager {
   }
 
   /**
-   * Setup WebSocket event handlers for permission responses
+   * Setup WebSocket event handlers for unified permission responses
    */
   private setupWebSocketHandlers(): void {
     if (!this.backendSocket) return;
 
-    // Handle permission responses from backend
-    this.backendSocket.on('permission:response', (data: any) => {
-      this.logger.info('Received permission response', { promptId: data.promptId });
-      this.handlePermissionResponse(data.promptId, data);
+    // Handle unified permission responses from backend
+    this.backendSocket.on('permission:response', (data: UnifiedPermissionResponse) => {
+      this.logger.info('Received unified permission response', { 
+        promptId: data.promptId, 
+        selectedOption: data.selectedOption,
+        permissionType: (data as any).permissionType 
+      });
+      this.handleUnifiedPermissionResponse(data);
     });
 
-    // Handle plan review responses from backend
+    // Keep legacy handlers for backward compatibility during transition
     this.backendSocket.on('plan:review-response', (data: any) => {
-      this.logger.info('Received plan review response', { promptId: data.promptId });
+      this.logger.info('Received legacy plan review response', { promptId: data.promptId });
       this.handlePlanReviewResponse(data.promptId, data);
     });
 
-    this.logger.info('WebSocket permission handlers configured');
+    this.logger.info('WebSocket unified permission handlers configured');
   }
 
   /**
-   * Handle permission response from WebSocket
+   * Handle unified permission response from WebSocket
+   */
+  private handleUnifiedPermissionResponse(data: UnifiedPermissionResponse): void {
+    const handler = this.responseHandlers.get(data.promptId);
+    if (handler) {
+      if (handler.timeout) {
+        clearTimeout(handler.timeout);
+      }
+      this.responseHandlers.delete(data.promptId);
+      
+      // Process the unified response
+      const result = {
+        value: data.selectedValue || data.selectedOption || 'deny',
+        label: data.selectedOption,
+        metadata: data.data?.metadata,
+        feedback: data.data?.feedback,
+        editedPlan: data.data?.editedPlan,
+        responseTime: data.responseTime
+      };
+      
+      handler.resolve(result);
+    }
+  }
+
+  /**
+   * Handle legacy permission response from WebSocket (for backward compatibility)
    */
   private handlePermissionResponse(promptId: string, data: any): void {
     const handler = this.responseHandlers.get(promptId);
@@ -96,7 +186,7 @@ export class PermissionManager {
       }
       this.responseHandlers.delete(promptId);
       
-      // Process the response
+      // Process the legacy response
       const result = {
         value: data.selectedOption || data.decision || 'deny',
         label: data.label,
@@ -126,6 +216,101 @@ export class PermissionManager {
       
       handler.resolve(result);
     }
+  }
+
+  /**
+   * Create a unified permission request from legacy request types
+   */
+  private createUnifiedPermissionRequest(
+    type: 'tool_permission' | 'plan_review',
+    promptId: string,
+    conversationId: string,
+    data: {
+      toolName?: string;
+      riskLevel?: RiskLevel;
+      parameters?: any;
+      planContent?: string;
+      sessionId?: string;
+      requestId?: string;
+      title?: string;
+      message?: string;
+      escalationType?: 'reminder' | 'urgent' | 'critical';
+      stage?: number;
+    }
+  ): UnifiedPermissionRequest {
+    const baseRequest: UnifiedPermissionRequest = {
+      promptId,
+      conversationId,
+      sessionId: data.sessionId,
+      permissionType: type,
+      title: data.title || '',
+      message: data.message || '',
+      options: [],
+      context: {
+        toolName: data.toolName,
+        riskLevel: data.riskLevel,
+        parameters: data.parameters,
+        planContent: data.planContent,
+        escalationType: data.escalationType,
+        stage: data.stage,
+      },
+      timestamp: Date.now(),
+      requestId: data.requestId,
+    };
+
+    // Configure options based on permission type
+    if (type === 'tool_permission') {
+      baseRequest.title = data.title || 'Tool Permission Required';
+      baseRequest.message = data.message || `Claude Code wants to use the ${data.toolName} tool.`;
+      baseRequest.options = [
+        { id: 'allow_once', label: 'Allow Once', value: 'allow_once', style: 'primary' },
+        { id: 'allow_always', label: 'Allow Always', value: 'allow_always' },
+        { id: 'deny', label: 'Deny', value: 'deny', style: 'danger' }
+      ];
+    } else if (type === 'plan_review') {
+      baseRequest.title = data.title || 'Plan Review Required';
+      baseRequest.message = data.message || 'Claude Code has generated an implementation plan for your review.';
+      baseRequest.options = [
+        { id: 'auto_accept', label: 'Auto Accept', value: 'auto_accept', style: 'primary' },
+        { id: 'review_accept', label: 'Review & Accept', value: 'review_accept' },
+        { id: 'edit_plan', label: 'Edit Plan', value: 'edit_plan' },
+        { id: 'reject', label: 'Reject', value: 'reject', style: 'danger' }
+      ];
+    }
+
+    return baseRequest;
+  }
+
+  /**
+   * Send unified permission request via WebSocket
+   */
+  private async sendUnifiedPermissionRequest(request: UnifiedPermissionRequest): Promise<any> {
+    if (!this.backendSocket) {
+      throw new Error('No backend WebSocket connection for permission request');
+    }
+
+    this.logger.info(`Sending unified permission request`, {
+      promptId: request.promptId,
+      permissionType: request.permissionType,
+      toolName: request.context.toolName
+    });
+
+    // Send unified permission request
+    this.backendSocket.emit('permission:request', request);
+
+    // Wait for response using existing handler system
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        this.responseHandlers.delete(request.promptId);
+        reject(new Error(`Permission request timeout for ${request.promptId}`));
+      }, 120000); // 2 minute timeout
+
+      this.responseHandlers.set(request.promptId, {
+        resolve,
+        reject,
+        timeout
+      });
+    });
   }
 
   /**
@@ -387,48 +572,37 @@ export class PermissionManager {
   }
 
   /**
-   * Request plan review via WebSocket
+   * Request plan review via unified permission system
    */
   private async requestPlanReview(request: PlanReviewRequest): Promise<PermissionResult> {
     const { toolName, parameters, conversationId, planContent, requestId } = request;
     const contextLogger = new ContextualLogger(logger, 'PermissionManager', requestId);
     
-    contextLogger.info(`Requesting plan review via WebSocket`, { planLength: planContent.length });
+    contextLogger.info(`Requesting plan review via unified permission system`, { planLength: planContent.length });
     
-    if (!this.backendSocket) {
-      throw new Error('No backend WebSocket connection for plan review');
-    }
-
     const promptId = `plan-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
-    // Send plan review request via WebSocket
-    this.backendSocket.emit('plan:review-request', {
+    // Create unified permission request for plan review
+    const unifiedRequest = this.createUnifiedPermissionRequest(
+      'plan_review',
       promptId,
       conversationId,
-      type: 'plan_review',
-      title: 'Plan Review Required',
-      message: 'Claude Code has generated an implementation plan for your review.',
-      planContent: planContent,
-      options: [
-        { id: 'auto_accept', label: 'Auto Accept', value: 'auto_accept' },
-        { id: 'review_accept', label: 'Review & Accept', value: 'review_accept' },
-        { id: 'edit_plan', label: 'Edit Plan', value: 'edit_plan' },
-        { id: 'reject', label: 'Reject', value: 'reject' }
-      ],
-      context: {
+      {
         toolName,
-        parameters: JSON.stringify(parameters),
-        planLength: planContent.length,
-        timestamp: Date.now()
+        parameters,
+        planContent,
+        requestId,
+        title: 'Plan Review Required',
+        message: 'Claude Code has generated an implementation plan for your review.'
       }
-    });
+    );
 
-    contextLogger.info('Plan review request sent via WebSocket', { promptId });
+    contextLogger.info('Sending unified plan review request', { promptId });
 
-    // Wait for plan review response
-    const reviewResponse = await this.waitForPlanReviewResponse(promptId);
+    // Send via unified permission system
+    const response = await this.sendUnifiedPermissionRequest(unifiedRequest);
     
-    return this.processPlanReviewResponse(reviewResponse, parameters, planContent);
+    return this.processPlanReviewResponse(response, parameters, planContent);
   }
 
   /**
@@ -474,10 +648,10 @@ export class PermissionManager {
   }
 
   /**
-   * Create permission prompt via WebSocket
+   * Create permission prompt via unified permission system
    */
   private async createPermissionPrompt(request: PermissionRequest): Promise<string | null> {
-    const { toolName, parameters, conversationId, riskLevel } = request;
+    const { toolName, parameters, conversationId, riskLevel, requestId } = request;
     
     if (!this.backendSocket) {
       this.logger.error('No backend WebSocket connection for permission prompt');
@@ -486,31 +660,28 @@ export class PermissionManager {
 
     const promptId = `prompt-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
-    // Send permission request via WebSocket
-    this.backendSocket.emit('permission:request', {
+    // Create unified permission request for tool permission
+    const unifiedRequest = this.createUnifiedPermissionRequest(
+      'tool_permission',
       promptId,
       conversationId,
-      type: 'tool_permission',
-      title: 'Tool Permission Required',
-      message: `Claude Code wants to use the ${toolName} tool.`,
-      options: [
-        { id: 'allow_once', label: 'Allow Once', value: 'allow_once' },
-        { id: 'allow_always', label: 'Allow Always', value: 'allow_always' },
-        { id: 'deny', label: 'Deny', value: 'deny' }
-      ],
-      context: {
+      {
         toolName,
-        parameters: JSON.stringify(parameters),
+        parameters,
         riskLevel,
-        usageCount: 0,
-        progressiveTimeout: true,
-        requestTime: Date.now()
-      },
-      toolName,
-      riskLevel
-    });
+        requestId,
+        title: 'Tool Permission Required',
+        message: `Claude Code wants to use the ${toolName} tool.`
+      }
+    );
 
-    this.logger.info('Permission prompt created via WebSocket', { promptId, toolName });
+    this.logger.info('Sending unified tool permission request', { promptId, toolName });
+    
+    // Send via unified permission system (fire and forget for this method)
+    this.sendUnifiedPermissionRequest(unifiedRequest).catch(error => {
+      this.logger.error('Failed to send unified permission request', { promptId, toolName }, error);
+    });
+    
     return promptId;
   }
 
@@ -569,7 +740,7 @@ export class PermissionManager {
   }
 
   /**
-   * Escalate permission notification via WebSocket
+   * Escalate permission notification via unified permission system
    */
   private async escalatePermissionNotification(promptId: string, toolName: string, riskLevel: RiskLevel, stage: number): Promise<void> {
     try {
@@ -578,18 +749,39 @@ export class PermissionManager {
         return;
       }
 
-      this.backendSocket.emit('permission:escalate', {
-        promptId,
-        stage,
-        toolName,
-        riskLevel,
-        escalationType: stage === 1 ? 'reminder' : stage === 2 ? 'urgent' : 'critical',
+      // Create escalation as a unified permission request
+      const escalationType = stage === 1 ? 'reminder' : stage === 2 ? 'urgent' : 'critical';
+      const escalationPromptId = `${promptId}-escalation-${stage}`;
+      
+      const escalationRequest: UnifiedPermissionRequest = {
+        promptId: escalationPromptId,
+        conversationId: '', // Will be filled by the handler
+        permissionType: 'custom',
+        subtype: 'escalation',
+        title: `Permission Request ${escalationType.charAt(0).toUpperCase() + escalationType.slice(1)}`,
+        message: `Claude Code is still waiting for permission to use the ${toolName} tool. Stage ${stage} of timeout escalation.`,
+        options: [
+          { id: 'allow_once', label: 'Allow Once', value: 'allow_once', style: 'primary' },
+          { id: 'allow_always', label: 'Allow Always', value: 'allow_always' },
+          { id: 'deny', label: 'Deny', value: 'deny', style: 'danger' }
+        ],
+        context: {
+          toolName,
+          riskLevel,
+          escalationType,
+          stage,
+          originalPromptId: promptId,
+          timeout: 30000 * stage // Increasing timeout per stage
+        },
         timestamp: Date.now()
-      });
+      };
 
-      this.logger.info('Permission escalation sent via WebSocket', { promptId, stage, toolName });
+      // Send unified escalation request
+      this.backendSocket.emit('permission:request', escalationRequest);
+
+      this.logger.info('Permission escalation sent via unified system', { promptId, stage, toolName, escalationType });
     } catch (error) {
-      this.logger.warn(`Failed to send escalation notification via WebSocket`, { promptId, stage }, error);
+      this.logger.warn(`Failed to send escalation notification via unified system`, { promptId, stage }, error);
     }
   }
 
