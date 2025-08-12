@@ -69,10 +69,12 @@ export const SimpleFileReferenceMentions: React.FC<SimpleFileReferenceMentionsPr
     }
   }, [workingDirectory]);
 
-  // Initial file load
+  // Only fetch files when user is actively mentioning them
   useEffect(() => {
-    fetchFiles();
-  }, [fetchFiles]);
+    if (showSuggestions && mentionQuery.length >= 0) {
+      fetchFiles(mentionQuery);
+    }
+  }, [showSuggestions, mentionQuery, fetchFiles]);
 
   // Filter files based on mention query
   const filteredFiles = fileList.filter(file => 

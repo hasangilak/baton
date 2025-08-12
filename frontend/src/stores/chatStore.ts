@@ -164,7 +164,7 @@ export const useChatStore = create<ChatStore>()(
       set({ 
         selectedConversationId: id, 
         inputValue: '', // Reset input when switching conversations
-        error: null 
+        // Note: Don't clear errors here - let user handle errors explicitly
       });
     },
     

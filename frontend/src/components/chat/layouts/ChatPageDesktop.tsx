@@ -50,8 +50,8 @@ export const ChatPageDesktop: React.FC = () => {
     onError: (err) => console.error("File upload error:", err),
   });
 
-  const { pendingPrompts, isRespondingToPrompt, handlePromptResponse } =
-    useInteractivePrompts({ conversationId: state.selectedConversationId });
+  // const { pendingPrompts, isRespondingToPrompt, handlePromptResponse } =
+  //   useInteractivePrompts({ conversationId: state.selectedConversationId });
 
   // State for ESC key abort feedback
   const [showAbortFeedback, setShowAbortFeedback] = React.useState(false);
@@ -90,26 +90,26 @@ export const ChatPageDesktop: React.FC = () => {
       return;
     }
 
-    const attachments =
-      fileUpload.selectedFiles?.map((fileItem) => ({
-        filename: fileItem.file.name,
-        mimeType: fileItem.file.type,
-        size: fileItem.file.size,
-        url: fileItem.preview || `file://${fileItem.file.name}`,
-      })) || [];
+    // const attachments =
+    //   fileUpload.selectedFiles?.map((fileItem) => ({
+    //     filename: fileItem.file.name,
+    //     mimeType: fileItem.file.type,
+    //     size: fileItem.file.size,
+    //     url: fileItem.preview || `file://${fileItem.file.name}`,
+    //   })) || [];
 
-    console.log('🔍 [DEBUG] About to call sendMessage with:', {
-      message: trimmed,
-      attachmentsCount: attachments.length
-    });
+    // console.log('🔍 [DEBUG] About to call sendMessage with:', {
+    //   message: trimmed,
+    //   attachmentsCount: attachments.length
+    // });
 
     try {
       await sendMessage(
         trimmed,
-        attachments.length > 0 ? attachments : undefined
+        undefined
       );
       console.log('✅ [DEBUG] sendMessage completed successfully');
-      fileUpload.clearFiles();
+      // fileUpload.clearFiles();
     } catch (error) {
       console.error("❌ [DEBUG] Failed to send message:", error);
     }
@@ -362,7 +362,7 @@ export const ChatPageDesktop: React.FC = () => {
                 />
               </div>
             )}
-
+            {state.bridgeServiceError ? 'bridgge erorr': 'no bridge error'}
             {/* Bridge service error banner */}
             {state.bridgeServiceError && (
               <div className="p-4 bg-[#1E1F22]">
