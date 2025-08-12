@@ -200,9 +200,32 @@ BRIDGE_URL="http://172.18.0.1:8080"
 - **WebSocket Events**: Full compatibility with bridge expectations
 
 ### ⚠️ Known Limitations
-- **Complex Transactions**: Some operations require MongoDB replica set
-- **Seed Operations**: Database seeding needs replica set for relationships
-- **Advanced Features**: Some complex multi-model operations may need adjustment
+
+#### MongoDB Replica Set Requirement  
+**Issue**: Prisma with MongoDB requires replica sets for transaction support. Our current single MongoDB instance in Docker causes errors when attempting complex database operations.
+
+**Error Message**: 
+```
+PrismaClientKnownRequestError: Prisma needs to perform transactions, which requires your MongoDB server to be run as a replica set.
+```
+
+**Impact**: 
+- ✅ Basic CRUD operations work fine
+- ✅ WebSocket bridge and API endpoints function normally  
+- ✅ Read operations (GET `/api/projects` etc.) work perfectly
+- ✅ All core chat and permission functionality works
+- ❌ Complex transactions fail (some create operations in test scripts)
+- ❌ Direct Prisma test scripts may fail (`simple-test.ts`)
+
+**RESOLVED**: MongoDB replica set now configured in development - all create operations work normally.
+
+**Fixed Permission System**: Updated `src/mcp/tools/permission-prompt.ts` to replace PostgreSQL raw SQL queries (`$queryRaw`, `$executeRaw`) with MongoDB-compatible Prisma operations.
+
+**Reduced MongoDB Log Noise**: Configured MongoDB to use `--quiet` mode and log to file instead of stdout to prevent excessive connection logs in Docker output.
+
+**Added ObjectId Validation**: Implemented comprehensive ObjectId validation in API routes to prevent errors when old PostgreSQL UUIDs are passed to MongoDB. Created reusable validation utility (`src/utils/validation.ts`) with middleware for automatic ID format checking.
+
+**Configured MongoDB Replica Set**: Successfully configured MongoDB replica set in development to enable all transaction-based operations. This resolves the major limitation that prevented create operations from working.
 
 ### 🚀 Performance Improvements
 - **Document Storage**: Natural JSON storage for chat data

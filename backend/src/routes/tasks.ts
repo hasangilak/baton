@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { createError } from '../middleware/errorHandler';
 import { io } from '../index';
 import type { ApiResponse } from '../types';
+import { validateObjectIdParam } from '../utils/validation';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -31,13 +32,9 @@ const updateTaskSchema = z.object({
 });
 
 // GET /api/tasks?projectId=xxx - Get tasks by project
-router.get('/', async (req, res, next) => {
+router.get('/', validateObjectIdParam('projectId'), async (req, res, next) => {
   try {
     const { projectId, status } = req.query;
-    
-    if (!projectId) {
-      throw createError('Project ID is required', 400);
-    }
 
     const whereClause: any = { projectId: projectId as string };
     if (status) {

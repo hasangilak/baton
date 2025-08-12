@@ -1,16 +1,14 @@
-version: '3.8'
-
 services:
-  # MongoDB database for development
+  # MongoDB database for development with replica set
   mongodb:
     image: mongo:7
     container_name: baton-mongodb-dev
+    command: ["mongod", "--quiet", "--logpath", "/var/log/mongodb/mongod.log", "--replSet", "rs0", "--bind_ip_all"]
     environment:
-      - MONGO_INITDB_ROOT_USERNAME=baton_user
-      - MONGO_INITDB_ROOT_PASSWORD=baton_password
       - MONGO_INITDB_DATABASE=baton_dev
     volumes:
       - mongodb_dev_data:/data/db
+      - mongodb_logs:/var/log/mongodb
     networks:
       - baton-network
     ports:
@@ -33,7 +31,7 @@ services:
       - "9229:9229" # Debug port
     environment:
       - NODE_ENV=development
-      - DATABASE_URL=mongodb://baton_user:baton_password@mongodb:27017/baton_dev?authSource=admin
+      - DATABASE_URL=mongodb://mongodb:27017/baton_dev
       - CLIENT_URL=http://localhost:5173
       - MCP_SERVER_PORT=3002
       - BRIDGE_URL=http://172.18.0.1:8080
@@ -66,7 +64,7 @@ services:
       - "3002:3002"
     environment:
       - NODE_ENV=development
-      - DATABASE_URL=mongodb://baton_user:baton_password@mongodb:27017/baton_dev?authSource=admin
+      - DATABASE_URL=mongodb://mongodb:27017/baton_dev
       - MCP_TRANSPORT_MODE=websocket
       - MCP_SERVER_PORT=3002
       - CHOKIDAR_USEPOLLING=true
@@ -118,6 +116,7 @@ services:
 
 volumes:
   mongodb_dev_data:
+  mongodb_logs:
 
 networks:
   baton-network:

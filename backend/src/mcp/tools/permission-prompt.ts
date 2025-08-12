@@ -154,10 +154,20 @@ export async function handlePermissionPrompt(args: PermissionPromptArgs, context
 
 async function shouldAutoApprove(tool: string, action: string, resource?: string, projectId?: string): Promise<boolean> {
   // Check allowlist rules from database
-  const allowRules = await prisma.$queryRaw<Array<{tool: string, action: string, resource: string}>>`
-    SELECT tool, action, resource FROM permission_rules 
-    WHERE type = 'allow' AND (project_id = ${projectId} OR project_id IS NULL)
-  `;
+  const allowRules = await prisma.permissionRule.findMany({
+    where: {
+      type: 'allow',
+      OR: [
+        ...(projectId ? [{ projectId }] : []),
+        { projectId: null }
+      ]
+    },
+    select: {
+      tool: true,
+      action: true,
+      resource: true
+    }
+  });
 
   for (const rule of allowRules) {
     if (matchesRule(tool, action, resource, rule)) {
@@ -332,13 +342,38 @@ async function storePermissionDecision(
   approved: boolean,
   projectId?: string
 ): Promise<void> {
-  // Create or update permission rule
-  await prisma.$executeRaw`
-    INSERT INTO permission_rules (tool, action, resource, type, project_id, created_at)
-    VALUES (${tool}, ${action}, ${resource || '*'}, ${approved ? 'allow' : 'deny'}, ${projectId}, NOW())
-    ON CONFLICT (tool, action, resource, project_id) 
-    DO UPDATE SET type = ${approved ? 'allow' : 'deny'}, updated_at = NOW()
-  `;
+  // Create or update permission rule using upsert
+  // Try to find existing rule first
+  const existingRule = await prisma.permissionRule.findFirst({
+    where: {
+      tool,
+      action,
+      resource: resource || '*',
+      projectId: projectId ?? null
+    }
+  });
+
+  if (existingRule) {
+    // Update existing rule
+    await prisma.permissionRule.update({
+      where: { id: existingRule.id },
+      data: {
+        type: approved ? 'allow' : 'deny',
+        updatedAt: new Date()
+      }
+    });
+  } else {
+    // Create new rule
+    await prisma.permissionRule.create({
+      data: {
+        tool,
+        action,
+        resource: resource || '*',
+        type: approved ? 'allow' : 'deny',
+        projectId: projectId ?? null
+      }
+    });
+  }
 
   console.log(`💾 Stored permission decision: ${tool}/${action} = ${approved ? 'ALLOW' : 'DENY'}`);
 }

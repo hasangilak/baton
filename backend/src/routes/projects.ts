@@ -94,16 +94,15 @@ router.post('/', async (req, res, next) => {
   try {
     const validatedData = createProjectSchema.parse(req.body);
     
-    // For now, we'll use a dummy user ID. In production, get from auth
-    const dummyUserId = 'user_default';
+    // For now, we'll use a default user. In production, get from auth
+    const defaultEmail = 'user@example.com';
     
-    // Ensure default user exists
-    await prisma.user.upsert({
-      where: { id: dummyUserId },
-      update: {},
+    // Ensure default user exists (use email as unique identifier)
+    let user = await prisma.user.upsert({
+      where: { email: defaultEmail },
+      update: {}, // No updates needed if user exists
       create: {
-        id: dummyUserId,
-        email: 'user@example.com',
+        email: defaultEmail,
         name: 'Default User'
       }
     });
@@ -113,7 +112,7 @@ router.post('/', async (req, res, next) => {
         name: validatedData.name,
         description: validatedData.description ?? null,
         color: validatedData.color ?? '#3b82f6',
-        ownerId: dummyUserId
+        ownerId: user.id
       },
       include: {
         owner: {

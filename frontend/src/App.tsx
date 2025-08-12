@@ -11,10 +11,10 @@ import { ThemeProvider } from './hooks/useTheme';
 
 function AppContent() {
   const { data: projects } = useProjects();
-  const [currentProjectId, setCurrentProjectId] = useState<string>('cmdxumi04000k4yhw92fvsqqa');
+  const [currentProjectId, setCurrentProjectId] = useState<string>('');
 
   // Use first available project if baton project doesn't exist
-  const activeProjectId = currentProjectId || projects?.[0]?.id || 'cmdxumi04000k4yhw92fvsqqa';
+  const activeProjectId = currentProjectId || projects?.[0]?.id || '';
 
   const { connected, connecting, error, joinProject, leaveProject } = useUnifiedWebSocket({
     activeProjectId,

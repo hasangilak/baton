@@ -1,22 +1,16 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { io } from '../index';
+import { validateObjectIdParam } from '../utils/validation';
 
 const router = Router();
 const prisma = new PrismaClient();
 
 // GET /api/claude-todos - Get all Claude Code todos for a project
-// @ts-expect-error Express route handler return type inference issue
-router.get('/', async (req, res, next) => {
+// @ts-expect-error Express route handler return type inference issue  
+router.get('/', validateObjectIdParam('projectId'), async (req, res, next) => {
   try {
     const { projectId } = req.query;
-    
-    if (!projectId || typeof projectId !== 'string') {
-      return res.status(400).json({
-        error: 'Project ID is required',
-        code: 'MISSING_PROJECT_ID'
-      });
-    }
 
     const todos = await prisma.claudeTodo.findMany({
       where: { projectId },
