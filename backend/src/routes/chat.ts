@@ -205,16 +205,6 @@ router.get('/conversations/by-session/:sessionId', async (req: Request, res: Res
 
     const conversation = await prisma.conversation.findFirst({
       where: { claudeSessionId: sessionId },
-      select: {
-        id: true,
-        title: true,
-        projectId: true,
-        claudeSessionId: true,
-        contextTokens: true,
-        lastCompacted: true,
-        createdAt: true,
-        updatedAt: true,
-      },
       include: {
         messages: {
           where: {
@@ -238,11 +228,22 @@ router.get('/conversations/by-session/:sessionId', async (req: Request, res: Res
 
     console.log(`📥 Retrieved conversation ${conversation.id} with ${conversation.messages?.length || 0} messages for session ${sessionId}`);
 
+    // Convert BigInt timestamp to number for JSON serialization
+    const serializedMessages = conversation.messages?.map(message => ({
+      ...message,
+      timestamp: message.timestamp ? Number(message.timestamp) : null,
+    })) || [];
+
+    const serializedConversation = {
+      ...conversation,
+      messages: serializedMessages,
+    };
+
     return res.json({
       success: true,
-      conversation,
-      messages: conversation.messages,
-      messageCount: conversation.messages?.length || 0,
+      conversation: serializedConversation,
+      messages: serializedMessages,
+      messageCount: serializedMessages.length,
     });
   } catch (error) {
     console.error('Error fetching conversation by session ID:', error);
