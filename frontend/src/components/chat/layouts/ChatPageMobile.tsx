@@ -5,11 +5,14 @@ import { WelcomeScreen } from "../shared/WelcomeScreen";
 import { SessionInfo } from "../shared/SessionInfo";
 import { ConversationInputArea } from "../input/ConversationInputArea";
 import { SimpleMessageRenderer } from "../messages/SimpleMessageRenderer";
-import { useChatContext } from "../../../contexts/ChatContext";
+import { useChatIntegration } from "../../../hooks/chat/useChatIntegration";
+import { useParams } from 'react-router-dom';
 import { useFileUpload } from "../../../hooks/useFileUpload";
 import { useInteractivePrompts } from "../../../hooks/useInteractivePrompts";
 
 export const ChatPageMobile: React.FC = () => {
+  const { projectId } = useParams<{ projectId: string }>();
+  
   const {
     state,
     conversations,
@@ -22,7 +25,13 @@ export const ChatPageMobile: React.FC = () => {
     archiveConversation,
     deleteConversation,
     isNewChat,
-  } = useChatContext();
+    getAllMessages,
+    // Session management
+    sessionState,
+    isSessionReady,
+    isSessionPending,
+    initializeSession,
+  } = useChatIntegration(projectId || '');
 
   const fileUpload = useFileUpload({
     maxFiles: 5,

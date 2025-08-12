@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { AlertCircle, RotateCcw, Plus, X, Loader2 } from 'lucide-react';
-import { useChatContext } from '../../../contexts/ChatContext';
+import { useChatContext } from '../../../hooks/chat/useChatContext';
 
 interface SessionErrorBannerProps {
   conversationId: string | null;

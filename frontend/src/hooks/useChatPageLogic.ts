@@ -9,7 +9,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
-import { useChatContext } from '../contexts/ChatContext';
+import { useChatContext } from './chat/useChatContext';
 import { useFileUpload } from './useFileUpload';
 import { useInteractivePrompts } from './useInteractivePrompts';
 

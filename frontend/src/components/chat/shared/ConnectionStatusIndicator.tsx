@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { Wifi, WifiOff, Loader2, AlertTriangle, RotateCcw } from 'lucide-react';
-import { useChatContext } from '../../../contexts/ChatContext';
+import { useChatContext } from '../../../hooks/chat/useChatContext';
 
 interface ConnectionStatusIndicatorProps {
   className?: string;

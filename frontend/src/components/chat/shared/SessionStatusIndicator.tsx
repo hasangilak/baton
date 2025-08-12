@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { CheckCircle, Clock, AlertCircle, RotateCcw, Loader2 } from 'lucide-react';
-import { useChatContext } from '../../../contexts/ChatContext';
+import { useChatContext } from '../../../hooks/chat/useChatContext';
 
 interface SessionStatusIndicatorProps {
   conversationId: string | null;

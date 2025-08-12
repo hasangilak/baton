@@ -2,7 +2,7 @@ import React from 'react';
 import { Paperclip, Send, Lock, FileText, Edit, Clock, Loader2 } from 'lucide-react';
 import { FileUploadArea } from './FileUpload';
 import { SimpleFileReferenceMentions } from './FileMentions';
-import { useChatContext } from '../../../contexts/ChatContext';
+import { useChatContext } from '../../../hooks/chat/useChatContext';
 
 interface Props { 
   inputValue: string; 

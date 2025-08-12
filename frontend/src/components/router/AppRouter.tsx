@@ -1,10 +1,10 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Routes, Route, Navigate, useParams, useSearchParams } from 'react-router-dom';
 import { DesktopLayout } from '../layout/DesktopLayout';
 import { MobileLayout } from '../layout/MobileLayout';
 import { ChatPageDesktop } from '../chat/layouts/ChatPageDesktop';
 import { ChatPageMobile } from '../chat/layouts/ChatPageMobile';
-import { ChatProvider } from '../../contexts/ChatContext';
+import { initializeChatStore } from '../../stores/chatStore';
 import { useBreakpoints } from '../../hooks/useBreakpoints';
 
 interface AppRouterProps {
@@ -20,17 +20,21 @@ const ProjectScopedChat: React.FC<{
   const [searchParams] = useSearchParams();
   const sessionId = searchParams.get('sessionId');
 
-  return (
-    <ChatProvider 
-      projectId={urlProjectId || ''} 
-      initialSessionId={sessionId}
-    >
-      {isMobile ? (
-        <ChatPageMobile />
-      ) : (
-        <ChatPageDesktop />
-      )}
-    </ChatProvider>
+  // Initialize chat store when component mounts
+  useEffect(() => {
+    if (urlProjectId) {
+      const cleanup = initializeChatStore(urlProjectId);
+      return cleanup; // Cleanup WebSocket handlers when component unmounts
+    }
+  }, [urlProjectId]);
+
+  // Note: sessionId from URL will be handled by individual components
+  // since we no longer have a provider to pass it through
+
+  return isMobile ? (
+    <ChatPageMobile />
+  ) : (
+    <ChatPageDesktop />
   );
 };
 

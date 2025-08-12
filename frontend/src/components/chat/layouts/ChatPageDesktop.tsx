@@ -9,11 +9,15 @@ import { SimpleMessageRenderer } from "../messages/SimpleMessageRenderer";
 import { SessionStatusIndicator } from "../shared/SessionStatusIndicator";
 import { SessionErrorBanner } from "../shared/SessionErrorBanner";
 import { ConnectionStatusIndicator, ConnectionLostBanner } from "../shared/ConnectionStatusIndicator";
-import { useChatContext } from "../../../contexts/ChatContext";
+import { useChatIntegration } from "../../../hooks/chat/useChatIntegration";
+import { useParams } from 'react-router-dom';
 import { useFileUpload } from "../../../hooks/useFileUpload";
 import { useInteractivePrompts } from "../../../hooks/useInteractivePrompts";
 
 export const ChatPageDesktop: React.FC = () => {
+  const { projectId } = useParams<{ projectId: string }>();
+  
+  // Use the integration hook that provides a ChatContext-compatible interface
   const {
     state,
     conversations,
@@ -32,7 +36,7 @@ export const ChatPageDesktop: React.FC = () => {
     isSessionReady,
     isSessionPending,
     initializeSession,
-  } = useChatContext();
+  } = useChatIntegration(projectId || '');
 
   const fileUpload = useFileUpload({
     maxFiles: 5,
