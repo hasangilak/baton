@@ -204,41 +204,43 @@ export const useChatIntegration = (projectId: string) => {
 
   // Setup enhanced WebSocket handlers that integrate with React Query
   useEffect(() => {
+    const { on, off } = useSocketStore.getState();
+    
+    // Enhanced session available handler with URL updates
+    const handleSessionAvailable = (data: any) => {
+      if (data.conversationId === selectedConversationId && data.sessionId) {
+        // Update URL with session ID
+        setSearchParams(prev => ({
+          ...Object.fromEntries(prev),
+          sessionId: data.sessionId,
+        }));
+        console.log('🔗 Updated URL with session ID:', data.sessionId);
+      }
+    };
+    
+    // Enhanced message complete handler with query invalidation
+    const handleMessageComplete = (data: any) => {
+      if (data.conversationId === selectedConversationId || data.requestId) {
+        queryClient.invalidateQueries({
+          queryKey: ['chat', 'messages', selectedConversationId],
+        });
+      }
+    };
+    
+    // Set up additional WebSocket listeners for integration features
+    on('chat:session-id-available', handleSessionAvailable);
+    on('chat:message-complete', handleMessageComplete);
+    
+    // Also set up the core chat store handlers
     const cleanup = useChatStore.getState().setupWebSocketHandlers();
     
-    // Override the message complete handler to integrate with React Query
-    const originalSetup = useChatStore.getState().setupWebSocketHandlers;
-    useChatStore.setState({
-      setupWebSocketHandlers: () => {
-        const originalCleanup = originalSetup();
-        
-        // Add additional handler for query invalidation
-        const handleMessageComplete = () => {
-          queryClient.invalidateQueries({
-            queryKey: ['chat', 'messages', selectedConversationId],
-          });
-        };
-
-        const handleSessionAvailable = (data: any) => {
-          if (data.sessionId) {
-            setSearchParams(prev => ({
-              ...Object.fromEntries(prev),
-              sessionId: data.sessionId,
-            }));
-          }
-        };
-
-        // Note: In a full implementation, we'd need to properly integrate these handlers
-        // For now, we'll rely on the existing setup
-        
-        return () => {
-          originalCleanup();
-          // Additional cleanup if needed
-        };
-      }
-    });
-    
-    return cleanup;
+    return () => {
+      // Clean up additional handlers
+      off('chat:session-id-available', handleSessionAvailable);
+      off('chat:message-complete', handleMessageComplete);
+      // Clean up core handlers
+      cleanup();
+    };
   }, [selectedConversationId, queryClient, setSearchParams]);
 
   // Computed values
