@@ -454,22 +454,86 @@ export const ChatPageDesktop: React.FC = () => {
                 {conversationItems.map((item) => {
                   // Handle different conversation item types
                   if (item.type === 'prompt') {
-                    // TODO: Render interactive prompt component
+                    const prompt = item.data;
+                    const isUnified = (prompt as any)?.unifiedRequest;
+                    const permissionType = (prompt as any)?.permissionType;
+                    
+                    console.log('🎨 Rendering interactive prompt:', {
+                      promptId: prompt.id,
+                      type: prompt.type,
+                      isUnified,
+                      permissionType,
+                      title: prompt.title,
+                      optionsCount: prompt.options?.length
+                    });
+                    
                     return (
-                      <div key={item.id} className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                        <p className="text-sm text-blue-800">Interactive Prompt: {item.data.message}</p>
-                        <div className="mt-2 space-x-2">
-                          {item.data.options.map((option) => (
+                      <div key={item.id} className="mb-4 p-4 bg-[#2A2D31] border border-[#3E3E42] rounded-lg">
+                        {/* Header */}
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse"></div>
+                            <h3 className="text-sm font-medium text-gray-200">
+                              {prompt.title || 'Permission Required'}
+                            </h3>
+                            {isUnified && (
+                              <span className="px-2 py-0.5 text-xs bg-blue-900 text-blue-200 rounded">
+                                {permissionType}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {/* Message */}
+                        <p className="text-sm text-gray-300 mb-4 leading-relaxed">
+                          {prompt.message}
+                        </p>
+                        
+                        {/* Options */}
+                        <div className="flex flex-wrap gap-2">
+                          {prompt.options?.map((option) => (
                             <button
                               key={option.id}
-                              onClick={() => handlePromptResponse(item.data.id, option.id)}
+                              onClick={() => {
+                                console.log('🖱️ User clicked prompt option:', {
+                                  promptId: prompt.id,
+                                  optionId: option.id,
+                                  optionValue: option.value
+                                });
+                                handlePromptResponse(prompt.id, option.id);
+                              }}
                               disabled={isRespondingToPrompt}
-                              className="px-3 py-1 text-sm bg-blue-100 hover:bg-blue-200 border border-blue-300 rounded"
+                              className={`px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                                option.style === 'primary' 
+                                  ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                                  : option.style === 'danger'
+                                  ? 'bg-red-600 hover:bg-red-700 text-white'
+                                  : 'bg-[#3E3E42] hover:bg-[#4A4A4E] text-gray-200 border border-[#5A5A5E]'
+                              } disabled:opacity-50 disabled:cursor-not-allowed`}
                             >
                               {option.label}
                             </button>
                           ))}
                         </div>
+                        
+                        {/* Debug info in development */}
+                        {process.env.NODE_ENV === 'development' && (
+                          <div className="mt-3 pt-3 border-t border-[#3E3E42]">
+                            <details className="text-xs text-gray-500">
+                              <summary className="cursor-pointer">Debug Info</summary>
+                              <pre className="mt-2 text-xs">
+                                {JSON.stringify({
+                                  id: prompt.id,
+                                  type: prompt.type,
+                                  conversationId: prompt.conversationId,
+                                  sessionId: prompt.sessionId,
+                                  isUnified,
+                                  permissionType
+                                }, null, 2)}
+                              </pre>
+                            </details>
+                          </div>
+                        )}
                       </div>
                     );
                   }

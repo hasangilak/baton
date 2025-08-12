@@ -39,33 +39,9 @@ export const useInteractivePrompts = ({ conversationId, sessionId, enableAnalyti
   const [livePermissionStatus] = useState<string>('');
   const [realtimeAnalytics, setRealtimeAnalytics] = useState<Record<string, unknown>>({});
 
-  // Simple room management functions
-  const joinConversation = useCallback((conversationId: string) => {
-    if (socket?.connected) {
-      socket.emit('join', `conversation-${conversationId}`);
-      console.log('🏠 Joined conversation room:', conversationId);
-    }
-  }, [socket]);
-
-  const leaveConversation = useCallback((conversationId: string) => {
-    if (socket?.connected) {
-      socket.emit('leave', `conversation-${conversationId}`);
-      console.log('🚪 Left conversation room:', conversationId);
-    }
-  }, [socket]);
-
-  // Auto-join conversation room for targeted prompt delivery
-  useEffect(() => {
-    if (!conversationId || !socket) return;
-
-    console.log('💬 Joining conversation room for prompts:', conversationId);
-    joinConversation(conversationId);
-
-    return () => {
-      console.log('💬 Leaving conversation room:', conversationId);
-      leaveConversation(conversationId);
-    };
-  }, [conversationId, socket, joinConversation, leaveConversation]);
+  // Note: Room management is handled by the main chat system (useChatIntegration)
+  // The useInteractivePrompts hook relies on the main chat system's WebSocket connection
+  // and room management to receive permission events in the conversation room
 
   // Load existing pending prompts on mount (like successful implementations)
   useEffect(() => {
@@ -105,7 +81,12 @@ export const useInteractivePrompts = ({ conversationId, sessionId, enableAnalyti
 
   // Enhanced WebSocket listeners with analytics
   useEffect(() => {
-    if (!socket) return;
+    if (!socket) {
+      console.log('⚠️ useInteractivePrompts: No socket available');
+      return;
+    }
+
+    console.log('🔗 useInteractivePrompts: Setting up WebSocket listeners for conversation:', conversationId);
 
     const handleInteractivePrompt = (data: any) => {
       console.log('🔔 Received enhanced interactive prompt:', data);
@@ -221,9 +202,9 @@ export const useInteractivePrompts = ({ conversationId, sessionId, enableAnalyti
 
     // Unified permission request handler
     const handleUnifiedPermissionRequest = (data: any) => {
-      console.log('🔐 Received unified permission request:', data);
-      console.log('🔍 Current conversation ID:', conversationId);
-      console.log('🔍 Request conversation ID:', data.conversationId);
+      console.log('🔐 [useInteractivePrompts] Received unified permission request:', data);
+      console.log('🔍 [useInteractivePrompts] Current conversation ID:', conversationId);
+      console.log('🔍 [useInteractivePrompts] Request conversation ID:', data.conversationId);
       
       // Only handle requests for the current conversation
       if (data.conversationId !== conversationId) {

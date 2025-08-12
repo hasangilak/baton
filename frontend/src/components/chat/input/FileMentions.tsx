@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { File, Folder } from 'lucide-react';
 
 interface FileItem {
@@ -36,87 +36,86 @@ export const SimpleFileReferenceMentions: React.FC<SimpleFileReferenceMentionsPr
   const suggestionsRef = useRef<HTMLDivElement>(null);
   const selectedItemRef = useRef<HTMLDivElement>(null);
 
-  // Fetch files from bridge service
-  const fetchFiles = useCallback(async (search: string = '') => {
-    setIsLoading(true);
-    try {
-      const BRIDGE_URL = 'http://localhost:8080';
-      const url = new URL(`${BRIDGE_URL}/files/list`);
-      
-      if (workingDirectory) {
-        url.searchParams.append('workingDirectory', workingDirectory);
-      }
-      if (search) {
-        url.searchParams.append('search', search);
-      }
+  // Debounced fetch files function
+  const debouncedFetchFiles = useCallback(
+    (() => {
+      let timeoutId: NodeJS.Timeout;
+      return (search: string = '') => {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(async () => {
+          setIsLoading(true);
+          try {
+            const BRIDGE_URL = 'http://localhost:8080';
+            const url = new URL(`${BRIDGE_URL}/files/list`);
+            
+            if (workingDirectory) {
+              url.searchParams.append('workingDirectory', workingDirectory);
+            }
+            if (search) {
+              url.searchParams.append('search', search);
+            }
 
-      const response = await fetch(url.toString());
-      
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
+            const response = await fetch(url.toString());
+            
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
 
-      const data = await response.json();
-      setFileList(data.files || []);
-      
-      console.log('📁 Fetched files:', data.files?.length || 0, 'files');
-      
-    } catch (error) {
-      console.error('❌ Failed to fetch files:', error);
-      setFileList([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [workingDirectory]);
+            const data = await response.json();
+            setFileList(data.files || []);
+            
+          } catch (error) {
+            console.error('❌ Failed to fetch files:', error);
+            setFileList([]);
+          } finally {
+            setIsLoading(false);
+          }
+        }, 300); // 300ms debounce
+      };
+    })()
+  , [workingDirectory]);
 
   // Only fetch files when user is actively mentioning them
   useEffect(() => {
     if (showSuggestions && mentionQuery.length >= 0) {
-      fetchFiles(mentionQuery);
+      debouncedFetchFiles(mentionQuery);
     }
-  }, [showSuggestions, mentionQuery, fetchFiles]);
+  }, [showSuggestions, mentionQuery, debouncedFetchFiles]);
 
-  // Filter files based on mention query
-  const filteredFiles = fileList.filter(file => 
-    file.name.toLowerCase().includes(mentionQuery.toLowerCase())
+  // Filter files based on mention query (memoized)
+  const filteredFiles = useMemo(() => 
+    fileList.filter(file => 
+      file.name.toLowerCase().includes(mentionQuery.toLowerCase())
+    ), [fileList, mentionQuery]
   );
 
   // Handle textarea change and @ detection
-  const handleTextareaChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+  const handleTextareaChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newValue = e.target.value;
     const cursorPos = e.target.selectionStart || newValue.length;
     
-    console.log('🔍 Textarea changed:', { newValue, cursorPos });
     onChange(newValue);
     
     // Find @ mentions
     const beforeCursor = newValue.slice(0, cursorPos);
     const atIndex = beforeCursor.lastIndexOf('@');
     
-    console.log('🔍 @ detection:', { beforeCursor, atIndex });
-    
     if (atIndex !== -1) {
       const afterAt = beforeCursor.slice(atIndex + 1);
       const hasSpaceAfter = afterAt.includes(' ') || afterAt.includes('\n');
-      
-      console.log('🔍 After @:', { afterAt, hasSpaceAfter });
       
       if (!hasSpaceAfter) {
         setMentionStart(atIndex);
         setMentionQuery(afterAt);
         setShowSuggestions(true);
         setSelectedIndex(0);
-        console.log('🔍 Showing suggestions for:', afterAt);
-        fetchFiles(afterAt);
       } else {
         setShowSuggestions(false);
-        console.log('🔍 Hiding suggestions - space detected');
       }
     } else {
       setShowSuggestions(false);
-      console.log('🔍 Hiding suggestions - no @ found');
     }
-  };
+  }, [onChange]);
 
   // Handle key navigation in suggestions
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -153,7 +152,7 @@ export const SimpleFileReferenceMentions: React.FC<SimpleFileReferenceMentionsPr
   };
 
   // Select a file from suggestions
-  const selectFile = (file: FileItem) => {
+  const selectFile = useCallback((file: FileItem) => {
     if (mentionStart !== -1) {
       const beforeMention = value.slice(0, mentionStart);
       const afterMention = value.slice(mentionStart + mentionQuery.length + 1);
@@ -168,7 +167,7 @@ export const SimpleFileReferenceMentions: React.FC<SimpleFileReferenceMentionsPr
         textareaRef.current.setSelectionRange(newCursorPos, newCursorPos);
       }
     }
-  };
+  }, [value, mentionStart, mentionQuery.length, onChange]);
 
   // Close suggestions when clicking outside
   useEffect(() => {

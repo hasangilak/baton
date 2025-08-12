@@ -55,8 +55,8 @@ export const useChatIntegration = (projectId: string) => {
   const isConnected = useSocketStore((state) => state.isConnected);
   const socket = useSocketStore((state) => state.socket);
 
-  // Create state object for compatibility (but don't use in useEffect deps!)
-  const state = {
+  // Memoized state object for compatibility
+  const state = useMemo(() => ({
     selectedConversationId,
     conversationDetails: conversationDetailsFromStore,
     messages,
@@ -69,7 +69,20 @@ export const useChatIntegration = (projectId: string) => {
     inputValue,
     isConnected,
     bridgeServiceError,
-  };
+  }), [
+    selectedConversationId,
+    conversationDetailsFromStore,
+    messages,
+    isStreaming,
+    error,
+    isLoadingMessages,
+    isCreatingConversation,
+    showSidebar,
+    permissionMode,
+    inputValue,
+    isConnected,
+    bridgeServiceError,
+  ]);
 
   // Get conversation management hooks
   const {
@@ -97,19 +110,16 @@ export const useChatIntegration = (projectId: string) => {
     
     // 1. URL sessionId takes highest priority (for resume scenarios)
     if (urlSessionId) {
-      console.log('🔗 Using URL sessionId (priority 1):', urlSessionId);
       return urlSessionId;
     }
     
     // 2. Stored sessionState as fallback (for continued conversations)
     const storedSessionId = sessionState[conversationId]?.sessionId;
     if (storedSessionId) {
-      console.log('💾 Using stored sessionId (priority 2):', storedSessionId);
       return storedSessionId;
     }
     
     // 3. No sessionId available
-    console.log('🚫 No sessionId available for conversation:', conversationId);
     return null;
   }, [urlSessionId, sessionState]);
   
@@ -200,7 +210,7 @@ export const useChatIntegration = (projectId: string) => {
   };
 
   // Enhanced sendMessage that handles conversation creation
-  const sendMessage = async (content: string, attachments?: any[]) => {
+  const sendMessage = useCallback(async (content: string, attachments?: any[]) => {
     console.log('🔍 [DEBUG] ChatIntegration.sendMessage called:', {
       contentLength: content?.length || 0,
       hasAttachments: !!attachments?.length,
@@ -273,7 +283,7 @@ export const useChatIntegration = (projectId: string) => {
       useChatStore.getState().setStreamingState(false);
       useChatStore.getState().setError(error instanceof Error ? error.message : 'Failed to send message');
     }
-  };
+  }, [selectedConversationId, createConversation, sessionState, messages.length, permissionMode]);
 
   // Setup enhanced WebSocket handlers that integrate with React Query
   useEffect(() => {

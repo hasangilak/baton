@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { Paperclip, Send, Lock, FileText, Edit, Clock, Loader2 } from 'lucide-react';
 import { FileUploadArea } from './FileUpload';
 import { SimpleFileReferenceMentions } from './FileMentions';
@@ -24,7 +24,8 @@ export const ConversationInputArea: React.FC<Props> = ({ inputValue, setInputVal
     isSessionReady, 
     isSessionPending 
   } = useChatContext();
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // Handle Shift+Tab for permission mode cycling
     if (e.shiftKey && e.key === 'Tab') {
       e.preventDefault();
@@ -34,25 +35,25 @@ export const ConversationInputArea: React.FC<Props> = ({ inputValue, setInputVal
     
     // Pass other key events to the original handler
     handleKeyPress(e);
-  };
+  }, [onCyclePermissionMode, handleKeyPress]);
 
-  const getModeLabel = () => {
+  const getModeLabel = useCallback(() => {
     switch (permissionMode) {
       case 'plan': return 'Plan mode';
       case 'acceptEdits': return 'Accept Edits mode'; 
       default: return 'Default mode';
     }
-  };
+  }, [permissionMode]);
 
-  const getModeIcon = () => {
+  const getModeIcon = useCallback(() => {
     switch (permissionMode) {
       case 'plan': return <FileText className="w-3 h-3" />;
       case 'acceptEdits': return <Edit className="w-3 h-3" />;
       default: return <Lock className="w-3 h-3" />;
     }
-  };
+  }, [permissionMode]);
 
-  const getPlaceholderText = () => {
+  const getPlaceholderText = useMemo(() => {
     const baseText = `Reply... [${getModeLabel()}] (Shift+Tab to change mode)`;
     
     if (isDisabled) {
@@ -75,10 +76,10 @@ export const ConversationInputArea: React.FC<Props> = ({ inputValue, setInputVal
     }
     
     return baseText;
-  };
+  }, [getModeLabel, isDisabled, conversationId, messageCount, isSessionPending, isSessionReady]);
 
   // Determine if input should be disabled
-  const getInputDisabled = () => {
+  const getInputDisabled = useMemo(() => {
     if (isDisabled) return true; // Already streaming
     
     if (conversationId) {
@@ -97,11 +98,11 @@ export const ConversationInputArea: React.FC<Props> = ({ inputValue, setInputVal
     }
     
     return false;
-  };
+  }, [isDisabled, conversationId, messageCount, isSessionPending, isSessionReady]);
 
   // Determine send button state
-  const getSendButtonState = () => {
-    const inputDisabled = getInputDisabled();
+  const getSendButtonState = useMemo(() => {
+    const inputDisabled = getInputDisabled;
     const hasContent = inputValue.trim() || fileUpload.selectedFiles.length > 0;
     
     if (conversationId) {
@@ -122,7 +123,7 @@ export const ConversationInputArea: React.FC<Props> = ({ inputValue, setInputVal
       icon: <Send className="w-5 h-5" />,
       title: inputDisabled ? 'Input disabled' : 'Send message'
     };
-  };
+  }, [getInputDisabled, inputValue, fileUpload.selectedFiles.length, conversationId, messageCount, isSessionPending]);
 
   return (
   <div className="border-t border-[#2C2D30] bg-[#18191B]/95 backdrop-blur supports-[backdrop-filter]:bg-[#18191B]/80 md:static fixed left-0 right-0 z-[100]" style={{ bottom: 'calc(var(--app-bottom-nav-height,56px))', paddingBottom: 'env(safe-area-inset-bottom)' }} data-testid="chat-input-container">
@@ -133,15 +134,15 @@ export const ConversationInputArea: React.FC<Props> = ({ inputValue, setInputVal
           value={inputValue}
           onChange={setInputValue}
           onKeyDown={handleKeyDown}
-          placeholder={getPlaceholderText()}
-          disabled={getInputDisabled()}
+          placeholder={getPlaceholderText}
+          disabled={getInputDisabled}
           workingDirectory={workingDirectory}
           className="w-full"
         />
         <div className="absolute left-4 bottom-4 flex items-center space-x-1">
           <button 
             onClick={fileUpload.openFileDialog} 
-            disabled={getInputDisabled()}
+            disabled={getInputDisabled}
             className="p-2 hover:bg-[#3A3B3E] rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed" 
             title="Attach files" 
             data-testid="chat-attach-files-conversation"
@@ -151,20 +152,15 @@ export const ConversationInputArea: React.FC<Props> = ({ inputValue, setInputVal
         </div>
         
         {/* Enhanced send button with session awareness */}
-        {(() => {
-          const buttonState = getSendButtonState();
-          return (
-            <button 
-              onClick={handleSendMessage} 
-              disabled={buttonState.disabled}
-              className="absolute right-4 bottom-4 p-2 text-[#8B8D97] hover:text-[#F4F4F4] disabled:opacity-50 transition-colors disabled:cursor-not-allowed" 
-              data-testid="chat-send-conversation"
-              title={buttonState.title}
-            >
-              {buttonState.icon}
-            </button>
-          );
-        })()}
+        <button 
+          onClick={handleSendMessage} 
+          disabled={getSendButtonState.disabled}
+          className="absolute right-4 bottom-4 p-2 text-[#8B8D97] hover:text-[#F4F4F4] disabled:opacity-50 transition-colors disabled:cursor-not-allowed" 
+          data-testid="chat-send-conversation"
+          title={getSendButtonState.title}
+        >
+          {getSendButtonState.icon}
+        </button>
 
         {/* Permission mode pill (inline, matching model selector styling) */}
         <button
