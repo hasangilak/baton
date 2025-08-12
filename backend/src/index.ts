@@ -488,9 +488,20 @@ io.on('connection', (socket) => {
       // Get request mapping to find conversation
       const requestInfo = (global as any).activeRequests?.get(data.requestId);
       if (!requestInfo) {
-        console.warn(`⚠️ No request mapping found for ${data.requestId}`);
+        console.warn(`⚠️ No request mapping found for ${data.requestId} - likely late-arriving event after completion`);
         // Still forward to frontend even without database storage
         io.emit('chat:stream-response', data);
+        return;
+      }
+
+      // Check if request is already completed (but still in grace period)
+      if (requestInfo.completed) {
+        console.log(`📦 Received late stream event for completed request ${data.requestId} - forwarding to frontend`);
+        // Still forward to frontend but skip database operations
+        io.emit('chat:stream-response', { 
+          ...data, 
+          conversationId: requestInfo?.conversationId 
+        });
         return;
       }
 
@@ -585,14 +596,23 @@ io.on('connection', (socket) => {
     console.log(`✅ Received claude:complete from bridge for ${data.requestId}`);
     
     try {
-      // Get request mapping and clean up
+      // Get request mapping but delay cleanup to handle late-arriving stream events
       const requestInfo = (global as any).activeRequests?.get(data.requestId);
       if (requestInfo) {
-        console.log(`🏁 Cleaning up request mapping for ${data.requestId}`);
-        (global as any).activeRequests.delete(data.requestId);
+        console.log(`🏁 Marking request ${data.requestId} as completed, will cleanup in 5 seconds`);
         
-        // For Claude Code SDK format, we don't need to update the message
-        // as it's already been stored via the claude:stream handler
+        // Mark as completed but don't delete yet
+        requestInfo.completed = true;
+        requestInfo.completedAt = Date.now();
+        
+        // Schedule delayed cleanup to handle late-arriving claude:stream events
+        setTimeout(() => {
+          if ((global as any).activeRequests?.has(data.requestId)) {
+            console.log(`🧹 Delayed cleanup of request mapping for ${data.requestId}`);
+            (global as any).activeRequests.delete(data.requestId);
+          }
+        }, 5000); // 5 second grace period for late events
+        
         console.log(`✅ Request ${data.requestId} completed successfully`);
       }
     } catch (error) {
