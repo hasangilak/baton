@@ -262,36 +262,21 @@ export const useChatIntegration = (projectId: string) => {
           sessionId: data.sessionId,
         }));
         
-        // Invalidate conversation data to reflect new session ID
-        queryClient.invalidateQueries({
-          queryKey: ['chat', 'conversation', data.conversationId],
-        });
+        // Only update conversation metadata in cache (no invalidation = no refetch)
+        queryClient.setQueryData(
+          ['chat', 'conversation', data.conversationId],
+          (old: any) => old ? { ...old, claudeSessionId: data.sessionId } : null
+        );
         
-        // Also invalidate conversations list to update session info in sidebar
-        queryClient.invalidateQueries({
-          queryKey: ['chat', 'conversations', projectId],
-        });
-        
-        console.log('🔗 Updated URL with session ID and invalidated caches:', data.sessionId);
+        console.log('🔗 Updated URL with session ID:', data.sessionId);
       }
     };
     
-    // Enhanced message complete handler with query invalidation
+    // Message complete handler - no invalidations needed for real-time messaging
     const handleMessageComplete = (data: any) => {
-      const conversationId = data.conversationId || selectedConversationId;
-      if (conversationId) {
-        // Invalidate conversation details (for updated timestamps, etc.)
-        queryClient.invalidateQueries({
-          queryKey: ['chat', 'conversation', conversationId],
-        });
-        
-        // Invalidate conversations list (for updated timestamps in sidebar)
-        queryClient.invalidateQueries({
-          queryKey: ['chat', 'conversations', projectId],
-        });
-        
-        console.log('🔄 Invalidated React Query caches after message completion');
-      }
+      // Messages are handled entirely by Zustand store via WebSocket
+      // No React Query invalidation needed for streaming message data
+      console.log('🏁 Message completed - handled by Zustand store');
     };
     
     // Set up additional WebSocket listeners for integration features
