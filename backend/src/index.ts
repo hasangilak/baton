@@ -179,17 +179,57 @@ io.on('connection', (socket) => {
         return;
       }
 
-      // 1. Store user message in database
+      // 1. Check session validation for existing conversations
+      const conversation = await prisma.conversation.findUnique({
+        where: { id: conversationId },
+        select: { claudeSessionId: true, id: true }
+      });
+
+      if (!conversation) {
+        socket.emit('chat:error', {
+          requestId,
+          error: 'Conversation not found'
+        });
+        return;
+      }
+
+      // If conversation has a session ID, require it in the message
+      if (conversation.claudeSessionId && !sessionId) {
+        console.log(`🚫 Session validation failed - conversation ${conversationId} has session ${conversation.claudeSessionId} but message has no sessionId`);
+        socket.emit('chat:error', {
+          requestId,
+          error: 'Session ID required for this conversation. Please refresh the page.',
+          sessionRequired: true,
+          existingSessionId: conversation.claudeSessionId
+        });
+        return;
+      }
+
+      // If conversation has a session ID, validate it matches
+      if (conversation.claudeSessionId && sessionId && conversation.claudeSessionId !== sessionId) {
+        console.log(`🚫 Session mismatch - expected ${conversation.claudeSessionId} but got ${sessionId}`);
+        socket.emit('chat:error', {
+          requestId,
+          error: 'Session ID mismatch. Please refresh the page.',
+          sessionRequired: true,
+          existingSessionId: conversation.claudeSessionId
+        });
+        return;
+      }
+
+      console.log(`✅ Session validation passed for conversation ${conversationId}${sessionId ? ` with session ${sessionId}` : ' (first message)'}`);
+
+      // 2. Store user message in database
       console.log(`💾 Storing user message for conversation ${conversationId}`);
       const userMessage = await messageStorage.createUserMessage(conversationId, content, attachments);
       console.log(`✅ User message stored with ID: ${userMessage.id}`);
 
-      // 2. Create assistant message placeholder
+      // 3. Create assistant message placeholder
       console.log(`💾 Creating assistant message placeholder for conversation ${conversationId}`);
       const assistantMessage = await messageStorage.createAssistantMessagePlaceholder(conversationId);
       console.log(`✅ Assistant placeholder created with ID: ${assistantMessage.id}`);
 
-      // 3. Store request mapping for streaming updates
+      // 4. Store request mapping for streaming updates
       if (!(global as any).activeRequests) {
         (global as any).activeRequests = new Map();
       }
@@ -199,7 +239,7 @@ io.on('connection', (socket) => {
         userMessageId: userMessage.id
       });
 
-      // 4. Forward to bridge service if connected
+      // 5. Forward to bridge service if connected
       const bridgeSockets = await io.in('claude-bridge').fetchSockets();
       if (bridgeSockets && bridgeSockets.length > 0) {
         // Forward to bridge service
@@ -464,9 +504,17 @@ io.on('connection', (socket) => {
           await messageStorage.createClaudeSDKMessage(requestInfo.conversationId, data);
           console.log(`✅ Claude assistant message stored successfully`);
           
-          // Update conversation session ID if provided
+          // Update conversation session ID if provided and broadcast to frontend
           if (data.data.session_id) {
             await messageStorage.updateConversationSession(requestInfo.conversationId, data.data.session_id);
+            
+            // Broadcast session ID availability to frontend clients in conversation room
+            console.log(`🔗 Broadcasting session ID ${data.data.session_id} for conversation ${requestInfo.conversationId}`);
+            io.to(`conversation-${requestInfo.conversationId}`).emit('chat:session-id-available', {
+              conversationId: requestInfo.conversationId,
+              sessionId: data.data.session_id,
+              timestamp: Date.now()
+            });
           }
         }
         // For result messages, also store them for completeness

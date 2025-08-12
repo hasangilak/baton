@@ -55,6 +55,367 @@ Baton includes a complete Claude Code WebUI integration with professional chat i
 - **Socket.IO Bridge**: Local handler execution with backend streaming endpoints
 - **Tool Permissions**: Automatic Write/Edit/MultiEdit/Bash tool permissions for file operations
 
+## WebSocket Communication & Message Storage Architecture
+
+Baton implements a sophisticated WebSocket-based architecture that ensures every message from Claude Code is reliably captured and stored in MongoDB. This system provides real-time communication between the frontend, backend, and bridge services with comprehensive message persistence.
+
+### Architecture Overview
+
+```
+Frontend (React)     Backend (Express)     Bridge Service
+Port: 5173    ←──────→ Port: 3001    ←──────→ Port: 8080
+     │                      │                     │
+     │                      ▼                     │
+     │               MongoDB Storage              │
+     │               Port: 27017                  │
+     └──────────── Real-time Updates ────────────┘
+```
+
+### Claude Code Session ID Management Flow
+
+**Critical Flow**: Every conversation MUST have a Claude Code session ID for proper context continuity. The system implements a sophisticated session management flow that ensures perfect UX while maintaining Claude Code context across all messages.
+
+#### Session Initialization Flow
+```
+User sends first message (no sessionId) 
+    ↓
+Backend validates (first message allowed)
+    ↓
+Forward to Claude Code SDK via Bridge
+    ↓
+Claude responds with session_id in first response
+    ↓
+Backend captures & stores session_id in conversation
+    ↓
+Backend broadcasts 'chat:session-id-available' to conversation room
+    ↓
+Frontend updates session state & URL with sessionId
+    ↓
+All subsequent messages REQUIRE matching sessionId
+    ↓
+Perfect Claude Code context continuity! 🎯
+```
+
+#### Session Validation Rules
+- **First Message**: Allowed WITHOUT session ID (session initialization)
+- **Subsequent Messages**: REQUIRE session ID that matches conversation's stored session
+- **Session Mismatch**: Blocked with clear error message and recovery instructions
+- **Missing Session**: Auto-recovery attempts with existing session ID
+
+### Message Flow Sequence
+
+1. **User Message**: `Frontend → Backend → Session Validation → MongoDB (immediate storage)`
+2. **Bridge Request**: `Backend → Bridge Service (claude:execute with sessionId)`
+3. **Claude Streaming**: `Bridge → Backend → Session Capture → MongoDB (each chunk stored)`
+4. **Real-time Updates**: `Backend → Frontend (WebSocket events + session broadcasting)`
+
+### Key Components
+
+#### Bridge Service (`scripts/bridge.ts`)
+- **Modular Architecture**: Uses `ModularClaudeCodeBridge` with separated concerns
+- **Claude Code SDK Integration**: Executes queries and streams responses
+- **Event-Driven**: Listens for `claude:execute`, responds with `claude:stream`
+- **Error Handling**: Comprehensive error capture and user-friendly messaging
+
+#### Backend WebSocket Server (`backend/src/index.ts`)
+**Message Sending Flow with Session Validation** (`lines 182-242`):
+```typescript
+socket.on('chat:send-message', async (data) => {
+  // 1. Session validation for existing conversations
+  const conversation = await prisma.conversation.findUnique({
+    where: { id: conversationId },
+    select: { claudeSessionId: true }
+  });
+
+  // If conversation has session ID, require it in message
+  if (conversation.claudeSessionId && !sessionId) {
+    socket.emit('chat:error', {
+      error: 'Session ID required. Please refresh.',
+      sessionRequired: true,
+      existingSessionId: conversation.claudeSessionId
+    });
+    return;
+  }
+
+  // 2. Store user message immediately in MongoDB
+  const userMessage = await messageStorage.createUserMessage(conversationId, content, attachments);
+  
+  // 3. Create assistant placeholder for streaming updates
+  const assistantMessage = await messageStorage.createAssistantMessagePlaceholder(conversationId);
+  
+  // 4. Map request for streaming correlation
+  (global as any).activeRequests.set(requestId, {
+    assistantMessageId: assistantMessage.id,
+    conversationId,
+    userMessageId: userMessage.id
+  });
+  
+  // 5. Forward to bridge service with session context
+  bridgeSockets[0].emit('claude:execute', {
+    ...request,
+    sessionId // Include session ID for Claude Code continuity
+  });
+});
+```
+
+**Message Streaming Handler with Session Broadcasting** (`lines 467-478`):
+```typescript
+socket.on('claude:stream', async (data) => {
+  // Store every Claude SDK message chunk in MongoDB
+  if (data.type === 'claude_json' && data.data) {
+    await messageStorage.createClaudeSDKMessage(conversationId, data);
+    
+    // Capture and broadcast session ID from Claude's first response
+    if (data.data.session_id) {
+      await messageStorage.updateConversationSession(conversationId, data.data.session_id);
+      
+      // Broadcast to conversation room for targeted delivery
+      io.to(`conversation-${conversationId}`).emit('chat:session-id-available', {
+        conversationId: conversationId,
+        sessionId: data.data.session_id,
+        timestamp: Date.now()
+      });
+    }
+  }
+  
+  // Forward to frontend for real-time UI updates
+  io.emit('chat:stream-response', data);
+});
+```
+
+#### Message Storage Service (`backend/src/services/message-storage.service.ts`)
+**Comprehensive Data Capture** (`lines 82-170`):
+- **Every Message Stored**: User messages, assistant chunks, system messages, results
+- **Rich Metadata**: Session IDs, token usage, model information, timestamps
+- **Full Claude SDK Data**: Complete `StreamResponse` objects preserved as JSON
+- **Error Resilience**: Failed messages marked with error details, no data loss
+
+### MongoDB Schema Design
+
+#### Messages Collection
+```prisma
+model Message {
+  id             String    @id @map("_id") @db.ObjectId
+  conversationId String   @db.ObjectId
+  role           String    // user, assistant, system
+  content        String    // Extracted text content
+  
+  // Claude WebSocket format fields
+  type           String?   // "claude_json", etc.
+  claudeData     Json?     // Complete StreamResponse object
+  claudeMessageId String?  // Claude's message ID
+  model          String?   // "claude-3-5-sonnet-20241022"
+  sessionId      String?   // Claude SDK session ID
+  usage          Json?     // Token usage statistics
+  
+  // Status and error handling
+  status         String    @default("completed") // sending, completed, failed
+  error          String?   // Error message if failed
+  timestamp      BigInt?   // Original WebSocket timestamp
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+```
+
+#### Conversations Collection
+```prisma
+model Conversation {
+  id               String    @id @map("_id") @db.ObjectId
+  title            String?
+  projectId        String    // Links to Baton projects
+  userId           String   @db.ObjectId
+  model            String    @default("claude-3-sonnet")
+  status           String    @default("active")
+  claudeSessionId  String?   // For context preservation
+  contextTokens    Int       @default(0)
+  lastCompacted    DateTime? // Context window management
+  
+  messages          Message[]
+  interactivePrompts InteractivePrompt[]
+  permissions       ConversationPermission[]
+}
+```
+
+### Data Persistence Guarantees
+
+- **No Message Loss**: Every bridge response captured in MongoDB
+- **Atomic Operations**: Database transactions ensure consistency  
+- **Immediate Storage**: User messages stored before forwarding to bridge
+- **Error Recovery**: Failed streams marked with detailed error information
+- **Session Continuity**: Claude session IDs preserved for context
+
+### Real-time Synchronization
+
+#### Frontend WebSocket Client with Session Management (`frontend/src/hooks/useUnifiedWebSocket.ts`)
+```typescript
+// Real-time message streaming
+socket.on('chat:stream-response', (data) => {
+  window.dispatchEvent(new CustomEvent('chat:stream-response', { detail: data }));
+});
+
+// Session ID management with state tracking
+socket.on('chat:session-id-available', async (data) => {
+  // Update local session state immediately
+  setSessionState(prev => ({
+    ...prev,
+    [data.conversationId]: {
+      sessionId: data.sessionId,
+      initialized: true,
+      pending: false
+    }
+  }));
+
+  // Update conversation in database
+  await fetch(`/api/chat/conversations/${data.conversationId}/session`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ claudeSessionId: data.sessionId })
+  });
+  
+  // Update browser URL for direct session access
+  const url = new URL(window.location.href);
+  url.searchParams.set('sessionId', data.sessionId);
+  window.history.replaceState({}, '', url.toString());
+});
+
+// Session error handling with recovery
+socket.on('chat:error', (data) => {
+  // Handle session-related errors
+  if (data.sessionRequired && data.existingSessionId) {
+    setSessionState(prev => ({
+      ...prev,
+      [data.conversationId]: {
+        sessionId: data.existingSessionId,
+        initialized: true,
+        pending: false
+      }
+    }));
+  }
+});
+
+// Enhanced sendMessage with session validation
+const sendMessage = useCallback((data) => {
+  const currentSession = sessionState[data.conversationId];
+  const sessionId = data.sessionId || currentSession?.sessionId;
+
+  // Mark as pending if first message
+  if (!currentSession?.initialized) {
+    setSessionState(prev => ({
+      ...prev,
+      [data.conversationId]: {
+        sessionId: sessionId,
+        initialized: false,
+        pending: true
+      }
+    }));
+  }
+
+  emit('chat:send-message', { ...data, sessionId });
+}, [sessionState]);
+```
+
+#### Session State Management
+Frontend maintains session state for each conversation:
+```typescript
+interface SessionState {
+  [conversationId: string]: {
+    sessionId?: string;
+    initialized: boolean; // Has session ID from Claude
+    pending: boolean;     // Waiting for first response
+  };
+}
+
+// Session utilities available to components
+const { 
+  isSessionReady,     // (conversationId) => boolean
+  isSessionPending,   // (conversationId) => boolean  
+  initializeSession,  // (conversationId) => Promise<string|null>
+  checkSessionHealth, // (conversationId) => Promise<boolean>
+  getSessionState     // (conversationId) => SessionState
+} = useUnifiedWebSocket();
+```
+
+#### Global Request Tracking
+The backend maintains request correlation using a global map:
+```typescript
+// Maps requestId → { assistantMessageId, conversationId, userMessageId }
+(global as any).activeRequests = new Map();
+```
+
+### Bridge Service Modules (`scripts/bridge-modules/`)
+
+**Modular Components**:
+- **`config.ts`**: Configuration and validation
+- **`logger.ts`**: Contextual logging with request tracing
+- **`permissions.ts`**: Tool permission handling
+- **`claude-sdk.ts`**: Claude Code SDK integration
+- **`streams.ts`**: Stream processing and management
+- **`resources.ts`**: File system and resource operations
+- **`errors.ts`**: User-friendly error handling
+
+### Example Stored Message Data
+
+```json
+{
+  "id": "674b8c9f8e1234567890abcd",
+  "conversationId": "674b8c9e8e1234567890abce", 
+  "role": "assistant",
+  "content": "I'll help you create a new feature...",
+  "type": "claude_json",
+  "claudeData": {
+    "type": "claude_json",
+    "data": {
+      "type": "assistant",
+      "message": {
+        "id": "msg_01ABC123DEF456", 
+        "model": "claude-3-5-sonnet-20241022",
+        "content": [{"type": "text", "text": "I'll help you..."}],
+        "usage": {"input_tokens": 150, "output_tokens": 75}
+      },
+      "session_id": "session_abc123"
+    },
+    "requestId": "req_12345",
+    "timestamp": 1699123456789
+  },
+  "claudeMessageId": "msg_01ABC123DEF456",
+  "model": "claude-3-5-sonnet-20241022", 
+  "sessionId": "session_abc123",
+  "usage": {"input_tokens": 150, "output_tokens": 75},
+  "timestamp": 1699123456789,
+  "status": "completed"
+}
+```
+
+### Debugging & Monitoring
+
+**WebSocket Event Tracing**:
+```bash
+# Monitor bridge service logs
+tail -f /tmp/bridge-service.log
+
+# Check backend WebSocket events  
+docker logs baton-backend-1 -f | grep "WebSocket"
+
+# Test WebSocket connectivity
+curl -X POST http://localhost:3001/api/chat/messages/stream-webui \
+  -H "Content-Type: application/json" \
+  -d '{"message":"test","requestId":"test","conversationId":"test"}'
+```
+
+**Database Inspection**:
+```bash
+# Open database GUI
+cd backend && npx prisma studio
+
+# Check message storage
+db.messages.find().sort({createdAt: -1}).limit(10)
+
+# Verify conversation context
+db.conversations.find({claudeSessionId: {$ne: null}})
+```
+
+For detailed technical documentation, see: [`docs/WEBSOCKET_ARCHITECTURE.md`](./docs/WEBSOCKET_ARCHITECTURE.md)
+
 ## Common Commands
 
 ### Development Setup

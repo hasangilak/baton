@@ -17,11 +17,16 @@ interface Conversation {
   id: string;
   title: string;
   projectId: string;
+  userId: string;
+  model: string;
   claudeSessionId?: string;
   contextTokens?: number;
+  lastCompacted?: string;
   createdAt: string;
   updatedAt: string;
   status: 'active' | 'archived';
+  metadata?: any;
+  messages?: any[];
 }
 
 export const useConversations = (projectId: string) => {
@@ -38,8 +43,12 @@ export const useConversations = (projectId: string) => {
     queryKey: ['chat', 'conversations', projectId],
     queryFn: async () => {
       const response = await fetch(`${API_BASE_URL}/api/chat/conversations/${projectId}`);
-      if (!response.ok) throw new Error('Failed to fetch conversations');
-      return response.json();
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.error || 'Failed to fetch conversations');
+      }
+      const data = await response.json();
+      return data;
     },
     enabled: !!projectId,
   });
@@ -133,9 +142,13 @@ export const useConversations = (projectId: string) => {
 
   // Get single conversation details
   const getConversation = useCallback(async (conversationId: string) => {
-    const response = await fetch(`${API_BASE_URL}/api/chat/conversations/${conversationId}/details`);
-    if (!response.ok) throw new Error('Failed to fetch conversation details');
-    return response.json();
+    const response = await fetch(`${API_BASE_URL}/api/chat/conversation/${conversationId}`);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => null);
+      throw new Error(errorData?.error || 'Failed to fetch conversation details');
+    }
+    const data = await response.json();
+    return data.conversation || data;
   }, []);
 
   // Update conversation session ID
@@ -216,9 +229,13 @@ export const useConversation = (conversationId: string | null) => {
     queryFn: async () => {
       if (!conversationId) return null;
       
-      const response = await fetch(`${API_BASE_URL}/api/chat/conversations/${conversationId}/details`);
-      if (!response.ok) throw new Error('Failed to fetch conversation');
-      return response.json();
+      const response = await fetch(`${API_BASE_URL}/api/chat/conversation/${conversationId}`);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.error || 'Failed to fetch conversation');
+      }
+      const data = await response.json();
+      return data.conversation || data;
     },
     enabled: !!conversationId,
   });

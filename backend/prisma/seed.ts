@@ -17,10 +17,10 @@ async function main() {
 
   // Create baton project for development
   const batonProject = await prisma.project.upsert({
-    where: { id: 'cmdxumi04000k4yhw92fvsqqa' },
+    where: { id: '689b0107dec8469824f3f4f7' },
     update: {},
     create: {
-      id: 'cmdxumi04000k4yhw92fvsqqa',
+      id: '689b0107dec8469824f3f4f7',
       name: 'baton',
       description: 'Auto-created from Claude Code workspace',
       color: '#3b82f6',

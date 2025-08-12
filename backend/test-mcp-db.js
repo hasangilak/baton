@@ -56,7 +56,7 @@ async function testDatabaseConnectivity() {
     
     // Test a tool execution
     const analytics = await toolProvider.callTool('get_project_analytics', { 
-      projectId: 'cmdxumi04000k4yhw92fvsqqa' 
+      projectId: '689b0107dec8469824f3f4f7' 
     });
     console.log(`  ✅ Tool execution works - analytics generated`);
     

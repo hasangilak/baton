@@ -17,7 +17,7 @@ const { PrismaClient } = require('@prisma/client');
 // Test configuration
 const BACKEND_URL = 'http://localhost:3001';
 const TEST_CONVERSATION_ID = `test-conversation-${Date.now()}`;
-const TEST_PROJECT_ID = 'cmdxumi04000k4yhw92fvsqqa'; // Baton project from seed data
+const TEST_PROJECT_ID = '689b0107dec8469824f3f4f7'; // Baton project from seed data
 
 class MessageFlowTester {
   constructor() {

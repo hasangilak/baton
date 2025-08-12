@@ -348,6 +348,7 @@ export interface CreateConversationRequest {
 export interface SendMessageRequest {
   conversationId: string;
   content: string;
+  sessionId?: string; // Claude Code session ID for context continuity
   attachments?: Array<{
     filename: string;
     mimeType: string;

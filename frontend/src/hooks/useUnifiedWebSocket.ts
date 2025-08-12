@@ -13,6 +13,14 @@ interface UnifiedWebSocketOptions {
   namespace?: 'general' | 'chat' | 'both';
 }
 
+interface SessionState {
+  [conversationId: string]: {
+    sessionId?: string;
+    initialized: boolean;
+    pending: boolean;
+  };
+}
+
 interface WebSocketState {
   connected: boolean;
   connecting: boolean;
@@ -40,6 +48,9 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
     connecting: false,
     error: null
   });
+
+  // Session state management for Claude Code continuity
+  const [sessionState, setSessionState] = useState<SessionState>({});
 
   // Event handlers registry for custom event listeners
   const eventHandlers = useRef<Map<string, Set<Function>>>(new Map());
@@ -272,6 +283,16 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
       const conversationId = data.conversationId;
       
       if (conversationId) {
+        // Update local session state immediately
+        setSessionState(prev => ({
+          ...prev,
+          [conversationId]: {
+            sessionId: data.sessionId,
+            initialized: true,
+            pending: false
+          }
+        }));
+
         try {
           const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
           const response = await fetch(`${API_BASE_URL}/api/chat/conversations/${conversationId}/session`, {
@@ -320,6 +341,20 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
 
     socket.on('chat:error', (data) => {
       console.log('❌ Chat error:', data.error);
+      
+      // Handle session-related errors
+      if (data.sessionRequired && data.existingSessionId) {
+        console.log('🔄 Session error - updating local state with existing session:', data.existingSessionId);
+        setSessionState(prev => ({
+          ...prev,
+          [data.conversationId || 'unknown']: {
+            sessionId: data.existingSessionId,
+            initialized: true,
+            pending: false
+          }
+        }));
+      }
+      
       window.dispatchEvent(new CustomEvent('chat:error', { detail: data }));
     });
 
@@ -785,19 +820,128 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
     message: string;
     attachments?: any[];
     requestId?: string;
+    sessionId?: string;
   }) => {
     console.log('🔍 [DEBUG] useUnifiedWebSocket.sendMessage called:', {
       conversationId: data.conversationId,
       messageLength: data.message?.length || 0,
       hasAttachments: !!data.attachments?.length,
-      requestId: data.requestId
+      requestId: data.requestId,
+      sessionId: data.sessionId
     });
-    emit('chat:send-message', data);
-  }, [emit]);
+
+    // Get current session state for this conversation
+    const currentSession = sessionState[data.conversationId];
+    const sessionId = data.sessionId || currentSession?.sessionId;
+
+    // Mark as pending if this is the first message
+    if (!currentSession?.initialized) {
+      setSessionState(prev => ({
+        ...prev,
+        [data.conversationId]: {
+          sessionId: sessionId,
+          initialized: false,
+          pending: true
+        }
+      }));
+    }
+
+    // Send message with session ID if available
+    emit('chat:send-message', {
+      ...data,
+      sessionId
+    });
+  }, [emit, sessionState]);
 
   const abortMessage = useCallback((requestId: string) => {
     emit('chat:abort-message', { requestId });
   }, [emit]);
+
+  // Session management utilities
+  const getSessionState = useCallback((conversationId: string) => {
+    return sessionState[conversationId] || { initialized: false, pending: false };
+  }, [sessionState]);
+
+  const isSessionReady = useCallback((conversationId: string) => {
+    const session = sessionState[conversationId];
+    return session?.initialized && session?.sessionId;
+  }, [sessionState]);
+
+  const isSessionPending = useCallback((conversationId: string) => {
+    const session = sessionState[conversationId];
+    return session?.pending && !session?.initialized;
+  }, [sessionState]);
+
+  // Session recovery and initialization
+  const initializeSession = useCallback(async (conversationId: string) => {
+    try {
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const response = await fetch(`${API_BASE_URL}/api/chat/conversation/${conversationId}`);
+      
+      if (response.ok) {
+        const result = await response.json();
+        const conversation = result.data;
+        
+        if (conversation?.claudeSessionId) {
+          console.log('🔄 Recovered existing session for conversation:', conversationId, conversation.claudeSessionId);
+          setSessionState(prev => ({
+            ...prev,
+            [conversationId]: {
+              sessionId: conversation.claudeSessionId,
+              initialized: true,
+              pending: false
+            }
+          }));
+          
+          // Update URL with session ID
+          const currentUrl = new URL(window.location.href);
+          currentUrl.searchParams.set('sessionId', conversation.claudeSessionId);
+          window.history.replaceState({}, '', currentUrl.toString());
+          
+          return conversation.claudeSessionId;
+        }
+      }
+    } catch (error) {
+      console.error('❌ Failed to initialize session for conversation:', conversationId, error);
+    }
+    
+    return null;
+  }, []);
+
+  const checkSessionHealth = useCallback(async (conversationId: string) => {
+    const session = sessionState[conversationId];
+    if (!session?.sessionId) {
+      return false;
+    }
+
+    try {
+      const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+      const response = await fetch(`${API_BASE_URL}/api/chat/conversation/${conversationId}`);
+      
+      if (response.ok) {
+        const result = await response.json();
+        const conversation = result.data;
+        return conversation?.claudeSessionId === session.sessionId;
+      }
+    } catch (error) {
+      console.error('❌ Session health check failed:', error);
+    }
+    
+    return false;
+  }, [sessionState]);
+
+  // Helper to join conversation and initialize session
+  const joinConversationWithSession = useCallback(async (conversationId: string) => {
+    // First join the conversation room
+    joinConversation(conversationId);
+    
+    // Then try to initialize session if needed
+    const session = sessionState[conversationId];
+    if (!session?.initialized && !session?.pending) {
+      console.log('🔄 Attempting session initialization for conversation:', conversationId);
+      await initializeSession(conversationId);
+    }
+  }, [joinConversation, sessionState, initializeSession]);
 
   // ===== PERMISSION RESPONSE METHODS =====
   const respondToPermission = useCallback((promptId: string, selectedOption: string, conversationId: string) => {
@@ -909,13 +1053,22 @@ export const useUnifiedWebSocket = (options: UnifiedWebSocketOptions = {}) => {
     abortMessage,
     respondToPermission,
     respondToPlanReview,
+    // Session management
+    getSessionState,
+    isSessionReady,
+    isSessionPending,
+    initializeSession,
+    checkSessionHealth,
+    joinConversationWithSession,
+    sessionState,
     // Debug info
     _debug: {
       socketExists: !!socketRef.current,
       socketConnected: socketRef.current?.connected,
       socketId: socketRef.current?.id,
       namespace: options.namespace,
-      refCount: globalSocketRefCount
+      refCount: globalSocketRefCount,
+      sessionCount: Object.keys(sessionState).length
     }
   };
 };

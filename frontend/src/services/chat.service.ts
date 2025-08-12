@@ -88,13 +88,12 @@ class ChatService {
     });
   }
 
-  // Messages
-  async getMessages(conversationId: string, sessionId?: string): Promise<ApiResponse<Message[]>> {
-    if (sessionId) {
-      return this.request<Message[]>(`/api/chat/messages/${conversationId}/${sessionId}`);
+  // Messages - sessionId is now required for all message operations
+  async getMessages(conversationId: string, sessionId: string): Promise<ApiResponse<Message[]>> {
+    if (!sessionId) {
+      throw new Error('Session ID is required to fetch messages');
     }
-    // Fallback to old endpoint for backwards compatibility
-    return this.request<Message[]>(`/api/chat/messages/${conversationId}`);
+    return this.request<Message[]>(`/api/chat/messages/${conversationId}/${sessionId}`);
   }
 
   // Get conversation details including Claude session ID
@@ -219,6 +218,7 @@ class ChatService {
       const messageData = {
         ...data,
         requestId,
+        sessionId: data.sessionId, // Include session ID if available
       };
       
       socket.emit('chat:send-message', messageData);
