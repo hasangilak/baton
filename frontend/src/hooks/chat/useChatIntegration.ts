@@ -176,7 +176,7 @@ export const useChatIntegration = (projectId: string) => {
       
       useChatStore.getState().sendWebSocketMessage({
         conversationId,
-        message: content,
+        content: content, // Backend expects 'content', not 'message'
         attachments,
         requestId,
         sessionId: session?.sessionId, // Include session ID when available
