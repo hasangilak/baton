@@ -2,7 +2,7 @@
  * Comprehensive Error Handling for Claude Code Bridge
  */
 
-import { logger, ContextualLogger } from './logger.js';
+import { logger, ContextualLogger } from './logger';
 
 export enum ErrorType {
   VALIDATION_ERROR = 'VALIDATION_ERROR',

@@ -1,22 +1,22 @@
 version: '3.8'
 
 services:
-  # PostgreSQL database for development
-  postgres:
-    image: postgres:15-alpine
-    container_name: baton-postgres-dev
+  # MongoDB database for development
+  mongodb:
+    image: mongo:7
+    container_name: baton-mongodb-dev
     environment:
-      - POSTGRES_DB=baton_dev
-      - POSTGRES_USER=baton_user
-      - POSTGRES_PASSWORD=baton_password
+      - MONGO_INITDB_ROOT_USERNAME=baton_user
+      - MONGO_INITDB_ROOT_PASSWORD=baton_password
+      - MONGO_INITDB_DATABASE=baton_dev
     volumes:
-      - postgres_dev_data:/var/lib/postgresql/data
+      - mongodb_dev_data:/data/db
     networks:
       - baton-network
     ports:
-      - "5432:5432"
+      - "27017:27017"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U baton_user -d baton_dev"]
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -33,7 +33,7 @@ services:
       - "9229:9229" # Debug port
     environment:
       - NODE_ENV=development
-      - DATABASE_URL=postgresql://baton_user:baton_password@postgres:5432/baton_dev
+      - DATABASE_URL=mongodb://baton_user:baton_password@mongodb:27017/baton_dev?authSource=admin
       - CLIENT_URL=http://localhost:5173
       - MCP_SERVER_PORT=3002
       - BRIDGE_URL=http://172.18.0.1:8080
@@ -50,7 +50,7 @@ services:
       "echo '🚀 Starting Baton Backend Development Setup' && echo '📦 Installing dependencies...' && npm install && echo '🔧 Generating Prisma client...' && npx prisma generate && echo '✅ Setup complete!' && npm run dev"
     ]
     depends_on:
-      postgres:
+      mongodb:
         condition: service_healthy
     networks:
       - baton-network
@@ -66,7 +66,7 @@ services:
       - "3002:3002"
     environment:
       - NODE_ENV=development
-      - DATABASE_URL=postgresql://baton_user:baton_password@postgres:5432/baton_dev
+      - DATABASE_URL=mongodb://baton_user:baton_password@mongodb:27017/baton_dev?authSource=admin
       - MCP_TRANSPORT_MODE=websocket
       - MCP_SERVER_PORT=3002
       - CHOKIDAR_USEPOLLING=true
@@ -82,7 +82,7 @@ services:
       "echo '🚀 Starting Baton MCP Server Development Setup' && echo '📦 Installing dependencies...' && npm install && echo '🔧 Generating Prisma client...' && npx prisma generate && echo '✅ Setup complete!' && npm run mcp:dev:websocket"
     ]
     depends_on:
-      postgres:
+      mongodb:
         condition: service_healthy
     networks:
       - baton-network
@@ -117,7 +117,7 @@ services:
 
 
 volumes:
-  postgres_dev_data:
+  mongodb_dev_data:
 
 networks:
   baton-network:

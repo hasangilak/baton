@@ -2,10 +2,10 @@
  * Resource Management and Cleanup for Claude Code Bridge
  */
 
-import { config } from './config.js';
-import { logger, ContextualLogger } from './logger.js';
-import { StreamManager } from './streams.js';
-import { ClaudeSDK } from './claude-sdk.js';
+import { config } from './config';
+import { logger, ContextualLogger } from './logger';
+import { StreamManager } from './streams';
+import { ClaudeSDK } from './claude-sdk';
 import * as fs from 'fs';
 import * as path from 'path';
 

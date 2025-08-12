@@ -2,15 +2,15 @@
  * Claude SDK Interaction Layer
  */
 
-import { query, type PermissionResult, type SDKUserMessage, type PermissionMode } from "@anthropic-ai/claude-code";
-import { config } from './config.js';
-import { logger, ContextualLogger } from './logger.js';
-import { PermissionManager, type PermissionRequest } from './permissions.js';
+import { query, type PermissionResult, type SDKUserMessage, type PermissionMode, Options } from "@anthropic-ai/claude-code";
+import { config } from './config';
+import { logger, ContextualLogger } from './logger';
+import { PermissionManager, type PermissionRequest } from './permissions';
 
 export interface ClaudeRequest {
   message: string;
   requestId: string;
-  conversationId: string;
+  projectId: string;
   sessionId?: string;
   allowedTools?: string[];
   workingDirectory?: string;
@@ -46,7 +46,7 @@ export class ClaudeSDK {
    * Execute a Claude Code query
    */
   async *executeQuery(request: ClaudeRequest): AsyncGenerator<any, void, unknown> {
-    const { requestId, conversationId, message, projectName, sessionId } = request;
+    const { requestId, projectId, message, projectName, sessionId } = request;
     const contextLogger = new ContextualLogger(logger, 'ClaudeSDK', requestId);
     
     contextLogger.info('Starting Claude Code execution', {
@@ -72,7 +72,7 @@ export class ClaudeSDK {
       // Execute Claude query
       for await (const sdkMessage of query({
         prompt: promptStream,
-        options: claudeOptions
+        options: claudeOptions as Options
       })) {
         messageCount++;
         const now = Date.now();
@@ -142,33 +142,33 @@ export class ClaudeSDK {
    */
   private async buildClaudeOptions(request: ClaudeRequest, abortController: AbortController): Promise<ClaudeOptions> {
     const cfg = config.getConfig();
-    const { sessionId, allowedTools, workingDirectory, permissionMode = 'default', conversationId } = request;
+    const { sessionId, allowedTools, workingDirectory, permissionMode = 'default', projectId } = request;
 
     // Get effective permission mode from backend
     let effectivePermissionMode = permissionMode;
-    if (conversationId) {
+    if (projectId) {
       try {
-        const backendPermissionMode = await this.permissionManager.getConversationPermissionMode(conversationId);
+        const backendPermissionMode = await this.permissionManager.getProjectPermissionMode(projectId);
         if (backendPermissionMode !== permissionMode) {
           this.logger.info('Permission mode updated from backend', {
             original: permissionMode,
             updated: backendPermissionMode
           });
-          effectivePermissionMode = backendPermissionMode;
+          effectivePermissionMode = backendPermissionMode as PermissionMode;
         }
       } catch (error) {
         this.logger.warn('Failed to check backend permission mode', {}, error);
       }
     }
 
-    const claudeOptions: ClaudeOptions = {
+    const claudeOptions: any = {
       abortController,
       executable: process.execPath,
       executableArgs: [],
       pathToClaudeCodeExecutable: cfg.claudeCodePath,
       maxTurns: cfg.maxTurns,
       mcpServers: {},
-      permissionMode: effectivePermissionMode,
+      permissionMode: effectivePermissionMode as any,
       canUseTool: async (toolName: string, parameters: Record<string, any>) => {
         return this.handleToolPermission(toolName, parameters, request);
       }
@@ -207,7 +207,7 @@ export class ClaudeSDK {
     const permissionRequest: PermissionRequest = {
       toolName,
       parameters,
-      conversationId: request.conversationId,
+      projectId: request.projectId,
       riskLevel,
       requestId: request.requestId
     };
@@ -256,7 +256,7 @@ export class ClaudeSDK {
         messageCount,
         type: sdkMessage.type || 'unknown',
         timeSinceLastMessage
-      }, requestId);
+      });
     }
 
     // Detailed content analysis
@@ -273,19 +273,19 @@ export class ClaudeSDK {
         role,
         content: contentSummary,
         responseTime: timeSinceLastMessage
-      }, requestId);
+      });
       
     } catch (error) {
       this.logger.debug('Could not analyze message content', {
         seq: messageCount
-      }, requestId);
+      });
     }
 
     // Log structured message for analysis
     if (process.env.NODE_ENV === 'development') {
       this.logger.debug('Full Claude message', {
         message: JSON.stringify(sdkMessage, null, 2)
-      }, requestId);
+      });
     }
   }
 

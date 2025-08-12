@@ -2,8 +2,8 @@
  * Permission Management System for Claude Code Bridge
  */
 
-import { config } from './config.js';
-import { logger, ContextualLogger } from './logger.js';
+import { config } from './config';
+import { logger, ContextualLogger } from './logger';
 import type { PermissionResult } from "@anthropic-ai/claude-code";
 
 export enum RiskLevel {
@@ -14,7 +14,7 @@ export enum RiskLevel {
 }
 
 export interface PermissionCache {
-  conversationId: string;
+  projectId: string;
   mode: string;
   timestamp: number;
 }
@@ -22,7 +22,7 @@ export interface PermissionCache {
 export interface PermissionRequest {
   toolName: string;
   parameters: Record<string, any>;
-  conversationId: string;
+  projectId: string;
   riskLevel: RiskLevel;
   requestId?: string;
 }
@@ -30,22 +30,26 @@ export interface PermissionRequest {
 export interface PlanReviewRequest {
   toolName: string;
   parameters: Record<string, any>;
-  conversationId: string;
+  projectId: string;
   planContent: string;
   requestId?: string;
 }
 
 export class PermissionManager {
   private permissionCache = new Map<string, PermissionCache>();
-  private backendUrl: string;
+  private backendSocket: any; // Socket.IO client socket
   private logger: ContextualLogger;
 
-  constructor(backendUrl: string) {
-    this.backendUrl = backendUrl;
+  constructor(backendSocket?: any) {
+    this.backendSocket = backendSocket;
     this.logger = new ContextualLogger(logger, 'PermissionManager');
     
     // Clean up cache periodically
     setInterval(() => this.cleanupCache(), 60000); // Every minute
+  }
+
+  setBackendSocket(socket: any): void {
+    this.backendSocket = socket;
   }
 
   /**
@@ -71,7 +75,7 @@ export class PermissionManager {
    * Check if a tool can be used based on permissions
    */
   async canUseTool(request: PermissionRequest): Promise<PermissionResult> {
-    const { toolName, parameters, conversationId, riskLevel, requestId } = request;
+    const { toolName, parameters, projectId, riskLevel, requestId } = request;
     const contextLogger = new ContextualLogger(logger, 'PermissionManager', requestId);
     
     contextLogger.info(`Checking permissions for tool`, { toolName, riskLevel });
@@ -135,11 +139,11 @@ export class PermissionManager {
    * Handle permissions for risky tools
    */
   private async handleRiskyToolPermission(request: PermissionRequest): Promise<PermissionResult> {
-    const { toolName, parameters, conversationId, riskLevel, requestId } = request;
+    const { toolName, parameters, projectId, riskLevel, requestId } = request;
     const contextLogger = new ContextualLogger(logger, 'PermissionManager', requestId);
     
     // Check if already permitted
-    if (await this.isToolAlreadyPermitted(toolName, conversationId)) {
+    if (await this.isToolAlreadyPermitted(toolName, projectId)) {
       contextLogger.info(`Tool already permitted`, { toolName });
       return { behavior: 'allow', updatedInput: parameters };
     }
@@ -169,12 +173,12 @@ export class PermissionManager {
   }
 
   /**
-   * Check conversation permission mode from backend with caching
+   * Check project permission mode from backend with caching
    */
-  async getConversationPermissionMode(conversationId: string): Promise<string> {
+  async getProjectPermissionMode(projectId: string): Promise<string> {
     try {
       // Check cache first
-      const cached = this.permissionCache.get(conversationId);
+      const cached = this.permissionCache.get(projectId);
       const now = Date.now();
       const cacheDuration = config.getConfig().permissionCacheDuration;
       
@@ -182,29 +186,34 @@ export class PermissionManager {
         return cached.mode;
       }
 
-      const response = await fetch(`${this.backendUrl}/api/chat/conversations/${conversationId}/permission-mode`);
-      
-      if (response.ok) {
-        const data = await response.json();
-        const mode = data.permissionMode || 'default';
-        
-        // Update cache
-        this.permissionCache.set(conversationId, { 
-          conversationId, 
-          mode, 
-          timestamp: now 
-        });
-        
-        return mode;
-      } else {
-        this.logger.warn(`Failed to get permission mode`, { 
-          conversationId, 
-          status: response.status 
-        });
+      if (!this.backendSocket) {
+        this.logger.warn(`No backend WebSocket connection for project ${projectId}`);
         return 'default';
       }
+
+      // Send WebSocket request for permission mode
+      return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          this.logger.warn(`Permission mode request timeout for project ${projectId}`);
+          resolve('default');
+        }, 10000);
+
+        this.backendSocket.emit('permission:get-mode', { projectId }, (response: any) => {
+          clearTimeout(timeout);
+          const mode = response?.permissionMode || 'default';
+          
+          // Cache the result
+          this.permissionCache.set(projectId, { 
+            projectId, 
+            mode, 
+            timestamp: now 
+          });
+          
+          resolve(mode);
+        });
+      });
     } catch (error) {
-      this.logger.error(`Error getting permission mode`, { conversationId }, error);
+      this.logger.error(`Error getting permission mode`, { projectId }, error);
       return 'default';
     }
   }
@@ -212,19 +221,22 @@ export class PermissionManager {
   /**
    * Check if tool is already permitted
    */
-  private async isToolAlreadyPermitted(toolName: string, conversationId: string): Promise<boolean> {
+  private async isToolAlreadyPermitted(toolName: string, projectId: string): Promise<boolean> {
     try {
-      const response = await fetch(`${this.backendUrl}/api/chat/conversations/${conversationId}/permissions`);
-      
-      if (response.ok) {
-        const data = await response.json();
-        const permissions = data.permissions || [];
-        return permissions.includes(toolName);
+      if (!this.backendSocket) {
+        return false;
       }
-      
-      return false;
+
+      return new Promise<boolean>((resolve) => {
+        const timeout = setTimeout(() => resolve(false), 3000);
+        
+        this.backendSocket.emit('permission:check', { projectId, toolName }, (response: any) => {
+          clearTimeout(timeout);
+          resolve(response?.hasPermission || false);
+        });
+      });
     } catch (error) {
-      this.logger.warn(`Failed to check existing permissions`, { toolName, conversationId }, error);
+      this.logger.warn(`Failed to check existing permissions`, { toolName, projectId }, error);
       return false;
     }
   }

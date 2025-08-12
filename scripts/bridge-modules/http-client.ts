@@ -2,8 +2,8 @@
  * HTTP Client with Connection Pooling for Backend Calls
  */
 
-import { config } from './config.js';
-import { logger, ContextualLogger } from './logger.js';
+import { config } from './config';
+import { logger, ContextualLogger } from './logger';
 
 export interface HTTPClientConfig {
   baseURL: string;

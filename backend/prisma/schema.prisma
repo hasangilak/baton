@@ -6,12 +6,12 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mongodb"
   url      = env("DATABASE_URL")
 }
 
 model User {
-  id        String   @id @default(cuid())
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
   email     String   @unique
   name      String
   avatar    String?
@@ -29,13 +29,13 @@ model User {
 }
 
 model Project {
-  id          String   @id @default(cuid())
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
   name        String
   description String?
   color       String   @default("#3b82f6")
   status      String   @default("active") // active, archived, completed
   isStarred   Boolean  @default(false)
-  ownerId     String
+  ownerId     String   @db.ObjectId
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -53,14 +53,14 @@ model Project {
 }
 
 model Task {
-  id           String    @id @default(cuid())
+  id           String    @id @default(auto()) @map("_id") @db.ObjectId
   title        String
   description  String?
   status       String    @default("todo") // todo, in_progress, done
   priority     String    @default("medium") // low, medium, high
-  projectId    String
-  assigneeId   String?
-  createdById  String
+  projectId    String   @db.ObjectId
+  assigneeId   String?  @db.ObjectId
+  createdById  String   @db.ObjectId
   dueDate      DateTime?
   completedAt  DateTime?
   createdAt    DateTime  @default(now())
@@ -80,10 +80,10 @@ model Task {
 }
 
 model Comment {
-  id        String   @id @default(cuid())
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
   content   String
-  taskId    String
-  authorId  String
+  taskId    String   @db.ObjectId
+  authorId  String   @db.ObjectId
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -95,7 +95,7 @@ model Comment {
 }
 
 model MCPAgent {
-  id          String    @id @default(cuid())
+  id          String    @id @default(auto()) @map("_id") @db.ObjectId
   name        String    @unique
   description String?
   endpoint    String
@@ -111,10 +111,10 @@ model MCPAgent {
 }
 
 model MCPPlan {
-  id          String   @id @default(cuid())
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
   title       String
   description String?
-  agentId     String
+  agentId     String   @db.ObjectId
   agentName   String
   projectId   String
   status      String   @default("pending") // pending, in_progress, completed, failed
@@ -130,13 +130,13 @@ model MCPPlan {
 }
 
 model MCPTask {
-  id          String   @id @default(cuid())
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
   title       String
   description String?
   status      String   @default("todo") // todo, in_progress, done
   priority    String   @default("medium") // low, medium, high
   order       Int      @default(0)
-  planId      String
+  planId      String   @db.ObjectId
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -147,18 +147,18 @@ model MCPTask {
 }
 
 model ClaudeTodo {
-  id                String    @id
+  id                String    @id @default(auto()) @map("_id") @db.ObjectId
   content           String
   status            String    // pending, in_progress, completed
   priority          String    // high, medium, low
-  projectId         String    @map("project_id")
+  projectId         String    @db.ObjectId @map("project_id")
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
   metadata          Json?
-  syncedTaskId      String?   @map("synced_task_id")
+  syncedTaskId      String?   @db.ObjectId @map("synced_task_id")
   orderIndex        Int       @default(0) @map("order_index")
   createdBy         String    @default("claude") @map("created_by") // claude, human, system
-  claudeCodePlanId  String?   @map("claude_code_plan_id") // Link to associated plan
+  claudeCodePlanId  String?   @db.ObjectId @map("claude_code_plan_id") // Link to associated plan
 
   // Relations
   project      Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -174,7 +174,7 @@ model ClaudeTodo {
 }
 
 model WorkspaceMapping {
-  id            String   @id @default(cuid())
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
   workspacePath String   @unique
   projectId     String
   lastAccessed  DateTime @default(now())
@@ -188,9 +188,9 @@ model WorkspaceMapping {
 }
 
 model ClaudeCodePlan {
-  id               String             @id @default(cuid())
+  id               String             @id @default(auto()) @map("_id") @db.ObjectId
   title            String
-  content          String             @db.Text
+  content          String
   status           String             @default("accepted") // accepted, implemented, archived
   projectId        String
   sessionId        String?
@@ -211,10 +211,10 @@ model ClaudeCodePlan {
 }
 
 model Conversation {
-  id               String    @id @default(cuid())
+  id               String    @id @default(auto()) @map("_id") @db.ObjectId
   title            String?
   projectId        String
-  userId           String
+  userId           String   @db.ObjectId
   model            String    @default("claude-3-sonnet") // Model used for the conversation
   status           String    @default("active") // active, archived
   claudeSessionId  String?   // Claude Code SDK session ID for context preservation
@@ -240,8 +240,8 @@ model Conversation {
 }
 
 model ConversationPermission {
-  id             String   @id @default(cuid())
-  conversationId String
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  conversationId String   @db.ObjectId
   toolName       String   // Edit, MultiEdit, Write, Bash, etc.
   status         String   @default("granted") // granted, denied, temporary
   grantedBy      String   @default("user") // user, system, auto
@@ -262,10 +262,10 @@ model ConversationPermission {
 }
 
 model Message {
-  id             String    @id @default(cuid())
-  conversationId String
+  id             String    @id @default(auto()) @map("_id") @db.ObjectId
+  conversationId String   @db.ObjectId
   role           String    // user, assistant, system
-  content        String    @db.Text
+  content        String
   
   // Claude WebSocket format fields
   type           String?   // claude_json, etc.
@@ -297,8 +297,8 @@ model Message {
 }
 
 model MessageAttachment {
-  id          String   @id @default(cuid())
-  messageId   String
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  messageId   String   @db.ObjectId
   filename    String
   mimeType    String
   size        Int      // File size in bytes
@@ -313,10 +313,10 @@ model MessageAttachment {
 }
 
 model CodeBlock {
-  id          String   @id @default(cuid())
-  messageId   String
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  messageId   String   @db.ObjectId
   language    String   // Programming language
-  code        String   @db.Text
+  code        String
   filename    String?  // Optional filename
   lineStart   Int?     // Starting line number if extracted from a file
   lineEnd     Int?     // Ending line number if extracted from a file
@@ -331,22 +331,22 @@ model CodeBlock {
 }
 
 model InteractivePrompt {
-  id               String    @id @default(cuid())
+  id               String    @id @default(auto()) @map("_id") @db.ObjectId
   conversationId   String
   sessionId        String?
   type             String    // permission, tool_usage, multiple_choice, three_option, plan_review
   title            String?
-  message          String    @db.Text
+  message          String
   options          Json      // Array of PromptOption objects
   context          Json?     // PromptContext object with tool info
   status           String    @default("pending") // pending, answered, timeout, auto_handled
   selectedOption   String?   // ID of the selected option
   autoHandler      String?   // Strategy that handled this prompt
-  timeoutAt        DateTime  @default(dbgenerated("NOW() + INTERVAL '30 seconds'"))
+  timeoutAt        DateTime  @default(now())
   createdAt        DateTime  @default(now())
   respondedAt      DateTime?
   metadata         Json?     // Enhanced analytics and metadata for permission tracking
-  linkedPlanId     String?   // Link to created claudeCodePlan after approval
+  linkedPlanId     String?   @db.ObjectId // Link to created claudeCodePlan after approval
 
   // Relations
   conversation     Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -360,7 +360,7 @@ model InteractivePrompt {
 }
 
 model PermissionRule {
-  id        String   @id @default(cuid())
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
   tool      String
   action    String
   resource  String   @default("*")

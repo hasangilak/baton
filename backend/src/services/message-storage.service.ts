@@ -7,7 +7,7 @@
 
 import { PrismaClient, Message, Conversation } from '@prisma/client';
 import { logger } from '../utils/logger';
-import { StreamResponse } from '../types/claude-sdk';
+import { StreamResponse } from '../types/claude-bridge';
 
 export class MessageStorageService {
   private prisma: PrismaClient;

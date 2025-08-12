@@ -34,6 +34,11 @@ export interface BridgeConfig {
   allowedHosts: string[];
   rateLimitRequests: number;
   rateLimitWindow: number;
+  
+  // WebSocket settings  
+  websocketTimeout: number;
+  reconnectionAttempts: number;
+  reconnectionDelay: number;
 }
 
 export interface TimeoutStage {
@@ -92,7 +97,12 @@ export class ConfigManager {
       // Security
       allowedHosts: ['localhost', '127.0.0.1'],
       rateLimitRequests: 100,
-      rateLimitWindow: 60000 // 1 minute
+      rateLimitWindow: 60000, // 1 minute
+      
+      // WebSocket settings
+      websocketTimeout: 10000,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000
     };
   }
 

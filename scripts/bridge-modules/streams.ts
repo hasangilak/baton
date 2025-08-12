@@ -2,8 +2,8 @@
  * Stream Management for Claude Code Bridge
  */
 
-import { config } from './config.js';
-import { logger, ContextualLogger } from './logger.js';
+import { config } from './config';
+import { logger, ContextualLogger } from './logger';
 
 export interface StreamResponse {
   type: "claude_json" | "error" | "done" | "aborted";
@@ -126,7 +126,7 @@ export class StreamController {
   private controller: ReadableStreamDefaultController<Uint8Array> | null = null;
   private metrics: StreamMetrics;
   private logger: ContextualLogger;
-  private isClosed = false;
+  private closed = false;
 
   constructor(requestId: string) {
     this.requestId = requestId;
@@ -157,7 +157,7 @@ export class StreamController {
    * Send a response through the stream
    */
   sendResponse(response: StreamResponse): boolean {
-    if (this.isClosed || !this.controller) {
+    if (this.closed || !this.controller) {
       this.logger.warn('Attempted to send to closed stream');
       return false;
     }
@@ -244,11 +244,11 @@ export class StreamController {
    * Close the stream
    */
   close(): void {
-    if (this.isClosed) {
+    if (this.closed) {
       return;
     }
 
-    this.isClosed = true;
+    this.closed = true;
     this.metrics.isActive = false;
 
     try {
@@ -284,7 +284,7 @@ export class StreamController {
    * Check if stream is closed
    */
   isClosed(): boolean {
-    return this.isClosed;
+    return this.closed;
   }
 
   /**
