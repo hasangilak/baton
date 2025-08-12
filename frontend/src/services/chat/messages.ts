@@ -242,8 +242,15 @@ export class MessageProcessor {
       timestamp: rawMessage.createdAt ? new Date(rawMessage.createdAt).getTime() : Date.now(),
       metadata: {
         conversationId: rawMessage.conversationId,
+        sessionId: rawMessage.sessionId,
+        claudeMessageId: rawMessage.claudeMessageId,
+        model: rawMessage.model,
+        usage: rawMessage.usage,
+        attachments: rawMessage.attachments,
+        status: rawMessage.status,
         isComplete: true,
-        legacy: true
+        legacy: true,
+        optimistic: false // Mark database messages as non-optimistic
       }
     };
   }

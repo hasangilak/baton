@@ -9,13 +9,13 @@ import React from 'react';
 import type { ProcessedMessage } from '../../../services/chat/messages';
 
 // Import individual message components
-import { AssistantMessage } from './AssistantMessage';
-import { UserMessage } from './UserMessage';
-import { SystemMessageComponent as SystemMessage } from './SystemMessage';
-import { ToolMessageComponent as ToolMessage } from './ToolMessage';
-import { ResultMessage } from './ResultMessage';
-import { ErrorMessage } from './ErrorMessage';
-import { AbortMessage } from './AbortMessage';
+import AssistantMessage from './AssistantMessage';
+import UserMessage from './UserMessage';
+import SystemMessageComponent from './SystemMessage';
+import ToolMessageComponent from './ToolMessage';
+import ResultMessage from './ResultMessage';
+import ErrorMessage from './ErrorMessage';
+import AbortMessage from './AbortMessage';
 
 // Specialized components for specific tools
 import { TodoWriteTimeline } from './TodoWriteTimeline';
@@ -63,7 +63,7 @@ export const SimpleMessageRenderer: React.FC<SimpleMessageRendererProps> = ({
       return <AssistantMessage {...baseProps} />;
       
     case 'system':
-      return <SystemMessage {...baseProps} />;
+      return <SystemMessageComponent {...baseProps} />;
       
     case 'tool':
       return renderToolMessage(message, baseProps, onPlanReviewDecision);
@@ -120,7 +120,7 @@ function renderToolMessage(
   }
   
   // Default tool message rendering
-  return <ToolMessage {...baseProps} />;
+  return <ToolMessageComponent {...baseProps} />;
 }
 
 /**

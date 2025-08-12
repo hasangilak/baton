@@ -190,6 +190,41 @@ router.get('/conversation/:conversationId', async (req: Request, res: Response) 
 });
 
 /**
+ * GET /api/chat/conversation/:conversationId/messages
+ * Get all messages for a conversation (used by frontend Zustand store)
+ */
+router.get('/conversation/:conversationId/messages', async (req: Request, res: Response) => {
+  try {
+    const conversationId = req.params.conversationId;
+
+    if (!conversationId) {
+      return res.status(400).json({
+        error: 'Conversation ID is required',
+      });
+    }
+
+    // Initialize message storage service
+    const messageStorage = getMessageStorageService(prisma);
+    
+    // Get all messages for the conversation
+    const messages = await messageStorage.getConversationMessages(conversationId);
+
+    console.log(`📥 Retrieved ${messages.length} messages for conversation ${conversationId}`);
+
+    return res.json({
+      success: true,
+      messages,
+      count: messages.length,
+    });
+  } catch (error) {
+    console.error('Error fetching conversation messages:', error);
+    return res.status(500).json({
+      error: 'Failed to fetch conversation messages',
+    });
+  }
+});
+
+/**
  * GET /api/chat/messages/:conversationId/:sessionId
  * Get messages for a conversation by session ID
  */

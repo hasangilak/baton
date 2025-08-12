@@ -409,6 +409,39 @@ export class MessageStorageService {
   }
 
   /**
+   * Get all messages for a conversation (used by frontend Zustand store)
+   */
+  async getConversationMessages(conversationId: string): Promise<Message[]> {
+    logger.storage?.info('Fetching conversation messages', { conversationId });
+
+    try {
+      const messages = await this.prisma.message.findMany({
+        where: { 
+          conversationId,
+          // Only fetch completed or failed messages, exclude placeholders/sending
+          status: { in: ['completed', 'failed'] }
+        },
+        include: {
+          attachments: true,
+        },
+        orderBy: {
+          createdAt: 'asc',
+        },
+      });
+
+      logger.storage?.info('✅ Conversation messages retrieved', { 
+        conversationId, 
+        messageCount: messages.length 
+      });
+
+      return messages;
+    } catch (error) {
+      logger.storage?.error('❌ Failed to get conversation messages', { error, conversationId });
+      throw new Error(`Failed to fetch messages: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  /**
    * Get storage health status for monitoring
    */
   async getStorageHealth(): Promise<{ healthy: boolean; details: string }> {

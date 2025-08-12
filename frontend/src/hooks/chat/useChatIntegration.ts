@@ -89,6 +89,29 @@ export const useChatIntegration = (projectId: string) => {
     }
   }, [conversationDetails, conversationDetailsFromStore]);
 
+  // Load messages when conversation is selected
+  useEffect(() => {
+    if (selectedConversationId) {
+      console.log('🔄 Loading messages for conversation:', selectedConversationId);
+      
+      const loadMessagesWithSession = async () => {
+        const store = useChatStore.getState();
+        
+        // First, try to initialize session if we don't have one
+        const currentSession = store.sessionState[selectedConversationId];
+        if (!currentSession?.sessionId && !currentSession?.pending) {
+          console.log('🆔 No session found, attempting to initialize session for conversation:', selectedConversationId);
+          await store.initializeSession(selectedConversationId);
+        }
+        
+        // Then load messages (will use session ID if available)
+        await store.fetchAndLoadMessages(selectedConversationId);
+      };
+      
+      loadMessagesWithSession();
+    }
+  }, [selectedConversationId]);
+
   // Enhanced conversation management that integrates with mutations
   const createConversation = async (title?: string): Promise<string | null> => {
     useChatStore.getState().setCreatingConversation(true);
@@ -217,16 +240,36 @@ export const useChatIntegration = (projectId: string) => {
           ...Object.fromEntries(prev),
           sessionId: data.sessionId,
         }));
-        console.log('🔗 Updated URL with session ID:', data.sessionId);
+        
+        // Invalidate conversation data to reflect new session ID
+        queryClient.invalidateQueries({
+          queryKey: ['chat', 'conversation', data.conversationId],
+        });
+        
+        // Also invalidate conversations list to update session info in sidebar
+        queryClient.invalidateQueries({
+          queryKey: ['chat', 'conversations', projectId],
+        });
+        
+        console.log('🔗 Updated URL with session ID and invalidated caches:', data.sessionId);
       }
     };
     
     // Enhanced message complete handler with query invalidation
     const handleMessageComplete = (data: any) => {
-      if (data.conversationId === selectedConversationId || data.requestId) {
+      const conversationId = data.conversationId || selectedConversationId;
+      if (conversationId) {
+        // Invalidate conversation details (for updated timestamps, etc.)
         queryClient.invalidateQueries({
-          queryKey: ['chat', 'messages', selectedConversationId],
+          queryKey: ['chat', 'conversation', conversationId],
         });
+        
+        // Invalidate conversations list (for updated timestamps in sidebar)
+        queryClient.invalidateQueries({
+          queryKey: ['chat', 'conversations', projectId],
+        });
+        
+        console.log('🔄 Invalidated React Query caches after message completion');
       }
     };
     

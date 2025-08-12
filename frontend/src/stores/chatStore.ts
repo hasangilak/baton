@@ -75,6 +75,7 @@ interface ChatStore extends ChatState {
   
   // Message operations
   loadMessages: (dbMessages: any[]) => void;
+  fetchAndLoadMessages: (conversationId: string) => Promise<void>;
   getAllMessages: () => ProcessedMessage[];
   
   // WebSocket operations
@@ -237,6 +238,49 @@ export const useChatStore = create<ChatStore>()(
       const deduplicatedMessages = MessageProcessor.deduplicateMessages(processedMessages);
       
       set({ messages: deduplicatedMessages });
+    },
+    
+    fetchAndLoadMessages: async (conversationId: string) => {
+      if (!conversationId) return;
+      
+      set({ isLoadingMessages: true });
+      
+      try {
+        const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+        
+        // Try to get session ID for this conversation
+        const { sessionState } = get();
+        const currentSession = sessionState[conversationId];
+        const sessionId = currentSession?.sessionId;
+        
+        // Use different endpoints based on whether we have a sessionId
+        let response;
+        if (sessionId) {
+          console.log('📥 Fetching messages with session ID:', sessionId);
+          response = await fetch(`${API_BASE_URL}/api/chat/messages/${conversationId}/${sessionId}`);
+        } else {
+          console.log('📥 Fetching messages without session ID for conversation:', conversationId);
+          response = await fetch(`${API_BASE_URL}/api/chat/conversation/${conversationId}/messages`);
+        }
+        
+        if (!response.ok) {
+          throw new Error(`Failed to fetch messages: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        const messages = data.messages || data.data?.messages || [];
+        
+        // Load messages into store
+        get().loadMessages(messages);
+        
+        console.log('📥 Loaded', messages.length, 'messages from database for conversation', conversationId, sessionId ? `(session: ${sessionId})` : '(no session)');
+        
+      } catch (error) {
+        console.error('❌ Failed to fetch messages for conversation', conversationId, ':', error);
+        // Don't throw - just log the error and continue
+      } finally {
+        set({ isLoadingMessages: false });
+      }
     },
     
     getAllMessages: (): ProcessedMessage[] => {
@@ -423,6 +467,38 @@ export const useChatStore = create<ChatStore>()(
         const currentState = get();
         if (data.conversationId !== currentState.selectedConversationId) return;
         
+        // Move both optimistic user message and streaming message to permanent messages
+        let updatedMessages = [...currentState.messages];
+        
+        // First, add optimistic user message to permanent messages if it exists
+        if (currentState.optimisticUserMessage) {
+          const userMessage = { ...currentState.optimisticUserMessage };
+          userMessage.metadata = {
+            ...userMessage.metadata,
+            optimistic: false // Mark as no longer optimistic
+          };
+          updatedMessages = MessageProcessor.mergeStreamingMessage(updatedMessages, userMessage);
+          console.log('💬 Moved optimistic user message to permanent messages:', userMessage.id);
+        }
+        
+        // Then, add streaming assistant message to permanent messages if it exists
+        if (currentState.streamingMessage) {
+          const assistantMessage = { ...currentState.streamingMessage };
+          assistantMessage.metadata = {
+            ...assistantMessage.metadata,
+            isComplete: true,
+            optimistic: false
+          };
+          updatedMessages = MessageProcessor.mergeStreamingMessage(updatedMessages, assistantMessage);
+          console.log('💬 Moved streaming message to permanent messages:', assistantMessage.id);
+        }
+        
+        // Update the messages array with both messages
+        if (currentState.optimisticUserMessage || currentState.streamingMessage) {
+          set({ messages: updatedMessages });
+        }
+        
+        // Clear streaming states
         setStreamingState(false, null);
         setOptimisticMessage(null);
         
