@@ -316,7 +316,20 @@ export const ChatPageDesktop: React.FC = () => {
         </div>
       )}
       <div className="flex-1 flex flex-col min-h-0">
+
         {isNewChat ? (
+          <>
+           {/* Bridge service error banner */}
+            {state.bridgeServiceError && (
+              <div className="p-4 bg-[#1E1F22]">
+                <BridgeServiceBanner
+                  onRetry={retryBridgeMessage}
+                  onDismiss={() => {
+                    clearBridgeError();
+                  }}
+                />
+              </div>
+            )}
           <WelcomeScreen
             inputValue={state.inputValue}
             setInputValue={setInputValue}
@@ -327,6 +340,7 @@ export const ChatPageDesktop: React.FC = () => {
             permissionMode={state.permissionMode}
             onCyclePermissionMode={cyclePermissionMode}
           />
+          </>
         ) : (
           <>
             {/* Session status bar */}
@@ -362,7 +376,6 @@ export const ChatPageDesktop: React.FC = () => {
                 />
               </div>
             )}
-            {state.bridgeServiceError ? 'bridgge erorr': 'no bridge error'}
             {/* Bridge service error banner */}
             {state.bridgeServiceError && (
               <div className="p-4 bg-[#1E1F22]">
