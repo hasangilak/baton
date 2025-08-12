@@ -22,8 +22,9 @@ interface SocketState {
   reconnectAttempts: number;
   lastConnected: number | null;
   
-  // Room management
-  rooms: Set<string>;
+  // Specific room tracking
+  joinedProjects: Set<string>;
+  joinedConversations: Set<string>;
   
   // Actions
   connect: (url?: string, options?: any) => void;
@@ -34,9 +35,7 @@ interface SocketState {
   on: (event: string, handler: Function) => void;
   off: (event: string, handler: Function) => void;
   
-  // Room management
-  joinRoom: (room: string) => void;
-  leaveRoom: (room: string) => void;
+  // Specific room management
   joinProject: (projectId: string) => void;
   leaveProject: (projectId: string) => void;
   joinConversation: (conversationId: string) => void;
@@ -47,8 +46,6 @@ interface SocketState {
   setConnecting: (connecting: boolean) => void;
   setError: (error: string | null) => void;
   setSocketInfo: (socketId: string | null, transport: string | null) => void;
-  addRoom: (room: string) => void;
-  removeRoom: (room: string) => void;
   incrementReconnectAttempts: () => void;
   resetReconnectAttempts: () => void;
   setLastConnected: (timestamp: number) => void;
@@ -65,7 +62,8 @@ export const useSocketStore = create<SocketState>()(
     transport: null,
     reconnectAttempts: 0,
     lastConnected: null,
-    rooms: new Set<string>(),
+    joinedProjects: new Set<string>(),
+    joinedConversations: new Set<string>(),
 
     // Connection management
     connect: (url = 'http://localhost:3001', options = {}) => {
@@ -114,10 +112,15 @@ export const useSocketStore = create<SocketState>()(
           reconnectAttempts: 0,
         });
 
-        // Re-join all rooms after reconnection
-        state.rooms.forEach(room => {
-          socket.emit('join', room);
-          console.log('🏠 [SocketStore] Re-joined room:', room);
+        // Re-join all rooms after reconnection using specific events
+        state.joinedProjects.forEach(projectId => {
+          socket.emit('join-project', projectId);
+          console.log('📋 [SocketStore] Re-joined project:', projectId);
+        });
+        
+        state.joinedConversations.forEach(conversationId => {
+          socket.emit('join-conversation', conversationId);
+          console.log('💬 [SocketStore] Re-joined conversation:', conversationId);
         });
       });
 
@@ -207,30 +210,14 @@ export const useSocketStore = create<SocketState>()(
       }
     },
 
-    // Room management
-    joinRoom: (room: string) => {
-      const { socket, isConnected } = get();
-      if (socket && isConnected) {
-        socket.emit('join', room);
-        get().addRoom(room);
-        console.log('🏠 [SocketStore] Joined room:', room);
-      }
-    },
-
-    leaveRoom: (room: string) => {
-      const { socket, isConnected } = get();
-      if (socket && isConnected) {
-        socket.emit('leave', room);
-        get().removeRoom(room);
-        console.log('🏠 [SocketStore] Left room:', room);
-      }
-    },
-
+    // Specific room management
     joinProject: (projectId: string) => {
       const { socket, isConnected } = get();
       if (socket && isConnected && projectId) {
         socket.emit('join-project', projectId);
-        get().addRoom(`project-${projectId}`);
+        set((state) => ({
+          joinedProjects: new Set([...state.joinedProjects, projectId])
+        }));
         console.log('📋 [SocketStore] Joined project:', projectId);
       }
     },
@@ -239,7 +226,11 @@ export const useSocketStore = create<SocketState>()(
       const { socket, isConnected } = get();
       if (socket && isConnected && projectId) {
         socket.emit('leave-project', projectId);
-        get().removeRoom(`project-${projectId}`);
+        set((state) => {
+          const newProjects = new Set(state.joinedProjects);
+          newProjects.delete(projectId);
+          return { joinedProjects: newProjects };
+        });
         console.log('📋 [SocketStore] Left project:', projectId);
       }
     },
@@ -248,7 +239,9 @@ export const useSocketStore = create<SocketState>()(
       const { socket, isConnected } = get();
       if (socket && isConnected && conversationId) {
         socket.emit('join-conversation', conversationId);
-        get().addRoom(`conversation-${conversationId}`);
+        set((state) => ({
+          joinedConversations: new Set([...state.joinedConversations, conversationId])
+        }));
         console.log('💬 [SocketStore] Joined conversation:', conversationId);
       }
     },
@@ -257,7 +250,11 @@ export const useSocketStore = create<SocketState>()(
       const { socket, isConnected } = get();
       if (socket && isConnected && conversationId) {
         socket.emit('leave-conversation', conversationId);
-        get().removeRoom(`conversation-${conversationId}`);
+        set((state) => {
+          const newConversations = new Set(state.joinedConversations);
+          newConversations.delete(conversationId);
+          return { joinedConversations: newConversations };
+        });
         console.log('💬 [SocketStore] Left conversation:', conversationId);
       }
     },
@@ -268,16 +265,6 @@ export const useSocketStore = create<SocketState>()(
     setError: (error: string | null) => set({ error }),
     setSocketInfo: (socketId: string | null, transport: string | null) => 
       set({ socketId, transport }),
-    
-    addRoom: (room: string) => set((state) => ({
-      rooms: new Set([...state.rooms, room])
-    })),
-    
-    removeRoom: (room: string) => set((state) => {
-      const newRooms = new Set(state.rooms);
-      newRooms.delete(room);
-      return { rooms: newRooms };
-    }),
     
     incrementReconnectAttempts: () => set((state) => ({
       reconnectAttempts: state.reconnectAttempts + 1
@@ -304,8 +291,6 @@ export const useSocketActions = () => useSocketStore((state) => ({
 }));
 
 export const useSocketRooms = () => useSocketStore((state) => ({
-  joinRoom: state.joinRoom,
-  leaveRoom: state.leaveRoom,
   joinProject: state.joinProject,
   leaveProject: state.leaveProject,
   joinConversation: state.joinConversation,
