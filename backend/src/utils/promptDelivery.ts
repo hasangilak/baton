@@ -42,7 +42,7 @@ class PromptDeliveryService {
    */
   private async checkDatabaseHealth(): Promise<boolean> {
     try {
-      await this.prisma.$queryRaw`SELECT 1 as health_check`;
+      await this.prisma.$executeRaw`SELECT 1`;
       return true;
     } catch (error) {
       console.error('🔴 Database health check failed:', error);
@@ -69,10 +69,21 @@ class PromptDeliveryService {
         // Calculate timeout
         const timeoutAt = new Date(Date.now() + 30000); // 30 second base timeout
 
+        // Get projectId from conversationId for database compatibility
+        const conversation = await this.prisma.conversation.findUnique({
+          where: { id: promptData.conversationId },
+          select: { projectId: true }
+        });
+
+        if (!conversation) {
+          throw new Error(`Conversation ${promptData.conversationId} not found`);
+        }
+
         // Create prompt with proper data structure
         const prompt = await this.prisma.interactivePrompt.create({
           data: {
             id: promptData.id,
+            projectId: conversation.projectId,
             conversationId: promptData.conversationId,
             type: promptData.type,
             title: promptData.title || `${promptData.type} prompt`,

@@ -444,7 +444,45 @@ export class PermissionManager {
   }
 
   /**
-   * Check project permission mode from backend with caching
+   * Check conversation permission mode from backend with caching (conversationId-first approach)
+   */
+  async getConversationPermissionMode(conversationId: string): Promise<string> {
+    try {
+      // Check cache first using conversationId
+      const cached = this.permissionCache.get(conversationId);
+      const now = Date.now();
+      const cacheDuration = config.getConfig().permissionCacheDuration;
+      
+      if (cached && (now - cached.timestamp) < cacheDuration) {
+        return cached.mode;
+      }
+
+      // Fetch from backend using conversationId
+      const response = await fetch(`${config.getConfig().backendUrl}/api/chat/conversations/${conversationId}/permission-mode`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        const mode = data.permissionMode || 'default';
+        
+        // Cache the result using conversationId
+        this.permissionCache.set(conversationId, {
+          mode,
+          timestamp: now
+        });
+        
+        return mode;
+      } else {
+        this.logger.warn('Failed to fetch conversation permission mode from backend', { conversationId, status: response.status });
+        return 'default';
+      }
+    } catch (error) {
+      this.logger.error('Error fetching conversation permission mode', { conversationId }, error);
+      return 'default';
+    }
+  }
+
+  /**
+   * Check project permission mode from backend with caching (fallback for backward compatibility)
    */
   async getProjectPermissionMode(projectId: string): Promise<string> {
     try {

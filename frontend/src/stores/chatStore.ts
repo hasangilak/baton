@@ -4,15 +4,14 @@
  * Replaces ChatContext with global state management for chat functionality
  * Integrates with WebSocket store and provides all chat-related operations
  *
- * ARCHITECTURE NOTE: conversationId vs projectId
+ * ARCHITECTURE NOTE: conversationId-first approach
  * ================================================
- * - Frontend: Uses 'conversationId' for internal state management and UI
- * - Backend: Uses 'projectId' for database operations and bridge communication  
- * - Bridge: Uses 'projectId' + 'sessionId' for Claude Code SDK integration
- * - Mapping: conversationId === projectId in current architecture (one conversation per project)
- * - Compatibility: Frontend handles both fields with fallback logic (data.conversationId || data.projectId)
- * - Session State: Keyed by conversationId but populated from projectId events
- * - URL Resume: sessionId from URL is mapped to projectId for session restoration
+ * - Frontend: Uses 'conversationId' as primary identifier for all operations
+ * - Backend: Uses 'conversationId' for primary database operations with 'projectId' for association
+ * - Bridge: Uses 'conversationId' + 'projectId' + 'sessionId' for Claude Code SDK integration
+ * - WebSocket: All messages prioritize 'conversationId' with 'projectId' for project context
+ * - Session State: Keyed by conversationId with Claude sessionId for SDK continuity
+ * - URL Resume: sessionId from URL maps to conversationId for session restoration
  */
 
 import { create } from 'zustand';
@@ -46,8 +45,8 @@ interface ChatState {
   error: string | null;
   bridgeServiceError: boolean;
   
-  // Session state for Claude Code continuity
-  // Note: conversationId key equals projectId in current architecture
+  // Session state for Claude Code continuity (conversationId-first)
+  // Note: Keyed by actual conversationId with Claude sessionId for SDK continuation
   sessionState: {[conversationId: string]: {sessionId?: string; initialized: boolean; pending: boolean; source?: 'url-resume' | 'claude-new' | 'manual'}};
   
   // Last message retry data
@@ -401,20 +400,20 @@ export const useChatStore = create<ChatStore>()(
           }
         });
         
-        // Send conversationId and projectId separately to backend
+        // Send conversationId-first to backend with projectId for context
         const { sessionState } = get();
         const conversationId = data.conversationId;
         const session = sessionState[conversationId];
         
         const messageData = { 
           ...data,
-          conversationId: data.conversationId, // Send conversationId to backend
-          projectId: data.projectId, // Send projectId separately  
-          sessionId: session?.sessionId // Include session ID if available for continuation
+          conversationId: data.conversationId, // Primary identifier for backend
+          projectId: data.projectId, // Project context for association  
+          sessionId: session?.sessionId // Claude session ID for SDK continuation
         };
         
         emit('chat:send-message', messageData);
-        console.log('📤 Sent WebSocket message with projectId:', messageData);
+        console.log('📤 Sent WebSocket message with conversationId-first approach:', messageData);
       } else {
         throw new Error('Not connected to chat service');
       }
@@ -452,7 +451,7 @@ export const useChatStore = create<ChatStore>()(
       
       get().sendWebSocketMessage({
         conversationId: lastMessageData.conversationId,
-        projectId: lastMessageData.conversationId, // Use conversationId as projectId for retry
+        projectId: undefined, // Let backend determine projectId from conversationId lookup
         content: lastMessageData.content,
         attachments: lastMessageData.attachments,
         requestId,

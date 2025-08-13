@@ -227,9 +227,11 @@ model Conversation {
   metadata         Json?     // Store additional conversation metadata
 
   // Relations
-  project  Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user     User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages Message[]
+  project                 Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user                    User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages                Message[]
+  interactivePrompts      InteractivePrompt[]
+  conversationPermissions ConversationPermission[]
 
   @@map("conversations")
   @@index([projectId])
@@ -240,23 +242,27 @@ model Conversation {
 }
 
 model ConversationPermission {
-  id        String   @id @default(auto()) @map("_id") @db.ObjectId
-  projectId String   @db.ObjectId
-  toolName  String   // Edit, MultiEdit, Write, Bash, etc.
-  status    String   @default("granted") // granted, denied, temporary
-  grantedBy String   @default("user") // user, system, auto
-  grantedAt DateTime @default(now())
-  expiresAt DateTime? // Optional expiration for temporary permissions
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  metadata  Json?    // Store additional permission context
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  projectId      String   @db.ObjectId
+  conversationId String?  // Added for conversation-first approach
+  toolName       String   // Edit, MultiEdit, Write, Bash, etc.
+  status         String   @default("granted") // granted, denied, temporary
+  grantedBy      String   @default("user") // user, system, auto
+  grantedAt      DateTime @default(now())
+  expiresAt      DateTime? // Optional expiration for temporary permissions
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  metadata       Json?    // Store additional permission context
 
   // Relations
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@map("conversation_permissions")
-  @@unique([projectId, toolName])
+  @@unique([conversationId, toolName]) // Ensure unique permissions per conversation
+  @@unique([projectId, toolName]) // Ensure unique permissions per project (backward compatibility)
   @@index([projectId])
+  @@index([conversationId])
   @@index([toolName])
   @@index([status])
 }
@@ -335,6 +341,7 @@ model CodeBlock {
 model InteractivePrompt {
   id             String    @id @default(auto()) @map("_id") @db.ObjectId
   projectId      String
+  conversationId String?   // Added for conversation-first approach
   sessionId      String?
   type           String    // permission, tool_usage, multiple_choice, three_option, plan_review
   title          String?
@@ -351,11 +358,13 @@ model InteractivePrompt {
   linkedPlanId   String?   @db.ObjectId // Link to created claudeCodePlan after approval
 
   // Relations
-  project    Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  linkedPlan ClaudeCodePlan? @relation("PlanReview", fields: [linkedPlanId], references: [id], onDelete: SetNull)
+  project      Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  conversation Conversation?   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  linkedPlan   ClaudeCodePlan? @relation("PlanReview", fields: [linkedPlanId], references: [id], onDelete: SetNull)
 
   @@map("interactive_prompts")
   @@index([projectId])
+  @@index([conversationId])
   @@index([status])
   @@index([timeoutAt])
   @@index([sessionId])

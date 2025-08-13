@@ -8,9 +8,10 @@ import { logger, ContextualLogger } from './logger';
 import { PermissionManager, type PermissionRequest } from './permissions';
 
 /**
- * Claude SDK Request Interface - Session Continuity Architecture
- * ==============================================================
- * - projectId: Baton project identifier for context and permissions
+ * Claude SDK Request Interface - ConversationId-first Architecture
+ * ================================================================
+ * - conversationId: Primary identifier for conversation operations
+ * - projectId: Optional project context for working directory and permissions
  * - sessionId: Optional Claude Code session ID for conversation resumption
  * - When sessionId provided: Sets claudeOptions.resume for context continuity
  * - When sessionId missing: Creates new Claude Code session
@@ -18,7 +19,8 @@ import { PermissionManager, type PermissionRequest } from './permissions';
 export interface ClaudeRequest {
   message: string;
   requestId: string;
-  projectId: string;        // Baton project for context
+  conversationId: string;   // Primary conversation identifier
+  projectId?: string;       // Project context for working directory
   sessionId?: string;       // Claude Code session for resumption  
   allowedTools?: string[];
   workingDirectory?: string;
@@ -54,10 +56,12 @@ export class ClaudeSDK {
    * Execute a Claude Code query
    */
   async *executeQuery(request: ClaudeRequest): AsyncGenerator<any, void, unknown> {
-    const { requestId, projectId, message, projectName, sessionId } = request;
+    const { requestId, conversationId, projectId, message, projectName, sessionId } = request;
     const contextLogger = new ContextualLogger(logger, 'ClaudeSDK', requestId);
     
     contextLogger.info('Starting Claude Code execution', {
+      conversationId,
+      projectId,
       sessionId: sessionId || 'new',
       projectName,
       messageLength: message.length
@@ -176,15 +180,17 @@ export class ClaudeSDK {
    */
   private async buildClaudeOptions(request: ClaudeRequest, abortController: AbortController): Promise<ClaudeOptions> {
     const cfg = config.getConfig();
-    const { sessionId, allowedTools, workingDirectory, permissionMode = 'default', projectId } = request;
+    const { conversationId, sessionId, allowedTools, workingDirectory, permissionMode = 'default', projectId } = request;
 
-    // Get effective permission mode from backend
+    // Get effective permission mode from backend (conversation-first approach)
     let effectivePermissionMode = permissionMode;
-    if (projectId) {
+    if (conversationId) {
       try {
-        const backendPermissionMode = await this.permissionManager.getProjectPermissionMode(projectId);
+        // Use conversation-based permission mode with project fallback
+        const backendPermissionMode = await this.permissionManager.getConversationPermissionMode(conversationId);
         if (backendPermissionMode !== permissionMode) {
-          this.logger.info('Permission mode updated from backend', {
+          this.logger.info('Permission mode updated from conversation', {
+            conversationId,
             original: permissionMode,
             updated: backendPermissionMode
           });

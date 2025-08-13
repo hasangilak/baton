@@ -16,17 +16,19 @@ import { ResourceManager } from './resources';
 import { errorHandler, BridgeError, ErrorType } from './errors';
 
 /**
- * Bridge Request Interface - projectId + sessionId Architecture
+ * Bridge Request Interface - conversationId-first Architecture
  * ============================================================
- * ARCHITECTURE CHANGE: Removed conversationId, now uses projectId + sessionId
- * - projectId: Identifies the Baton project (maps to frontend conversationId)
+ * ARCHITECTURE CHANGE: conversationId is now primary identifier
+ * - conversationId: Primary identifier for conversation operations
+ * - projectId: Project context for association and Claude working directory
  * - sessionId: Claude Code SDK session ID for conversation continuity
- * - This enables proper Claude Code session resumption across requests
+ * - This enables proper conversation-centric operations with Claude SDK
  */
 export interface BridgeRequest {
   message: string;
   requestId: string;
-  projectId: string;        // Baton project ID (was conversationId)
+  conversationId: string;   // Primary conversation identifier
+  projectId?: string;       // Project context for association
   sessionId?: string;       // Claude Code session ID for resumption
   allowedTools?: string[];
   workingDirectory?: string;
@@ -255,6 +257,7 @@ export class ModularClaudeCodeBridge {
     
     try {
       contextLogger.info('Handling execute request', {
+        conversationId: request.conversationId,
         projectId: request.projectId,
         sessionId: request.sessionId,
         messageLength: request.message.length
@@ -274,10 +277,11 @@ export class ModularClaudeCodeBridge {
       // Increment request counter
       this.resourceManager.incrementRequestCount();
 
-      // Convert bridge request to Claude request
+      // Convert bridge request to Claude request (conversationId-first)
       const claudeRequest: ClaudeRequest = {
         message: request.message,
         requestId: request.requestId,
+        conversationId: request.conversationId,
         projectId: request.projectId,
         sessionId: request.sessionId,
         allowedTools: request.allowedTools,

@@ -17,23 +17,23 @@ export class MessageStorageService {
   }
 
   /**
-   * Create user message with immediate persistence
+   * Create user message with immediate persistence (conversationId-first approach)
    * Hybrid approach: optimistic UI + DB confirmation
    */
   async createUserMessage(
     conversationId: string,
-    projectId: string, 
     content: string, 
     attachments?: Array<{ filename: string; mimeType: string; size: number; url: string }>,
-    sessionId?: string
+    sessionId?: string,
+    projectId?: string
   ): Promise<Message> {
-    logger.storage?.info('Creating user message', { conversationId, projectId, contentLength: content.length });
+    logger.storage?.info('Creating user message', { conversationId, contentLength: content.length, projectId });
 
     try {
       const message = await this.prisma.message.create({
         data: {
           conversationId,
-          projectId,
+          ...(projectId && { projectId }),
           role: 'user',
           content,
           status: 'completed',
@@ -49,69 +49,69 @@ export class MessageStorageService {
         },
       });
 
-      logger.storage?.info('✅ User message created successfully', { messageId: message.id });
+      logger.storage?.info('✅ User message created successfully', { messageId: message.id, conversationId });
       return message;
     } catch (error) {
-      logger.storage?.error('❌ Failed to create user message', { error, projectId });
+      logger.storage?.error('❌ Failed to create user message', { error, conversationId, projectId });
       throw new Error(`Failed to save your message: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
   /**
-   * Create assistant message placeholder for streaming
+   * Create assistant message placeholder for streaming (conversationId-first approach)
    * Returns immediately for optimistic UI updates
    */
-  async createAssistantMessagePlaceholder(conversationId: string, projectId: string): Promise<Message> {
+  async createAssistantMessagePlaceholder(conversationId: string, projectId?: string): Promise<Message> {
     logger.storage?.info('Creating assistant message placeholder', { conversationId, projectId });
 
     try {
       const message = await this.prisma.message.create({
         data: {
           conversationId,
-          projectId,
+          ...(projectId && { projectId }),
           role: 'assistant',
           content: '',
           status: 'sending',
         },
       });
 
-      logger.storage?.info('✅ Assistant placeholder created', { messageId: message.id });
+      logger.storage?.info('✅ Assistant placeholder created', { messageId: message.id, conversationId });
       return message;
     } catch (error) {
-      logger.storage?.error('❌ Failed to create assistant placeholder', { error, projectId });
+      logger.storage?.error('❌ Failed to create assistant placeholder', { error, conversationId, projectId });
       throw new Error(`Failed to prepare response: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
 
   /**
-   * Store Claude Code SDK message with rich metadata
+   * Store Claude Code SDK message with rich metadata (conversationId-first approach)
    * Handles the new StreamResponse format with SDKMessage data
    */
   async createClaudeSDKMessage(
     conversationId: string,
-    projectId: string,
-    streamResponse: StreamResponse
+    streamResponse: StreamResponse,
+    projectId?: string
   ): Promise<Message> {
     // Extract sessionId from new field or fallback to data.session_id
     const sessionId = streamResponse.sessionId || streamResponse.data?.session_id;
     
     logger.storage?.info('Creating Claude Code SDK message', { 
       conversationId,
-      projectId, 
       type: streamResponse.data?.type,
       sessionId,
       requestId: streamResponse.requestId,
-      messageModel: streamResponse.data?.message?.model 
+      messageModel: streamResponse.data?.message?.model,
+      projectId
     });
 
     try {
       let content = '';
       let role = 'assistant'; // Default role
 
-      // Extract content based on SDKMessage type
-      if (streamResponse.data.type === 'assistant') {
+      // Extract content based on SDKMessage type (with null checks)
+      if (streamResponse.data && streamResponse.data.type === 'assistant') {
         // SDKAssistantMessage
-        const assistantData = streamResponse.data;
+        const assistantData = streamResponse.data as any;
         if (assistantData.message?.content) {
           if (Array.isArray(assistantData.message.content)) {
             content = assistantData.message.content
@@ -123,27 +123,27 @@ export class MessageStorageService {
           }
         }
         role = 'assistant';
-      } else if (streamResponse.data.type === 'user') {
+      } else if (streamResponse.data && streamResponse.data.type === 'user') {
         // SDKUserMessage
-        const userData = streamResponse.data;
+        const userData = streamResponse.data as any;
         if (userData.message?.content) {
           content = Array.isArray(userData.message.content) 
             ? JSON.stringify(userData.message.content)
             : String(userData.message.content);
         }
         role = 'user';
-      } else if (streamResponse.data.type === 'result') {
+      } else if (streamResponse.data && streamResponse.data.type === 'result') {
         // SDKResultMessage
-        const resultData = streamResponse.data;
+        const resultData = streamResponse.data as any;
         if (resultData.subtype === 'success') {
           content = resultData.result || `Execution completed successfully`;
         } else {
           content = `Execution ${resultData.subtype}: ${resultData.result || 'No details'}`;
         }
         role = 'system';
-      } else if (streamResponse.data.type === 'system') {
+      } else if (streamResponse.data && streamResponse.data.type === 'system') {
         // SDKSystemMessage
-        const systemData = streamResponse.data;
+        const systemData = streamResponse.data as any;
         content = `Claude Code initialized - Model: ${systemData.model}, Tools: ${systemData.tools?.length || 0}, MCP: ${systemData.mcp_servers?.length || 0}`;
         role = 'system';
       }
@@ -151,15 +151,15 @@ export class MessageStorageService {
       const message = await this.prisma.message.create({
         data: {
           conversationId,
-          projectId,
+          ...(projectId && { projectId }),
           role,
           content,
           type: streamResponse.type,
           claudeData: streamResponse as any, // Store full StreamResponse
-          claudeMessageId: streamResponse.data?.message?.id,
-          model: streamResponse.data?.message?.model,
+          claudeMessageId: (streamResponse.data as any)?.message?.id,
+          model: (streamResponse.data as any)?.message?.model,
           sessionId, // Use the extracted sessionId with fallback logic
-          usage: streamResponse.data?.message?.usage || streamResponse.data?.usage,
+          usage: (streamResponse.data as any)?.message?.usage || (streamResponse.data as any)?.usage,
           timestamp: BigInt(streamResponse.timestamp),
           status: 'completed',
         },
@@ -170,12 +170,13 @@ export class MessageStorageService {
         claudeMessageId: message.claudeMessageId,
         model: message.model,
         contentLength: content.length,
-        role
+        role,
+        conversationId
       });
 
       return message;
     } catch (error) {
-      logger.storage?.error('❌ Failed to create Claude Code SDK message', { error, projectId });
+      logger.storage?.error('❌ Failed to create Claude Code SDK message', { error, conversationId, projectId });
       throw new Error(`Failed to save Claude response: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }

@@ -49,7 +49,7 @@ export class ConversationPermissionsService {
   }
 
   /**
-   * Grant permission for a tool in a conversation
+   * Grant permission for a tool in a conversation (conversationId-first approach)
    */
   static async grantPermission(
     conversationId: string, 
@@ -57,6 +57,16 @@ export class ConversationPermissionsService {
     grantedBy: string = 'user',
     expiresAt?: Date
   ): Promise<ConversationPermission> {
+    // Get projectId from conversationId for database compatibility
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { projectId: true }
+    });
+
+    if (!conversation) {
+      throw new Error(`Conversation ${conversationId} not found`);
+    }
+
     // Use upsert to handle the case where permission already exists
     const permission = await prisma.conversationPermission.upsert({
       where: {
@@ -74,6 +84,7 @@ export class ConversationPermissionsService {
       },
       create: {
         conversationId,
+        projectId: conversation.projectId,
         toolName,
         status: 'granted',
         grantedBy,
@@ -86,13 +97,23 @@ export class ConversationPermissionsService {
   }
 
   /**
-   * Deny permission for a tool in a conversation
+   * Deny permission for a tool in a conversation (conversationId-first approach)
    */
   static async denyPermission(
     conversationId: string, 
     toolName: string, 
     grantedBy: string = 'user'
   ): Promise<ConversationPermission> {
+    // Get projectId from conversationId for database compatibility
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { projectId: true }
+    });
+
+    if (!conversation) {
+      throw new Error(`Conversation ${conversationId} not found`);
+    }
+
     const permission = await prisma.conversationPermission.upsert({
       where: {
         conversationId_toolName: {
@@ -108,6 +129,7 @@ export class ConversationPermissionsService {
       },
       create: {
         conversationId,
+        projectId: conversation.projectId,
         toolName,
         status: 'denied',
         grantedBy,

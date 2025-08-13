@@ -274,11 +274,11 @@ export const useChatIntegration = (projectId: string) => {
     try {
       let conversationId = selectedConversationId;
       
-      // With new architecture: 
-      // - If conversationId exists: continue existing conversation
-      // - If no conversationId: backend will create new conversation and return UUID
+      // ConversationId-first architecture: 
+      // - If conversationId exists: continue existing conversation (backend looks up projectId)
+      // - If no conversationId: backend creates new conversation for projectId and returns UUID
       if (!conversationId) {
-        console.log('🔍 [DEBUG] No conversation selected, backend will create new one');
+        console.log('🔍 [DEBUG] No conversation selected, backend will create new one for project:', projectId);
       } else {
         console.log('🔍 [DEBUG] Using existing conversation:', conversationId);
       }
@@ -312,12 +312,12 @@ export const useChatIntegration = (projectId: string) => {
       });
       
       useChatStore.getState().sendWebSocketMessage({
-        conversationId,
-        projectId, // Include projectId for backend compatibility
+        conversationId, // Primary identifier for conversationId-first approach
+        projectId, // Project context for association (optional for existing conversations)
         content: content, // Backend expects 'content', not 'message'
         attachments,
         requestId,
-        sessionId: effectiveSessionId, // Use effective sessionId (URL priority)
+        sessionId: effectiveSessionId, // Claude sessionId for SDK continuation
         permissionMode, // Include current permission mode
       });
       

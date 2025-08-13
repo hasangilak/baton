@@ -772,7 +772,7 @@ router.post('/conversations/:conversationId/prompts', async (req: Request, res: 
     
     const deliveryResult = await getPromptDeliveryService().deliverPrompt({
       id: promptId,
-      projectId: conversation.projectId,
+      conversationId,
       type,
       title: title || `${type} prompt`,
       message,
@@ -1268,9 +1268,20 @@ router.post('/prompts/tool-permission', async (req: Request, res: Response) => {
     
     // Create interactive prompt in database
     const promptId = `tool_${toolName}_${Date.now()}`;
+    // Get projectId from conversationId for database compatibility
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { projectId: true }
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
     const prompt = await prisma.interactivePrompt.create({
       data: {
         id: promptId,
+        projectId: conversation.projectId,
         conversationId,
         sessionId,
         type: 'tool_permission',
@@ -1977,10 +1988,21 @@ router.post('/conversations/:conversationId/plan-review', async (req: Request, r
     // Generate unique plan review ID
     const planReviewId = `plan_${conversationId.slice(-8)}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
+    // Get projectId from conversationId for database compatibility
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { projectId: true }
+    });
+
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+
     // Store plan review in database using the existing interactive_prompt table
     await prisma.interactivePrompt.create({
       data: {
         id: planReviewId,
+        projectId: conversation.projectId,
         conversationId,
         type: type || 'plan_review',
         title: title || 'Plan Review Required',

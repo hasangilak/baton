@@ -95,10 +95,25 @@ export async function handlePermissionPrompt(args: PermissionPromptArgs, context
       context: promptContext
     });
 
-    // Store prompt in database for UI handling
+    // Store prompt in database for UI handling (conversationId-first approach)
+    let finalProjectId = projectId;
+    let finalConversationId = conversationId || 'mcp-permission-request';
+
+    // If we have a real conversationId, get projectId from it
+    if (conversationId && conversationId !== 'mcp-permission-request') {
+      const conversation = await prisma.conversation.findUnique({
+        where: { id: conversationId },
+        select: { projectId: true }
+      });
+      if (conversation) {
+        finalProjectId = conversation.projectId;
+      }
+    }
+
     const interactivePrompt = await prisma.interactivePrompt.create({
       data: {
-        conversationId: conversationId || 'mcp-permission-request',
+        projectId: finalProjectId,
+        conversationId: finalConversationId,
         sessionId: sessionId || null,
         type: 'mcp_permission',
         title: prompt.title,
@@ -109,7 +124,7 @@ export async function handlePermissionPrompt(args: PermissionPromptArgs, context
           action,
           resource,
           danger_level,
-          projectId,
+          projectId: finalProjectId,
           workingDirectory: promptContext?.workingDirectory,
           originalMessage: promptContext?.message
         },
