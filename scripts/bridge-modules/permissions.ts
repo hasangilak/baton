@@ -560,7 +560,7 @@ export class PermissionManager {
     contextLogger.info(`Requesting permission with progressive timeout`, { toolName, riskLevel });
     
     // Ensure conversation exists
-    await this.ensureConversationExists(projectId, sessionId);
+    await this.ensureConversationExists(conversationId);
     
     // Create permission prompt
     const promptId = await this.createPermissionPrompt(request);
@@ -853,7 +853,7 @@ export class PermissionManager {
   /**
    * Check if conversation exists via WebSocket
    */
-  private async ensureConversationExists(sessionId: string): Promise<void> {
+  private async ensureConversationExists(conversationId: string): Promise<void> {
     if (!this.backendSocket) {
       this.logger.warn('No backend WebSocket connection to check conversation');
       return;
@@ -861,15 +861,15 @@ export class PermissionManager {
 
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
-        this.logger.warn(`Conversation check timeout for ${sessionId}`);
+        this.logger.warn(`Conversation check timeout for ${conversationId}`);
         resolve(); // Continue anyway
       }, 5000);
 
-      this.backendSocket.emit('conversation:check', { sessionId }, (response: any) => {
+      this.backendSocket.emit('conversation:check', { conversationId }, (response: any) => {
         clearTimeout(timeout);
         
         if (!response?.exists) {
-          this.logger.info(`Conversation ${sessionId} may not exist, continuing with permission request`);
+          this.logger.info(`Conversation ${conversationId} may not exist, continuing with permission request`);
         }
         
         resolve();
@@ -884,9 +884,9 @@ export class PermissionManager {
     const now = Date.now();
     const cacheDuration = config.getConfig().permissionCacheDuration;
     
-    for (const [sessionId, cached] of this.permissionCache) {
+    for (const [cacheKey, cached] of this.permissionCache) {
       if (now - cached.timestamp > cacheDuration) {
-        this.permissionCache.delete(sessionId);
+        this.permissionCache.delete(cacheKey);
       }
     }
   }

@@ -173,11 +173,12 @@ export async function handleWebSocketChat(
     }
 
     // Create streaming context
+    const effectiveSessionId = sessionId || conversation.claudeSessionId;
     const streamingContext: StreamingContext = {
       requestId,
       messageId: assistantMessage.id,
       conversationId,
-      sessionId: sessionId || conversation.claudeSessionId || undefined,
+      ...(effectiveSessionId && { sessionId: effectiveSessionId }),
       abortController,
     };
 
@@ -194,8 +195,7 @@ export async function handleWebSocketChat(
     let currentSessionId = streamingContext.sessionId;
     let delegatedToHandler = false;
 
-    // Set up listener for responses from bridge service
-    const { io } = await import('../index');
+    // Set up listener for responses from bridge service  
     let responseHandler: ((data: any) => void) | null = null;
     let streamCompleted = false;
 

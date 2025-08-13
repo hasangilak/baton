@@ -92,15 +92,15 @@ export class MessageStorageService {
     streamResponse: StreamResponse,
     projectId?: string
   ): Promise<Message> {
-    // Extract sessionId from new field or fallback to data.session_id
-    const sessionId = streamResponse.sessionId || streamResponse.data?.session_id;
+    // Extract sessionId from data.session_id since StreamResponse doesn't have sessionId field
+    const sessionId = (streamResponse.data as any)?.session_id;
     
     logger.storage?.info('Creating Claude Code SDK message', { 
       conversationId,
       type: streamResponse.data?.type,
       sessionId,
       requestId: streamResponse.requestId,
-      messageModel: streamResponse.data?.message?.model,
+      messageModel: (streamResponse.data as any)?.message?.model,
       projectId
     });
 

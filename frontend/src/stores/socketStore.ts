@@ -187,7 +187,6 @@ export const useSocketStore = create<SocketState>()(
           socketId: null,
           transport: null,
           error: null,
-          rooms: new Set(),
         });
       }
     },

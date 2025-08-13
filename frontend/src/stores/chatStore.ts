@@ -85,7 +85,7 @@ interface ChatStore extends ChatState {
   
   // Message operations
   loadMessages: (dbMessages: any[]) => void;
-  fetchAndLoadMessages: (conversationId: string) => Promise<void>;
+  fetchAndLoadMessages: (conversationId?: string, sessionId?: string) => Promise<void>;
   getAllMessages: () => ProcessedMessage[];
   
   // WebSocket operations
@@ -524,11 +524,9 @@ export const useChatStore = create<ChatStore>()(
       }
       
       const {
-        selectedConversationId,
         setStreamingState,
         setConversationDetails,
         setError,
-        conversationDetails,
         addOrUpdateMessage
       } = get();
 
@@ -694,7 +692,7 @@ export const useChatStore = create<ChatStore>()(
       };
 
       // Abort handler
-      const handleAbort = (data: any) => {
+      const handleAbort = (_data: any) => {
         setStreamingState(false);
       };
 

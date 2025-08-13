@@ -42,7 +42,8 @@ class PromptDeliveryService {
    */
   private async checkDatabaseHealth(): Promise<boolean> {
     try {
-      await this.prisma.$executeRaw`SELECT 1`;
+      // Simple health check by querying a small table
+      await this.prisma.project.findFirst({ take: 1 });
       return true;
     } catch (error) {
       console.error('🔴 Database health check failed:', error);

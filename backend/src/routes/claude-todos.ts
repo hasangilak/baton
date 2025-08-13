@@ -7,10 +7,9 @@ const router = Router();
 const prisma = new PrismaClient();
 
 // GET /api/claude-todos - Get all Claude Code todos for a project
-// @ts-expect-error Express route handler return type inference issue  
 router.get('/', validateObjectIdParam('projectId'), async (req, res, next) => {
   try {
-    const { projectId } = req.query;
+    const { projectId } = req.query as { projectId: string };
 
     const todos = await prisma.claudeTodo.findMany({
       where: { projectId },

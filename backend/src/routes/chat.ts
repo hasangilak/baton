@@ -309,7 +309,7 @@ router.get('/conversation/:conversationId/messages', async (req: Request, res: R
  * DEPRECATED: Legacy endpoint - use WebSocket 'chat:send-message' event instead
  * This endpoint is kept for backward compatibility but will be removed
  */
-router.post('/messages', async (req: Request, res: Response): Promise<void> => {
+router.post('/messages', async (_req: Request, res: Response): Promise<void> => {
   console.warn('⚠️  Deprecated endpoint /api/chat/messages used. Please migrate to WebSocket chat:send-message event.');
   
   res.status(410).json({
@@ -940,7 +940,7 @@ router.post('/prompts/:promptId/escalate', async (req: Request, res: Response) =
     };
 
     // Send to specific conversation
-    if (updatedPrompt) {
+    if (updatedPrompt && updatedPrompt.conversationId) {
       ioInstance?.to(`conversation-${updatedPrompt.conversationId}`).emit('permission_escalation', escalationEvent);
       
       // Also send to project room for broader awareness
@@ -1056,7 +1056,7 @@ router.post('/prompts/:promptId/respond', async (req: Request, res: Response) =>
     };
 
     // Handle permission persistence based on response
-    if (originalPrompt.type === 'tool_permission' && (originalPrompt.context as any)?.toolName) {
+    if (originalPrompt.type === 'tool_permission' && (originalPrompt.context as any)?.toolName && originalPrompt.conversationId) {
       const toolName = (originalPrompt.context as any).toolName as string;
       const conversationId = originalPrompt.conversationId;
       
@@ -1403,7 +1403,7 @@ router.put('/prompts/:promptId/timeout', async (req: Request, res: Response) => 
  * POST /api/chat/messages/stream
  * DEPRECATED: Use WebSocket 'chat:send-message' event instead
  */
-router.post('/messages/stream', async (req: Request, res: Response): Promise<void> => {
+router.post('/messages/stream', async (_req: Request, res: Response): Promise<void> => {
   console.warn('⚠️  Deprecated endpoint /api/chat/messages/stream used. Please migrate to WebSocket.');
   
   res.status(410).json({
@@ -1420,7 +1420,7 @@ router.post('/messages/stream', async (req: Request, res: Response): Promise<voi
  * POST /api/chat/messages/stream-webui
  * DEPRECATED: Use WebSocket 'chat:send-message' event instead
  */
-router.post('/messages/stream-webui', async (req: Request, res: Response): Promise<void> => {
+router.post('/messages/stream-webui', async (_req: Request, res: Response): Promise<void> => {
   console.warn('⚠️  Deprecated endpoint /api/chat/messages/stream-webui used. Please migrate to WebSocket.');
   
   res.status(410).json({
@@ -1461,7 +1461,7 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
     }
 
     // Use enhanced message storage with hybrid approach
-    const userMessage = await messageStorage.createUserMessage(conversation.projectId, content, undefined, conversation.claudeSessionId);
+    const userMessage = await messageStorage.createUserMessage(conversation.projectId, content, undefined, conversation.claudeSessionId || undefined);
     const assistantMessage = await messageStorage.createAssistantMessagePlaceholder(conversation.projectId);
     
     console.log(`📝 Created messages: user=${userMessage.id}, assistant=${assistantMessage.id}`);
@@ -1673,7 +1673,7 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
  * POST /api/chat/messages/abort/:requestId
  * DEPRECATED: Use WebSocket 'claude:abort' event instead
  */
-router.post('/messages/abort/:requestId', async (req: Request, res: Response): Promise<void> => {
+router.post('/messages/abort/:requestId', async (_req: Request, res: Response): Promise<void> => {
   console.warn('⚠️  Deprecated endpoint /api/chat/messages/abort used. Please migrate to WebSocket.');
   
   res.status(410).json({
@@ -1690,7 +1690,7 @@ router.post('/messages/abort/:requestId', async (req: Request, res: Response): P
  * POST /api/chat/messages/abort-bridge/:requestId
  * DEPRECATED: Use WebSocket 'claude:abort' event instead
  */
-router.post('/messages/abort-bridge/:requestId', async (req: Request, res: Response) => {
+router.post('/messages/abort-bridge/:requestId', async (_req: Request, res: Response) => {
   console.warn('⚠️  Deprecated endpoint /api/chat/messages/abort-bridge used. Please migrate to WebSocket.');
   
   res.status(410).json({
@@ -1989,12 +1989,12 @@ router.post('/conversations/:conversationId/plan-review', async (req: Request, r
     const planReviewId = `plan_${conversationId.slice(-8)}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
 
     // Get projectId from conversationId for database compatibility
-    const conversation = await prisma.conversation.findUnique({
+    const conversationInfo = await prisma.conversation.findUnique({
       where: { id: conversationId },
       select: { projectId: true }
     });
 
-    if (!conversation) {
+    if (!conversationInfo) {
       return res.status(404).json({ error: 'Conversation not found' });
     }
 
@@ -2002,7 +2002,7 @@ router.post('/conversations/:conversationId/plan-review', async (req: Request, r
     await prisma.interactivePrompt.create({
       data: {
         id: planReviewId,
-        projectId: conversation.projectId,
+        projectId: conversationInfo.projectId,
         conversationId,
         type: type || 'plan_review',
         title: title || 'Plan Review Required',
@@ -2040,16 +2040,16 @@ router.post('/conversations/:conversationId/plan-review', async (req: Request, r
     });
 
     // Also emit to project room if available
-    const conversation = await prisma.conversation.findUnique({
+    const conversationData = await prisma.conversation.findUnique({
       where: { id: conversationId },
       select: { projectId: true }
     });
     
-    if (conversation?.projectId) {
-      ioInstance?.to(`project-${conversation.projectId}`).emit('plan_review_project', {
+    if (conversationData?.projectId) {
+      ioInstance?.to(`project-${conversationData.projectId}`).emit('plan_review_project', {
         planReviewId,
         conversationId,
-        projectId: conversation.projectId,
+        projectId: conversationData.projectId,
         planLength: planContent.length,
         timestamp: Date.now()
       });
@@ -2190,6 +2190,10 @@ router.post('/plan-review/:planReviewId/respond', async (req: Request, res: Resp
       try {
         // Get conversation and project info
         const conversationId = updatedPlanReview.conversationId;
+        if (!conversationId) {
+          throw new Error('No conversation ID available for plan approval');
+        }
+        
         const conversation = await prisma.conversation.findUnique({
           where: { id: conversationId },
           select: { id: true, projectId: true }
@@ -2200,7 +2204,8 @@ router.post('/plan-review/:planReviewId/respond', async (req: Request, res: Resp
         }
 
         // Create claudeCodePlan record for approved plan
-        const planContent = updatedPlanReview.metadata?.planContent || 'No plan content available';
+        const planContentData = (updatedPlanReview.context as any)?.planContent || (updatedPlanReview.metadata as any)?.planContent || 'No plan content available';
+        const planContent = typeof planContentData === 'string' ? planContentData : 'No plan content available';
         const planTitle = planContent.split('\n')[0]?.replace(/^#\s*/, '').substring(0, 100) || 
                          `Plan approved on ${new Date().toLocaleDateString()}`;
 

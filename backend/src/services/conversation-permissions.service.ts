@@ -14,7 +14,7 @@ if (process.env.NODE_ENV === 'production') {
 
 export interface ConversationPermission {
   id: string;
-  conversationId: string;
+  conversationId: string | null;
   toolName: string;
   status: string;
   grantedBy: string;
