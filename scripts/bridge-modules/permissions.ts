@@ -23,9 +23,9 @@ export interface PermissionRequest {
   toolName: string;
   parameters: Record<string, any>;
   projectId: string;
+  sessionId: string;
   riskLevel: RiskLevel;
   requestId?: string;
-  conversationId?: string;
 }
 
 export interface PlanReviewRequest {
@@ -34,23 +34,21 @@ export interface PlanReviewRequest {
   projectId: string;
   planContent: string;
   requestId?: string;
-  conversationId?: string;
 }
 
 export interface ProgressiveTimeoutRequest {
   toolName: string;
   parameters: Record<string, any>;
   projectId: string;
-  conversationId: string;
   riskLevel: RiskLevel;
   requestId?: string;
+  sessionId?: string;
 }
 
 // Unified Permission System Types
 export interface UnifiedPermissionRequest {
   // Core identification
   promptId: string;
-  conversationId: string;
   sessionId?: string;
   
   // Permission type and context
@@ -88,7 +86,7 @@ export interface UnifiedPermissionRequest {
 
 export interface UnifiedPermissionResponse {
   promptId: string;
-  conversationId: string;
+  projectId: string;
   sessionId?: string;
   
   // User decision
@@ -121,6 +119,11 @@ export class PermissionManager {
   }
 
   setBackendSocket(socket: any): void {
+    if (this.backendSocket === socket) {
+      // Already configured with this socket, skip duplicate setup
+      return;
+    }
+    
     this.backendSocket = socket;
     this.setupWebSocketHandlers();
   }
@@ -224,7 +227,8 @@ export class PermissionManager {
   private createUnifiedPermissionRequest(
     type: 'tool_permission' | 'plan_review',
     promptId: string,
-    conversationId: string,
+    projectId: string,
+    sessionId?: string,
     data: {
       toolName?: string;
       riskLevel?: RiskLevel;
@@ -240,7 +244,7 @@ export class PermissionManager {
   ): UnifiedPermissionRequest {
     const baseRequest: UnifiedPermissionRequest = {
       promptId,
-      conversationId,
+      projectId: data.projectId,
       sessionId: data.sessionId,
       permissionType: type,
       title: data.title || '',
@@ -339,7 +343,12 @@ export class PermissionManager {
     const { toolName, parameters, projectId, riskLevel, requestId } = request;
     const contextLogger = new ContextualLogger(logger, 'PermissionManager', requestId);
     
-    contextLogger.info(`Checking permissions for tool`, { toolName, riskLevel });
+    contextLogger.info(`🛠️ Claude wants to use tool - checking permissions`, { 
+      toolName, 
+      riskLevel, 
+      projectId,
+      parametersCount: Object.keys(parameters).length 
+    });
 
     try {
       // Special handling for plan mode
@@ -372,15 +381,13 @@ export class PermissionManager {
     contextLogger.info(`Processing plan review`, { toolName });
     
     const planContent = parameters.plan || 'No plan content provided';
-    // Use projectId as conversationId if no specific conversationId provided
-    const conversationId = (request as any).conversationId || projectId;
+    // Use projectId as projectId if no specific projectId provided
     
     try {
       const planReview = await this.requestPlanReview({
         toolName,
         parameters,
         projectId,
-        conversationId,
         planContent,
         requestId
       });
@@ -412,16 +419,12 @@ export class PermissionManager {
       return { behavior: 'allow', updatedInput: parameters };
     }
 
-    // Use projectId as conversationId if no specific conversationId provided
-    const conversationId = (request as any).conversationId || projectId;
-
     // Request permission with progressive timeout
     try {
       const permissionResult = await this.requestPermissionWithProgressiveTimeout({
         toolName,
         parameters,
         projectId,
-        conversationId,
         riskLevel,
         requestId
       });
@@ -513,13 +516,13 @@ export class PermissionManager {
    * Request permission with progressive timeout strategy
    */
   private async requestPermissionWithProgressiveTimeout(request: ProgressiveTimeoutRequest): Promise<PermissionResult> {
-    const { toolName, parameters, conversationId, riskLevel, requestId } = request;
+    const { toolName, parameters, projectId, riskLevel, requestId, sessionId } = request;
     const contextLogger = new ContextualLogger(logger, 'PermissionManager', requestId);
     
     contextLogger.info(`Requesting permission with progressive timeout`, { toolName, riskLevel });
     
     // Ensure conversation exists
-    await this.ensureConversationExists(conversationId);
+    await this.ensureConversationExists(projectId, sessionId);
     
     // Create permission prompt
     const promptId = await this.createPermissionPrompt(request);
@@ -575,7 +578,7 @@ export class PermissionManager {
    * Request plan review via unified permission system
    */
   private async requestPlanReview(request: PlanReviewRequest): Promise<PermissionResult> {
-    const { toolName, parameters, conversationId, planContent, requestId } = request;
+    const { toolName, parameters, sessionId, projectId, planContent, requestId } = request;
     const contextLogger = new ContextualLogger(logger, 'PermissionManager', requestId);
     
     contextLogger.info(`Requesting plan review via unified permission system`, { planLength: planContent.length });
@@ -586,7 +589,8 @@ export class PermissionManager {
     const unifiedRequest = this.createUnifiedPermissionRequest(
       'plan_review',
       promptId,
-      conversationId,
+      sessionId,
+      projectId,
       {
         toolName,
         parameters,
@@ -651,7 +655,7 @@ export class PermissionManager {
    * Create permission prompt via unified permission system
    */
   private async createPermissionPrompt(request: PermissionRequest): Promise<string | null> {
-    const { toolName, parameters, conversationId, riskLevel, requestId } = request;
+    const { toolName, parameters, projectId, sessionId, riskLevel, requestId } = request;
     
     if (!this.backendSocket) {
       this.logger.error('No backend WebSocket connection for permission prompt');
@@ -664,7 +668,8 @@ export class PermissionManager {
     const unifiedRequest = this.createUnifiedPermissionRequest(
       'tool_permission',
       promptId,
-      conversationId,
+      projectId,
+      sessionId,
       {
         toolName,
         parameters,
@@ -755,7 +760,8 @@ export class PermissionManager {
       
       const escalationRequest: UnifiedPermissionRequest = {
         promptId: escalationPromptId,
-        conversationId: '', // Will be filled by the handler
+        projectId,
+        sessionId,
         permissionType: 'custom',
         subtype: 'escalation',
         title: `Permission Request ${escalationType.charAt(0).toUpperCase() + escalationType.slice(1)}`,
@@ -809,7 +815,7 @@ export class PermissionManager {
   /**
    * Check if conversation exists via WebSocket
    */
-  private async ensureConversationExists(conversationId: string): Promise<void> {
+  private async ensureConversationExists(sessionId: string): Promise<void> {
     if (!this.backendSocket) {
       this.logger.warn('No backend WebSocket connection to check conversation');
       return;
@@ -817,15 +823,15 @@ export class PermissionManager {
 
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
-        this.logger.warn(`Conversation check timeout for ${conversationId}`);
+        this.logger.warn(`Conversation check timeout for ${sessionId}`);
         resolve(); // Continue anyway
       }, 5000);
 
-      this.backendSocket.emit('conversation:check', { conversationId }, (response: any) => {
+      this.backendSocket.emit('conversation:check', { sessionId }, (response: any) => {
         clearTimeout(timeout);
         
         if (!response?.exists) {
-          this.logger.info(`Conversation ${conversationId} may not exist, continuing with permission request`);
+          this.logger.info(`Conversation ${sessionId} may not exist, continuing with permission request`);
         }
         
         resolve();
@@ -840,9 +846,9 @@ export class PermissionManager {
     const now = Date.now();
     const cacheDuration = config.getConfig().permissionCacheDuration;
     
-    for (const [conversationId, cached] of this.permissionCache) {
+    for (const [sessionId, cached] of this.permissionCache) {
       if (now - cached.timestamp > cacheDuration) {
-        this.permissionCache.delete(conversationId);
+        this.permissionCache.delete(sessionId);
       }
     }
   }

@@ -24,6 +24,7 @@ export const ChatPageDesktop: React.FC = () => {
     state,
     conversations,
     selectConversation,
+    startNewChat,
     sendMessage,
     stopStreaming,
     setInputValue,
@@ -432,7 +433,9 @@ export const ChatPageDesktop: React.FC = () => {
                   error={sessionError}
                   onDismiss={() => setSessionError(null)}
                   onNewConversation={() => {
-                    selectConversation(null);
+                    if (projectId) {
+                      startNewChat(projectId);
+                    }
                     setSessionError(null);
                   }}
                 />

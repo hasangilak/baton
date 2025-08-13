@@ -3,6 +3,16 @@
  * 
  * Replaces ChatContext with global state management for chat functionality
  * Integrates with WebSocket store and provides all chat-related operations
+ *
+ * ARCHITECTURE NOTE: conversationId vs projectId
+ * ================================================
+ * - Frontend: Uses 'conversationId' for internal state management and UI
+ * - Backend: Uses 'projectId' for database operations and bridge communication  
+ * - Bridge: Uses 'projectId' + 'sessionId' for Claude Code SDK integration
+ * - Mapping: conversationId === projectId in current architecture (one conversation per project)
+ * - Compatibility: Frontend handles both fields with fallback logic (data.conversationId || data.projectId)
+ * - Session State: Keyed by conversationId but populated from projectId events
+ * - URL Resume: sessionId from URL is mapped to projectId for session restoration
  */
 
 import { create } from 'zustand';
@@ -37,6 +47,7 @@ interface ChatState {
   bridgeServiceError: boolean;
   
   // Session state for Claude Code continuity
+  // Note: conversationId key equals projectId in current architecture
   sessionState: {[conversationId: string]: {sessionId?: string; initialized: boolean; pending: boolean; source?: 'url-resume' | 'claude-new' | 'manual'}};
   
   // Last message retry data
@@ -59,9 +70,11 @@ interface ChatStore extends ChatState {
   setError: (error: string | null) => void;
   setBridgeServiceError: (error: boolean) => void;
   setSessionState: (conversationId: string, sessionData: {sessionId?: string; initialized: boolean; pending: boolean; source?: 'url-resume' | 'claude-new' | 'manual'}) => void;
+  clearSessionState: (conversationId: string) => void;
   
   // Complex actions
   selectConversation: (id: string | null) => void;
+  startNewChat: (projectId: string) => void;
   clearError: () => void;
   clearBridgeError: () => void;
   resetState: () => void;
@@ -173,6 +186,13 @@ export const useChatStore = create<ChatStore>()(
         }
       })),
 
+    clearSessionState: (conversationId: string) =>
+      set((state) => {
+        const newSessionState = { ...state.sessionState };
+        delete newSessionState[conversationId];
+        return { sessionState: newSessionState };
+      }),
+
     // Complex actions
     selectConversation: (id: string | null) => {
       set({ 
@@ -180,6 +200,22 @@ export const useChatStore = create<ChatStore>()(
         inputValue: '', // Reset input when switching conversations
         // Note: Don't clear errors here - let user handle errors explicitly
       });
+    },
+
+    startNewChat: (projectId: string) => {
+      // Clear all state for a fresh start
+      get().clearSessionState(projectId);
+      set({ 
+        selectedConversationId: null,
+        conversationDetails: null,
+        messages: [],
+        isStreaming: false,
+        error: null,
+        bridgeServiceError: false,
+        inputValue: '',
+        lastMessageData: null
+      });
+      console.log('🆕 Started new chat for project:', projectId);
     },
     
     clearError: () => set({ error: null }),
@@ -365,10 +401,16 @@ export const useChatStore = create<ChatStore>()(
           }
         });
         
-        // Convert conversationId to projectId for backend
+        // Send conversationId and projectId separately to backend
+        const { sessionState } = get();
+        const conversationId = data.conversationId;
+        const session = sessionState[conversationId];
+        
         const messageData = { 
           ...data,
-          projectId: data.projectId || data.conversationId // Use projectId if provided, fallback to conversationId
+          conversationId: data.conversationId, // Send conversationId to backend
+          projectId: data.projectId, // Send projectId separately  
+          sessionId: session?.sessionId // Include session ID if available for continuation
         };
         
         emit('chat:send-message', messageData);
@@ -551,9 +593,33 @@ export const useChatStore = create<ChatStore>()(
       // Session available handler
       const handleSessionAvailable = (data: any) => {
         const currentState = get();
+        console.log('🆔 Session available event received:', {
+          projectId: data.projectId,
+          conversationId: data.conversationId, 
+          sessionId: data.sessionId,
+          currentSelectedConversationId: currentState.selectedConversationId
+        });
+        
         // Backend now sends projectId instead of conversationId for session events
         const conversationId = data.conversationId || data.projectId;
-        if (conversationId === currentState.selectedConversationId) {
+        
+        // Handle both exact matches and new chat scenarios
+        const isTargetConversation = conversationId === currentState.selectedConversationId ||
+          (currentState.selectedConversationId === null && conversationId);
+        
+        console.log('🎯 Target conversation check:', {
+          conversationId,
+          selectedConversationId: currentState.selectedConversationId,
+          isTargetConversation,
+          eventSource: 'chat:session-id-available'
+        });
+        
+        if (isTargetConversation) {
+          // If selectedConversationId is null, set it to the projectId for new chats
+          if (currentState.selectedConversationId === null && conversationId) {
+            console.log('🆕 Setting conversation ID for new chat:', conversationId);
+            get().setSelectedConversation(conversationId);
+          }
           const currentSession = currentState.sessionState[conversationId];
           const hasExistingSessionId = currentSession?.sessionId && currentSession.initialized;
           
@@ -575,6 +641,13 @@ export const useChatStore = create<ChatStore>()(
               pending: false,
               source: 'claude-new' // New session created by Claude Code
             });
+            
+            // Join conversation room with the new session ID
+            const socketStore = useSocketStore.getState();
+            if (socketStore.socket && socketStore.isConnected) {
+              socketStore.joinConversation(conversationId, data.sessionId);
+              console.log('🏠 Joined conversation room with session ID:', conversationId, data.sessionId);
+            }
             
             console.log('💬 Session available and state updated:', data.sessionId);
           } else {
@@ -626,10 +699,27 @@ export const useChatStore = create<ChatStore>()(
         setStreamingState(false);
       };
 
+      // Conversation created handler for new conversations
+      const handleConversationCreated = (data: any) => {
+        console.log('🆕 Conversation created:', {
+          conversationId: data.conversationId,
+          projectId: data.projectId,
+          requestId: data.requestId
+        });
+        
+        // Update selected conversation to the new UUID
+        const currentState = get();
+        if (!currentState.selectedConversationId) {
+          get().setSelectedConversation(data.conversationId);
+          console.log('✅ Updated selected conversation to:', data.conversationId);
+        }
+      };
+
       // Register WebSocket listeners
       on('chat:stream-response', handleStreamResponse);
       on('chat:message-complete', handleMessageComplete);
       on('chat:session-id-available', handleSessionAvailable);
+      on('chat:conversation-created', handleConversationCreated);
       on('chat:error', handleError);
       on('chat:aborted', handleAbort);
 
@@ -638,6 +728,7 @@ export const useChatStore = create<ChatStore>()(
         off('chat:stream-response', handleStreamResponse);
         off('chat:message-complete', handleMessageComplete);
         off('chat:session-id-available', handleSessionAvailable);
+        off('chat:conversation-created', handleConversationCreated);
         off('chat:error', handleError);
         off('chat:aborted', handleAbort);
       };
@@ -675,8 +766,23 @@ export const useAllMessages = () => useChatStore((state) => state.messages);
 // export const useChatActions = () => ({ ... }); // ❌ DON'T USE - CAUSES INFINITE LOOPS
 
 // Utility function to initialize chat store for specific project
-export const initializeChatStore = (projectId: string) => {
+export const initializeChatStore = (projectId: string, sessionId?: string) => {
   const store = useChatStore.getState();
   store.initialize(projectId);
+  
+  // If sessionId is provided from URL, set up session state for resumption
+  if (sessionId) {
+    console.log('🔄 Initializing chat store with URL session ID:', sessionId);
+    store.setSessionState(projectId, {
+      sessionId: sessionId,
+      initialized: true,
+      pending: false,
+      source: 'url-resume'
+    });
+    
+    // Load messages for this session ID
+    store.fetchAndLoadMessages(undefined, sessionId);
+  }
+  
   return store.setupWebSocketHandlers();
 };

@@ -21,16 +21,18 @@ export class MessageStorageService {
    * Hybrid approach: optimistic UI + DB confirmation
    */
   async createUserMessage(
+    conversationId: string,
     projectId: string, 
     content: string, 
     attachments?: Array<{ filename: string; mimeType: string; size: number; url: string }>,
     sessionId?: string
   ): Promise<Message> {
-    logger.storage?.info('Creating user message', { projectId, contentLength: content.length });
+    logger.storage?.info('Creating user message', { conversationId, projectId, contentLength: content.length });
 
     try {
       const message = await this.prisma.message.create({
         data: {
+          conversationId,
           projectId,
           role: 'user',
           content,
@@ -59,12 +61,13 @@ export class MessageStorageService {
    * Create assistant message placeholder for streaming
    * Returns immediately for optimistic UI updates
    */
-  async createAssistantMessagePlaceholder(projectId: string): Promise<Message> {
-    logger.storage?.info('Creating assistant message placeholder', { projectId });
+  async createAssistantMessagePlaceholder(conversationId: string, projectId: string): Promise<Message> {
+    logger.storage?.info('Creating assistant message placeholder', { conversationId, projectId });
 
     try {
       const message = await this.prisma.message.create({
         data: {
+          conversationId,
           projectId,
           role: 'assistant',
           content: '',
@@ -85,6 +88,7 @@ export class MessageStorageService {
    * Handles the new StreamResponse format with SDKMessage data
    */
   async createClaudeSDKMessage(
+    conversationId: string,
     projectId: string,
     streamResponse: StreamResponse
   ): Promise<Message> {
@@ -92,6 +96,7 @@ export class MessageStorageService {
     const sessionId = streamResponse.sessionId || streamResponse.data?.session_id;
     
     logger.storage?.info('Creating Claude Code SDK message', { 
+      conversationId,
       projectId, 
       type: streamResponse.data?.type,
       sessionId,
@@ -145,6 +150,7 @@ export class MessageStorageService {
 
       const message = await this.prisma.message.create({
         data: {
+          conversationId,
           projectId,
           role,
           content,
@@ -358,32 +364,46 @@ export class MessageStorageService {
   }
 
   /**
-   * Update project session ID for context preservation
+   * Update conversation session ID for context preservation
    */
-  async updateProjectSession(projectId: string, sessionId: string): Promise<void> {
-    logger.storage?.info('Updating project session', { projectId, sessionId });
+  async updateConversationSession(conversationId: string, sessionId: string): Promise<void> {
+    logger.storage?.info('Updating conversation session', { conversationId, sessionId });
 
     try {
-      // Find the conversation for this project and update its session
-      const conversation = await this.prisma.conversation.findFirst({
-        where: { projectId }
-      });
-      
-      if (conversation) {
-        await this.prisma.conversation.update({
-          where: { id: conversation.id },
-          data: { 
-            claudeSessionId: sessionId,
-            updatedAt: new Date(),
-          },
+      // Update the conversation directly by conversationId
+      await this.prisma.conversation.update({
+        where: { id: conversationId },
+        data: { 
+          claudeSessionId: sessionId,
+          updatedAt: new Date(),
+        },
         });
 
-        logger.storage?.info('✅ Session ID updated', { projectId, sessionId, conversationId: conversation.id });
-      } else {
-        logger.storage?.warn('⚠️ No conversation found for project', { projectId });
-      }
+        logger.storage?.info('✅ Session ID updated', { conversationId, sessionId });
     } catch (error) {
-      logger.storage?.error('❌ Failed to update session ID', { error, projectId, sessionId });
+      logger.storage?.error('❌ Failed to update session ID', { error, conversationId, sessionId });
+      // Don't throw - session update failures shouldn't break the stream
+    }
+  }
+
+  /**
+   * Update message with session ID
+   */
+  async updateMessageSessionId(messageId: string, sessionId: string): Promise<void> {
+    logger.storage?.info('Updating message with session ID', { messageId, sessionId });
+
+    try {
+      await this.prisma.message.update({
+        where: { id: messageId },
+        data: { 
+          sessionId: sessionId,
+          updatedAt: new Date(),
+        },
+      });
+
+      logger.storage?.info('✅ Message updated with session ID', { messageId, sessionId });
+    } catch (error) {
+      logger.storage?.error('❌ Failed to update message with session ID', { error, messageId, sessionId });
       // Don't throw - session update failures shouldn't break the stream
     }
   }

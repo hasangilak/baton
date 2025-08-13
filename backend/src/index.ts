@@ -178,10 +178,14 @@ io.on('connection', (socket) => {
 
   // New WebSocket handlers for bridge communication
   // Chat message handling with database persistence
+  // ARCHITECTURE: Uses projectId + sessionId model
+  // - Frontend sends: {projectId, sessionId} (conversationId mapped to projectId)
+  // - Backend manages: one conversation per project with claudeSessionId
+  // - Bridge integration: forwards {projectId, sessionId} to Claude Code SDK
   socket.on('chat:send-message', async (data) => {
     console.log(`💬 Received chat:send-message from ${socket.id}:`, data.requestId);
     try {
-      const { projectId, content, requestId, sessionId, allowedTools, workingDirectory, permissionMode, attachments } = data;
+      const { projectId, conversationId, content, requestId, sessionId, allowedTools, workingDirectory, permissionMode, attachments } = data;
       
       if (!projectId || !content || !requestId) {
         socket.emit('chat:error', {
@@ -191,54 +195,93 @@ io.on('connection', (socket) => {
         return;
       }
 
-      // 1. Check session validation for existing conversations in this project
-      const conversation = await prisma.conversation.findFirst({
-        where: { projectId: projectId },
-        select: { claudeSessionId: true, id: true }
-      });
+      // 1. Get or create conversation
+      let conversation;
+      let isNewConversation = false;
 
-      if (!conversation) {
-        socket.emit('chat:error', {
-          requestId,
-          error: 'No conversation found for this project'
+      if (conversationId) {
+        // Use existing conversation
+        conversation = await prisma.conversation.findUnique({
+          where: { id: conversationId },
+          select: { claudeSessionId: true, id: true, projectId: true }
         });
-        return;
+
+        if (!conversation) {
+          socket.emit('chat:error', {
+            requestId,
+            error: 'Conversation not found'
+          });
+          return;
+        }
+
+        // Verify conversation belongs to the project
+        if (conversation.projectId !== projectId) {
+          socket.emit('chat:error', {
+            requestId,
+            error: 'Conversation does not belong to this project'
+          });
+          return;
+        }
+      } else {
+        // Create new conversation with UUID
+        console.log(`📝 Creating new conversation for project ${projectId}`);
+        const newConversation = await prisma.conversation.create({
+          data: {
+            projectId: projectId,
+            userId: 'cmdxvtfi000004yhw0vwvnz12', // TODO: Use actual user ID from session
+            title: 'Chat Session',
+            model: 'claude-code-headless'
+          },
+          select: { claudeSessionId: true, id: true, projectId: true }
+        });
+        conversation = newConversation;
+        isNewConversation = true;
+        console.log(`✅ Created conversation ${conversation.id} for project ${projectId}`);
       }
 
-      // If conversation has a session ID, require it in the message
-      if (conversation.claudeSessionId && !sessionId) {
-        console.log(`🚫 Session validation failed - project ${projectId} has session ${conversation.claudeSessionId} but message has no sessionId`);
-        socket.emit('chat:error', {
-          requestId,
-          error: 'Session ID required for this project. Please refresh the page.',
-          sessionRequired: true,
-          existingSessionId: conversation.claudeSessionId
+      // Session validation logic:
+      // - First message (conversation without claudeSessionId): Allow without sessionId  
+      // - New chat (no sessionId provided but conversation exists): Clear existing session for fresh start
+      // - Subsequent messages (conversation with claudeSessionId + sessionId provided): Require matching sessionId
+      
+      if (conversation.claudeSessionId && sessionId) {
+        // Both conversation and message have session IDs - validate they match
+        if (sessionId !== conversation.claudeSessionId) {
+          console.log(`🚫 Session mismatch - expected ${conversation.claudeSessionId} but got ${sessionId}`);
+          socket.emit('chat:error', {
+            requestId,
+            error: 'Session ID mismatch. Please refresh the page.',
+            sessionRequired: true,
+            existingSessionId: conversation.claudeSessionId
+          });
+          return;
+        }
+        console.log(`✅ Session ID validated for continuing conversation`);
+      } else if (conversation.claudeSessionId && !sessionId) {
+        // Conversation has session but message doesn't - this is a NEW CHAT request
+        console.log(`🆕 New chat requested for project ${projectId} - clearing existing session ${conversation.claudeSessionId}`);
+        
+        // Clear the existing session to start fresh
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: { claudeSessionId: null }
         });
-        return;
+        
+        console.log(`✅ Cleared existing session - starting fresh chat for project ${projectId}`);
       }
+      
+      // If conversation exists without claudeSessionId: Allow (first message case)
 
-      // If conversation has a session ID, validate it matches
-      if (conversation.claudeSessionId && sessionId && conversation.claudeSessionId !== sessionId) {
-        console.log(`🚫 Session mismatch - expected ${conversation.claudeSessionId} but got ${sessionId}`);
-        socket.emit('chat:error', {
-          requestId,
-          error: 'Session ID mismatch. Please refresh the page.',
-          sessionRequired: true,
-          existingSessionId: conversation.claudeSessionId
-        });
-        return;
-      }
-
-      console.log(`✅ Session validation passed for project ${projectId}${sessionId ? ` with session ${sessionId}` : ' (first message)'}`);
+      console.log(`✅ Session validation passed for conversation ${conversation.id}${sessionId ? ` with session ${sessionId}` : ' (first message)'}`);
 
       // 2. Store user message in database
-      console.log(`💾 Storing user message for project ${projectId}`);
-      const userMessage = await messageStorage.createUserMessage(projectId, content, attachments, sessionId);
+      console.log(`💾 Storing user message for conversation ${conversation.id}`);
+      const userMessage = await messageStorage.createUserMessage(conversation.id, projectId, content, attachments, sessionId);
       console.log(`✅ User message stored with ID: ${userMessage.id}`);
 
       // 3. Create assistant message placeholder
-      console.log(`💾 Creating assistant message placeholder for project ${projectId}`);
-      const assistantMessage = await messageStorage.createAssistantMessagePlaceholder(projectId);
+      console.log(`💾 Creating assistant message placeholder for conversation ${conversation.id}`);
+      const assistantMessage = await messageStorage.createAssistantMessagePlaceholder(conversation.id, projectId);
       console.log(`✅ Assistant placeholder created with ID: ${assistantMessage.id}`);
 
       // 4. Store request mapping for streaming updates
@@ -247,6 +290,7 @@ io.on('connection', (socket) => {
       }
       (global as any).activeRequests.set(requestId, {
         assistantMessageId: assistantMessage.id,
+        conversationId: conversation.id,
         projectId,
         userMessageId: userMessage.id
       });
@@ -255,16 +299,30 @@ io.on('connection', (socket) => {
       const bridgeSockets = await io.in('claude-bridge').fetchSockets();
       if (bridgeSockets && bridgeSockets.length > 0) {
         // Forward to bridge service
-        bridgeSockets[0].emit('claude:execute', {
-          message: content,
-          requestId,
-          projectId,
-          sessionId,
-          allowedTools,
-          workingDirectory,
-          permissionMode: permissionMode || 'default'
-        });
-        console.log(`📤 Forwarded chat request ${requestId} to bridge service`);
+        const bridgeSocket = bridgeSockets[0];
+        if (bridgeSocket) {
+          bridgeSocket.emit('claude:execute', {
+            message: content,
+            requestId,
+            projectId,
+            sessionId,
+            allowedTools,
+            workingDirectory,
+            permissionMode: permissionMode || 'default'
+          });
+          console.log(`📤 Forwarded chat request ${requestId} to bridge service`);
+
+          // Send conversation info to frontend (especially for new conversations)
+          if (isNewConversation) {
+            socket.emit('chat:conversation-created', {
+              requestId,
+              conversationId: conversation.id,
+              projectId: projectId,
+              timestamp: Date.now()
+            });
+            console.log(`📡 Sent conversation-created event for ${conversation.id}`);
+          }
+        }
       } else {
         socket.emit('chat:error', {
           requestId,
@@ -567,7 +625,7 @@ io.on('connection', (socket) => {
         // Still forward to frontend but skip database operations
         io.emit('chat:stream-response', { 
           ...data, 
-          conversationId: requestInfo?.conversationId 
+          projectId: requestInfo?.projectId 
         });
         return;
       }
@@ -606,8 +664,8 @@ io.on('connection', (socket) => {
             console.log(`✅ Streaming assistant message updated (complete: ${isComplete})`);
           } else {
             // Create new message with Claude SDK format
-            console.log(`💾 Creating new Claude assistant message for project ${requestInfo.projectId}`);
-            const newMessage = await messageStorage.createClaudeSDKMessage(requestInfo.projectId, data);
+            console.log(`💾 Creating new Claude assistant message for conversation ${requestInfo.conversationId}`);
+            const newMessage = await messageStorage.createClaudeSDKMessage(requestInfo.conversationId, requestInfo.projectId, data);
             
             // Update request mapping to track this message for future streaming updates
             if (newMessage && (global as any).activeRequests.has(data.requestId)) {
@@ -621,28 +679,54 @@ io.on('connection', (socket) => {
           
           // Update conversation session ID if provided and broadcast to frontend
           if (data.data.session_id) {
-            await messageStorage.updateProjectSession(requestInfo.projectId, data.data.session_id);
+            await messageStorage.updateConversationSession(requestInfo.conversationId, data.data.session_id);
             
-            // Broadcast session ID availability to frontend clients in project room
-            console.log(`🔗 Broadcasting session ID ${data.data.session_id} for project ${requestInfo.projectId}`);
-            io.to(`project-${requestInfo.projectId}`).emit('chat:session-id-available', {
+            // Update the first user message and assistant message with session ID
+            if (requestInfo.userMessageId) {
+              await messageStorage.updateMessageSessionId(requestInfo.userMessageId, data.data.session_id);
+              console.log(`✅ Updated user message ${requestInfo.userMessageId} with session ID: ${data.data.session_id}`);
+            }
+            
+            if (requestInfo.assistantMessageId) {
+              await messageStorage.updateMessageSessionId(requestInfo.assistantMessageId, data.data.session_id);
+              console.log(`✅ Updated assistant message ${requestInfo.assistantMessageId} with session ID: ${data.data.session_id}`);
+            }
+            
+            // Broadcast session ID availability to frontend clients in conversation room
+            const conversationId = requestInfo.conversationId;
+            console.log(`🔗 Broadcasting session ID ${data.data.session_id} for conversation ${conversationId}`);
+            
+            // Broadcast to conversation room (where frontend actually listens)
+            io.to(`conversation-${conversationId}`).emit('chat:session-id-available', {
               projectId: requestInfo.projectId,
+              conversationId: conversationId,
               sessionId: data.data.session_id,
               timestamp: Date.now()
             });
+            
+            // Also broadcast to session room if sessionId available for targeted delivery
+            if (data.data.session_id) {
+              io.to(`session-${data.data.session_id}`).emit('chat:session-id-available', {
+                projectId: requestInfo.projectId,
+                conversationId: conversationId,
+                sessionId: data.data.session_id,
+                timestamp: Date.now()
+              });
+            }
           }
         }
         // For result messages, also store them for completeness
         else if (data.data.type === 'result') {
-          console.log(`💾 Storing Claude result message for project ${requestInfo.projectId}`);
-          await messageStorage.createClaudeSDKMessage(requestInfo.projectId, data);
+          console.log(`💾 Storing Claude result message for conversation ${requestInfo.conversationId}`);
+          await messageStorage.createClaudeSDKMessage(requestInfo.conversationId, requestInfo.projectId, data);
           console.log(`✅ Claude result message stored successfully`);
         }
       }
 
-      // Always forward to frontend for real-time updates with project ID
+      // Always forward to frontend for real-time updates with conversationId and projectId
       const frontendMessage = { 
         ...data, 
+        conversationId: requestInfo?.conversationId,
         projectId: requestInfo?.projectId 
       };
       io.emit('chat:stream-response', frontendMessage);
@@ -687,8 +771,11 @@ io.on('connection', (socket) => {
     }
 
     // Forward completion event to frontend clients
+    const requestInfo = (global as any).activeRequests?.get(data.requestId);
     io.emit('chat:message-complete', {
       requestId: data.requestId,
+      conversationId: requestInfo?.conversationId,
+      projectId: requestInfo?.projectId,
       sessionId: data.sessionId || data.data?.session_id,
       timestamp: data.timestamp || Date.now()
     });

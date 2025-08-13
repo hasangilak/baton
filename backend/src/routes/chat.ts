@@ -1514,7 +1514,7 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
                   console.log(`🆔 New session ID captured: ${currentSessionId}`);
                   
                   // Use enhanced session storage
-                  messageStorage.updateProjectSession(conversation.projectId, sessionId);
+                  messageStorage.updateConversationSession(conversation.projectId, sessionId);
                 }
 
                 // Enhanced content extraction and immediate DB updates

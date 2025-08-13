@@ -15,11 +15,19 @@ import { StreamManager, StreamResponse } from './streams';
 import { ResourceManager } from './resources';
 import { errorHandler, BridgeError, ErrorType } from './errors';
 
+/**
+ * Bridge Request Interface - projectId + sessionId Architecture
+ * ============================================================
+ * ARCHITECTURE CHANGE: Removed conversationId, now uses projectId + sessionId
+ * - projectId: Identifies the Baton project (maps to frontend conversationId)
+ * - sessionId: Claude Code SDK session ID for conversation continuity
+ * - This enables proper Claude Code session resumption across requests
+ */
 export interface BridgeRequest {
   message: string;
   requestId: string;
-  projectId: string;
-  sessionId?: string;
+  projectId: string;        // Baton project ID (was conversationId)
+  sessionId?: string;       // Claude Code session ID for resumption
   allowedTools?: string[];
   workingDirectory?: string;
   permissionMode?: any;
@@ -54,7 +62,7 @@ export class ModularClaudeCodeBridge {
     
     // Initialize modules
     this.permissionManager = new PermissionManager();
-    this.claudeSDK = new ClaudeSDK(this.logger);
+    this.claudeSDK = new ClaudeSDK(this.logger, this.permissionManager);
     this.streamManager = new StreamManager();
     this.resourceManager = new ResourceManager(this.streamManager, this.claudeSDK);
     
@@ -136,11 +144,8 @@ export class ModularClaudeCodeBridge {
         this.logger.info('Connected to backend WebSocket server');
         this.backendSocket?.emit('claude-bridge:connect');
         
-        // Wire up permission manager with backend socket
+        // Wire up permission manager with backend socket (only once)
         this.permissionManager.setBackendSocket(this.backendSocket);
-        
-        // Also set up permission manager socket for Claude SDK
-        this.claudeSDK.setPermissionManagerSocket(this.backendSocket);
         
         this.setupBackendEventHandlers();
       });

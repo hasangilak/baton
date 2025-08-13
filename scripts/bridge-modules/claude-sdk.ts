@@ -7,11 +7,19 @@ import { config } from './config';
 import { logger, ContextualLogger } from './logger';
 import { PermissionManager, type PermissionRequest } from './permissions';
 
+/**
+ * Claude SDK Request Interface - Session Continuity Architecture
+ * ==============================================================
+ * - projectId: Baton project identifier for context and permissions
+ * - sessionId: Optional Claude Code session ID for conversation resumption
+ * - When sessionId provided: Sets claudeOptions.resume for context continuity
+ * - When sessionId missing: Creates new Claude Code session
+ */
 export interface ClaudeRequest {
   message: string;
   requestId: string;
-  projectId: string;
-  sessionId?: string;
+  projectId: string;        // Baton project for context
+  sessionId?: string;       // Claude Code session for resumption  
   allowedTools?: string[];
   workingDirectory?: string;
   permissionMode?: PermissionMode;
@@ -37,16 +45,9 @@ export class ClaudeSDK {
   private logger: ContextualLogger;
   private activeQueries = new Map<string, AbortController>();
 
-  constructor(logger?: ContextualLogger) {
-    this.permissionManager = new PermissionManager();
+  constructor(logger?: ContextualLogger, permissionManager?: PermissionManager) {
+    this.permissionManager = permissionManager || new PermissionManager();
     this.logger = logger || new ContextualLogger(logger, 'ClaudeSDK');
-  }
-  
-  /**
-   * Set the permission manager's backend socket
-   */
-  setPermissionManagerSocket(socket: any): void {
-    this.permissionManager.setBackendSocket(socket);
   }
 
   /**

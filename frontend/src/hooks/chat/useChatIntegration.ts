@@ -274,15 +274,13 @@ export const useChatIntegration = (projectId: string) => {
     try {
       let conversationId = selectedConversationId;
       
-      // If no conversation selected, create one first
+      // With new architecture: 
+      // - If conversationId exists: continue existing conversation
+      // - If no conversationId: backend will create new conversation and return UUID
       if (!conversationId) {
-        console.log('🔍 [DEBUG] No conversation selected, creating new one');
-        const newId = await createConversation(content.slice(0, 40) || 'New Chat');
-        if (!newId) {
-          throw new Error('Failed to create conversation');
-        }
-        conversationId = newId;
-        console.log('✅ [DEBUG] Created new conversation:', conversationId);
+        console.log('🔍 [DEBUG] No conversation selected, backend will create new one');
+      } else {
+        console.log('🔍 [DEBUG] Using existing conversation:', conversationId);
       }
       
       // Get effective session information (URL sessionId takes priority)
@@ -299,9 +297,6 @@ export const useChatIntegration = (projectId: string) => {
         sessionReady: useChatStore.getState().isSessionReady(conversationId),
         sessionPending: useChatStore.getState().isSessionPending(conversationId),
       });
-      
-      // Join conversation room if not already joined
-      await useChatStore.getState().joinConversationWithSession(conversationId);
       
       // Start streaming
       useChatStore.getState().setStreamingState(true);
@@ -410,6 +405,7 @@ export const useChatIntegration = (projectId: string) => {
     archiveConversation,
     deleteConversation,
     selectConversation: selectConversationWithSession, // Enhanced version with session ID support
+    startNewChat: useChatStore.getState().startNewChat,
     
     // Message management
     sendMessage,
