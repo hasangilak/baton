@@ -36,8 +36,8 @@ export const useChatPageLogic = () => {
     currentSessionId,
   } = useChatContext();
 
-  // Get URL session ID
-  const urlSessionId = searchParams.get('sessionId');
+  // Get URL conversation ID
+  const urlConversationId = searchParams.get('conversationId');
 
   // Interactive prompts with session ID and socket
   const {
@@ -159,7 +159,7 @@ export const useChatPageLogic = () => {
     
     // Data
     conversationDetails: state.conversationDetails,
-    urlSessionId,
+    urlConversationId,
     displayConversations: conversations,
     dbMessages: state.messages, // Our processed messages
     isLoadingMessages: state.isLoadingMessages,

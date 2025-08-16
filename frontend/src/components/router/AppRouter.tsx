@@ -18,17 +18,17 @@ const ProjectScopedChat: React.FC<{
 }> = ({ isMobile }) => {
   const { projectId: urlProjectId } = useParams<{ projectId: string }>();
   const [searchParams] = useSearchParams();
-  const sessionId = searchParams.get('sessionId');
+  const conversationId = searchParams.get('conversationId');
 
   // Initialize chat store when component mounts
   useEffect(() => {
     if (urlProjectId) {
-      const cleanup = initializeChatStore(urlProjectId, sessionId || undefined);
+      const cleanup = initializeChatStore(urlProjectId, conversationId || undefined);
       return cleanup; // Cleanup WebSocket handlers when component unmounts
     }
-  }, [urlProjectId, sessionId]);
+  }, [urlProjectId, conversationId]);
 
-  // sessionId from URL is now properly handled during initialization
+  // conversationId from URL is now properly handled during initialization
 
   return isMobile ? (
     <ChatPageMobile />

@@ -456,16 +456,11 @@ export const useChatStore = create<ChatStore>()(
           }
         });
         
-        // Send conversationId-first to backend with projectId for context
-        const { sessionState } = get();
-        const conversationId = data.conversationId;
-        const session = sessionState[conversationId];
-        
+        // Send conversationId-first to backend (sessionId managed by backend)
         const messageData = { 
           ...data,
           conversationId: data.conversationId, // Primary identifier for backend
-          projectId: data.projectId, // Project context for association  
-          sessionId: session?.sessionId // Claude session ID for SDK continuation
+          projectId: data.projectId // Project context for association
         };
         
         emit('chat:send-message', messageData);
@@ -765,6 +760,12 @@ export const useChatStore = create<ChatStore>()(
         if (!currentState.selectedConversationId) {
           get().setSelectedConversation(data.conversationId);
           console.log('✅ Updated selected conversation to:', data.conversationId);
+          
+          // Update URL with conversationId
+          const url = new URL(window.location.href);
+          url.searchParams.set('conversationId', data.conversationId);
+          window.history.replaceState({}, '', url.toString());
+          console.log('🔗 Updated URL with conversationId:', data.conversationId);
         }
       };
 
@@ -819,22 +820,17 @@ export const useAllMessages = () => useChatStore((state) => state.messages);
 // export const useChatActions = () => ({ ... }); // ❌ DON'T USE - CAUSES INFINITE LOOPS
 
 // Utility function to initialize chat store for specific project
-export const initializeChatStore = (projectId: string, sessionId?: string) => {
+export const initializeChatStore = (projectId: string, conversationId?: string) => {
   const store = useChatStore.getState();
   store.initialize(projectId);
   
-  // If sessionId is provided from URL, set up session state for resumption
-  if (sessionId) {
-    console.log('🔄 Initializing chat store with URL session ID:', sessionId);
-    store.setSessionState(projectId, {
-      sessionId: sessionId,
-      initialized: true,
-      pending: false,
-      source: 'url-resume'
-    });
+  // If conversationId is provided from URL, load that conversation
+  if (conversationId) {
+    console.log('🔄 Initializing chat store with URL conversationId:', conversationId);
+    store.setSelectedConversation(conversationId);
     
-    // Load messages for this session ID
-    store.fetchAndLoadMessages(undefined, sessionId);
+    // Load messages for this conversation ID
+    store.fetchAndLoadMessages(conversationId);
   }
   
   return store.setupWebSocketHandlers();
