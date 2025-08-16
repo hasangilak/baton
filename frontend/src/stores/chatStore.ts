@@ -458,6 +458,23 @@ export const useChatStore = create<ChatStore>()(
           }
         });
         
+        // Add user message to store immediately for optimistic UI
+        const userMessage: ProcessedMessage = {
+          id: `user_${data.requestId || Date.now()}`,
+          type: 'user',
+          content: data.content,
+          timestamp: Date.now(),
+          metadata: {
+            requestId: data.requestId,
+            conversationId: data.conversationId,
+            isComplete: true,
+            attachments: data.attachments
+          }
+        };
+        
+        get().addOrUpdateMessage(userMessage);
+        console.log('✅ Added user message to store:', userMessage.id);
+        
         // Send conversationId-first to backend (sessionId managed by backend)
         const messageData = { 
           ...data,

@@ -135,7 +135,7 @@ export const ConversationInputArea: React.FC<Props> = ({ inputValue, setInputVal
           onChange={setInputValue}
           onKeyDown={handleKeyDown}
           placeholder={getPlaceholderText}
-          disabled={getInputDisabled}
+          disabled={false}
           workingDirectory={workingDirectory}
           className="w-full"
         />

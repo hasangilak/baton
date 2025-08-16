@@ -610,7 +610,7 @@ export const ChatPageDesktop: React.FC = () => {
               handleKeyPress={handleKeyPress}
               handleSendMessage={handleSendMessage}
               fileUpload={fileUpload}
-              isDisabled={state.isStreaming}
+              isDisabled={false}
               permissionMode={state.permissionMode}
               onCyclePermissionMode={cyclePermissionMode}
               conversationId={state.selectedConversationId}
