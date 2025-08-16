@@ -199,7 +199,7 @@ export const useChatStore = create<ChatStore>()(
         });
       } else {
         // Add new message
-        console.log('➕ Added new message:', message.id);
+        console.log('➕ Added new message:', message.id, 'Total messages will be:', messages.length + 1);
         
         // Clear active status when real content arrives
         set({ 
@@ -207,6 +207,8 @@ export const useChatStore = create<ChatStore>()(
           activeStatusMessage: null,
           streamingContext: null
         });
+        
+        console.log('✅ Message added to store. New message count:', get().messages.length);
       }
     },
     
@@ -567,12 +569,30 @@ export const useChatStore = create<ChatStore>()(
     },
     
     setupWebSocketHandlers: () => {
+      console.log('🎯 ChatStore: Setting up WebSocket handlers at:', Date.now());
       const socketStore = useSocketStore.getState();
       const { socket, isConnected, on, off } = socketStore;
       
-      if (!socket || !isConnected) {
-        return () => {}; // Return empty cleanup function
+      if (!socket) {
+        console.log('⚠️ ChatStore: Socket not initialized');
+        return () => {};
       }
+      
+      // If not connected, wait for connection then register handlers
+      if (!isConnected) {
+        console.log('⏳ ChatStore: Socket not connected yet, waiting for connection to register handlers');
+        const handleConnect = () => {
+          console.log('🔌 ChatStore: Socket connected, registering handlers now');
+          // Re-register handlers after connection
+          get().setupWebSocketHandlers();
+        };
+        socket.once('connect', handleConnect);
+        return () => {
+          socket.off('connect', handleConnect);
+        };
+      }
+      
+      console.log('✅ ChatStore: Socket is connected, proceeding with handler setup');
       
       const {
         setStreamingState,
@@ -592,21 +612,44 @@ export const useChatStore = create<ChatStore>()(
         
         // Guard: Ignore messages for different conversations/projects
         const messageTargetId = data.conversationId || data.projectId;
-        if (messageTargetId !== currentState.selectedConversationId) {
+        
+        // Accept messages if:
+        // 1. They match the current conversation, OR
+        // 2. This is a new chat (selectedConversationId is null) and we have a valid messageTargetId
+        const shouldAcceptMessage = messageTargetId === currentState.selectedConversationId ||
+          (currentState.selectedConversationId === null && messageTargetId);
+          
+        if (!shouldAcceptMessage) {
           console.log('🚫 Ignoring stream response for different conversation/project');
           return;
         }
         
+        // If this is a new chat, set the conversation ID from the first message
+        if (currentState.selectedConversationId === null && messageTargetId) {
+          console.log('🆕 Setting conversation ID from first stream message:', messageTargetId);
+          get().setSelectedConversation(messageTargetId);
+        }
+        
         const processedMessage = MessageProcessor.processMessage(data);
         if (processedMessage) {
+          const currentMessages = get().messages;
           console.log('✅ Adding/updating message:', { 
             messageId: processedMessage.id,
             messageType: processedMessage.type,
-            contentLength: processedMessage.content.length 
+            contentLength: processedMessage.content.length,
+            currentMessagesCount: currentMessages.length
           });
           
           // Simple: just add or update the message
           addOrUpdateMessage(processedMessage);
+          
+          // Verify message was added
+          const updatedMessages = get().messages;
+          console.log('📊 Messages after update:', {
+            previousCount: currentMessages.length,
+            newCount: updatedMessages.length,
+            lastMessageId: updatedMessages[updatedMessages.length - 1]?.id
+          });
           
           // Update streaming state based on message completion
           const isStreaming = !processedMessage.metadata?.isComplete;
@@ -627,8 +670,12 @@ export const useChatStore = create<ChatStore>()(
           selectedConversationId: currentState.selectedConversationId
         });
         
-        // Guard: Only process completion for current conversation/project
-        if (completionTargetId !== currentState.selectedConversationId) {
+        // Guard: Only process completion for current conversation/project  
+        // Accept completion if it matches current conversation OR this is a new chat
+        const shouldAcceptCompletion = completionTargetId === currentState.selectedConversationId ||
+          (currentState.selectedConversationId === null && completionTargetId);
+          
+        if (!shouldAcceptCompletion) {
           console.log('🚫 Ignoring completion for different conversation/project');
           return;
         }
@@ -770,12 +817,15 @@ export const useChatStore = create<ChatStore>()(
       };
 
       // Register WebSocket listeners
+      console.log('📝 ChatStore: Registering WebSocket event handlers');
       on('chat:stream-response', handleStreamResponse);
       on('chat:message-complete', handleMessageComplete);
       on('chat:session-id-available', handleSessionAvailable);
+      console.log('📝 ChatStore: Registering chat:conversation-created handler');
       on('chat:conversation-created', handleConversationCreated);
       on('chat:error', handleError);
       on('chat:aborted', handleAbort);
+      console.log('✅ ChatStore: All WebSocket handlers registered successfully');
 
       // Return cleanup function
       return () => {

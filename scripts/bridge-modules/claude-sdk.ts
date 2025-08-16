@@ -37,6 +37,7 @@ export interface ClaudeOptions {
   mcpServers: Record<string, any>;
   permissionMode: PermissionMode;
   resume?: string;
+  model: string;
   cwd?: string;
   allowedTools?: string[];
   canUseTool?: (toolName: string, parameters: Record<string, any>) => Promise<PermissionResult>;
@@ -208,6 +209,7 @@ export class ClaudeSDK {
       pathToClaudeCodeExecutable: cfg.claudeCodePath,
       maxTurns: cfg.maxTurns,
       mcpServers: {},
+      model: 'claude-sonnet-4-20250514',
       permissionMode: effectivePermissionMode as any,
       canUseTool: async (toolName: string, parameters: Record<string, any>) => {
         return this.handleToolPermission(toolName, parameters, request);

@@ -84,10 +84,11 @@ export const ChatPageDesktop: React.FC = () => {
   const rawMessages = getAllMessages();
   
   // Use unified conversation items that include interactive prompts
+  // Note: rawMessages are ProcessedMessage[], not Message[] - converted in useConversationItems
   const conversationItems = useConversationItems({
     dbMessages: rawMessages,
-    streamingMessage: state.streamingMessage,
-    optimisticUserMessage: state.optimisticUserMessage,
+    streamingMessage: undefined, // Not used in current architecture
+    optimisticUserMessage: undefined, // Not used in current architecture  
     isStreaming: state.isStreaming,
     pendingPrompts,
     selectedConversationId: state.selectedConversationId

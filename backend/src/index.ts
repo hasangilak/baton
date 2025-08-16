@@ -323,13 +323,31 @@ io.on('connection', (socket) => {
 
           // Send conversation info to frontend (especially for new conversations)
           if (isNewConversation) {
+            // Emit to the specific socket that sent the message
             socket.emit('chat:conversation-created', {
               requestId,
               conversationId: conversation.id,
               projectId: conversation.projectId,
               timestamp: Date.now()
             });
-            console.log(`📡 Sent conversation-created event for conversation ${conversation.id} in project ${conversation.projectId}`);
+            
+            // Also broadcast to all clients and project room for redundancy
+            io.emit('chat:conversation-created', {
+              requestId,
+              conversationId: conversation.id,
+              projectId: conversation.projectId,
+              timestamp: Date.now()
+            });
+            
+            // Targeted emission to project room
+            io.to(`project-${conversation.projectId}`).emit('chat:conversation-created', {
+              requestId,
+              conversationId: conversation.id,
+              projectId: conversation.projectId,
+              timestamp: Date.now()
+            });
+            
+            console.log(`📡 Broadcast conversation-created event for conversation ${conversation.id} in project ${conversation.projectId} via multiple channels`);
           }
         }
       } else {

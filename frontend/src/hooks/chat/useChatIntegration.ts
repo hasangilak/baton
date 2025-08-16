@@ -286,13 +286,15 @@ export const useChatIntegration = (projectId: string) => {
 
   // Setup enhanced WebSocket handlers that integrate with React Query
   useEffect(() => {
+    console.log('🎯 Setting up WebSocket handlers in useChatIntegration at:', Date.now());
     const { on, off } = useSocketStore.getState();
     
     // Enhanced session available handler with URL updates
     const handleSessionAvailable = (data: any) => {
       // Backend now sends projectId instead of conversationId for session events
       const conversationId = data.conversationId || data.projectId;
-      if (conversationId === selectedConversationId && data.sessionId) {
+      const currentSelectedId = useChatStore.getState().selectedConversationId;
+      if (conversationId === currentSelectedId && data.sessionId) {
         // Update URL with session ID
         setSearchParams(prev => ({
           ...Object.fromEntries(prev),
@@ -317,24 +319,41 @@ export const useChatIntegration = (projectId: string) => {
     };
     
     // Set up additional WebSocket listeners for integration features
+    console.log('📝 Registering additional handlers: session-id-available, message-complete');
     on('chat:session-id-available', handleSessionAvailable);
     on('chat:message-complete', handleMessageComplete);
     
     // Also set up the core chat store handlers
+    console.log('📝 Setting up core chat store handlers');
     const cleanup = useChatStore.getState().setupWebSocketHandlers();
     
     return () => {
+      console.log('🧹 Cleaning up WebSocket handlers in useChatIntegration');
       // Clean up additional handlers
       off('chat:session-id-available', handleSessionAvailable);
       off('chat:message-complete', handleMessageComplete);
       // Clean up core handlers
       cleanup();
     };
-  }, [selectedConversationId, queryClient, setSearchParams]);
+  }, [queryClient, setSearchParams, isConnected]); // Added isConnected to re-register handlers when socket connects
 
   // Computed values
   const isNewChat = useMemo(() => {
-    return useChatStore.getState().isNewChat();
+    // Use the reactive values directly instead of calling getState()
+    // This ensures the memo properly updates when dependencies change
+    console.log('🔍 Computing isNewChat:', {
+      selectedConversationId,
+      messagesLength: messages.length,
+      isStreaming,
+      result: !selectedConversationId ? 'true (no conversation)' :
+              messages.length > 0 ? 'false (has messages)' :
+              isStreaming ? 'false (streaming)' : 'true (default)'
+    });
+    
+    if (!selectedConversationId) return true;
+    if (messages.length > 0) return false;
+    if (isStreaming) return false;
+    return true;
   }, [selectedConversationId, messages.length, isStreaming]);
 
   // Bridge service retry function
