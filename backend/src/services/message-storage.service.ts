@@ -148,6 +148,9 @@ export class MessageStorageService {
         role = 'system';
       }
 
+      // Classify message for smart display
+      const classification = this.classifyMessage(streamResponse, content);
+
       const message = await this.prisma.message.create({
         data: {
           conversationId,
@@ -162,6 +165,11 @@ export class MessageStorageService {
           usage: (streamResponse.data as any)?.message?.usage || (streamResponse.data as any)?.usage,
           timestamp: BigInt(streamResponse.timestamp),
           status: 'completed',
+          
+          // New classification fields
+          messageClass: classification.class,
+          isTransient: classification.isTransient,
+          displayPriority: classification.priority,
         },
       });
 
@@ -490,6 +498,65 @@ export class MessageStorageService {
         details: `Database error: ${error instanceof Error ? error.message : 'Unknown error'}` 
       };
     }
+  }
+
+  /**
+   * Classify message for smart display handling
+   * Determines if a message is transient (status/thinking) or persistent content
+   */
+  private classifyMessage(streamResponse: StreamResponse, content: string): {
+    class: string;
+    isTransient: boolean;
+    priority: string;
+  } {
+    // Check for status patterns in content
+    const statusPatterns = [
+      /^Currently\s+\w+ing/i,    // Currently reading/writing/searching
+      /^Thinking\.?\.\./i,       // Thinking...
+      /^Processing\b/i,          // Processing...
+      /^Analyzing\b/i,           // Analyzing...
+      /^Loading\b/i,             // Loading...
+      /^Searching\b/i,           // Searching...
+      /^Reading\s+files?\b/i,    // Reading files
+      /^Writing\s+to\b/i,        // Writing to...
+    ];
+
+    const isStatusMessage = statusPatterns.some(pattern => pattern.test(content.trim()));
+
+    // Check if this is a tool execution message
+    const assistantData = streamResponse.data as any;
+    const hasToolUse = assistantData?.message?.content?.some?.((block: any) => block.type === 'tool_use');
+
+    if (isStatusMessage) {
+      return {
+        class: 'status',
+        isTransient: true,
+        priority: 'ephemeral'
+      };
+    }
+
+    if (hasToolUse) {
+      return {
+        class: 'tool',
+        isTransient: false,
+        priority: 'secondary'
+      };
+    }
+
+    if (streamResponse.data?.type === 'result') {
+      return {
+        class: 'result',
+        isTransient: false,
+        priority: 'secondary'
+      };
+    }
+
+    // Default to content
+    return {
+      class: 'content',
+      isTransient: false,
+      priority: 'primary'
+    };
   }
 }
 

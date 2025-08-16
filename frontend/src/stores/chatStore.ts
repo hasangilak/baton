@@ -30,6 +30,14 @@ interface ChatState {
   messages: ProcessedMessage[];
   isStreaming: boolean;
   
+  // Streaming status for transient messages
+  activeStatusMessage: ProcessedMessage | null;
+  streamingContext: {
+    requestId: string;
+    hasActiveStatus: boolean;
+    lastToolExecution?: string;
+  } | null;
+  
   // UI state
   showSidebar: boolean;
   permissionMode: 'default' | 'plan' | 'acceptEdits';
@@ -109,6 +117,10 @@ const initialState: ChatState = {
   messages: [],
   isStreaming: false,
   
+  // Streaming status state
+  activeStatusMessage: null,
+  streamingContext: null,
+  
   showSidebar: false,
   permissionMode: 'default',
   inputValue: '',
@@ -140,7 +152,37 @@ export const useChatStore = create<ChatStore>()(
     
     // Simple direct message update - no deduplication, just add or update
     addOrUpdateMessage: (message: ProcessedMessage) => {
-      const { messages } = get();
+      const { messages, isStreaming, streamingContext } = get();
+      
+      // Handle transient messages separately during streaming
+      if (message.metadata?.isTransient && isStreaming) {
+        console.log('📱 Handling transient message during streaming:', message.content.substring(0, 50));
+        
+        // Always add to messages array (for complete history)
+        const updatedMessages = [...messages];
+        const existingIndex = updatedMessages.findIndex(m => m.id === message.id);
+        
+        if (existingIndex >= 0) {
+          updatedMessages[existingIndex] = message;
+        } else {
+          updatedMessages.push(message);
+        }
+        
+        // Set as active status message for overlay display
+        set({
+          messages: updatedMessages,
+          activeStatusMessage: message,
+          streamingContext: {
+            requestId: message.metadata?.requestId || 'unknown',
+            hasActiveStatus: true,
+            lastToolExecution: message.metadata?.toolName
+          }
+        });
+        
+        return;
+      }
+      
+      // Handle normal messages
       const existingIndex = messages.findIndex(m => m.id === message.id);
       
       if (existingIndex >= 0) {
@@ -148,11 +190,23 @@ export const useChatStore = create<ChatStore>()(
         const updatedMessages = [...messages];
         updatedMessages[existingIndex] = message;
         console.log('🔄 Updated existing message:', message.id);
-        set({ messages: updatedMessages });
+        
+        // Clear active status when real content arrives
+        set({ 
+          messages: updatedMessages,
+          activeStatusMessage: null,
+          streamingContext: null
+        });
       } else {
         // Add new message
         console.log('➕ Added new message:', message.id);
-        set({ messages: [...messages, message] });
+        
+        // Clear active status when real content arrives
+        set({ 
+          messages: [...messages, message],
+          activeStatusMessage: null,
+          streamingContext: null
+        });
       }
     },
     
@@ -209,6 +263,8 @@ export const useChatStore = create<ChatStore>()(
         conversationDetails: null,
         messages: [],
         isStreaming: false,
+        activeStatusMessage: null,
+        streamingContext: null,
         error: null,
         bridgeServiceError: false,
         inputValue: '',

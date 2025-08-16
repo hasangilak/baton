@@ -16,6 +16,7 @@ export interface Project {
   color: string;
   status: ProjectStatus;
   isStarred: boolean;
+  rootDirectory?: string;
   ownerId: string;
   createdAt: string;
   updatedAt: string;
@@ -132,6 +133,7 @@ export interface CreateProjectRequest {
   color: string;
   status?: ProjectStatus;
   isStarred?: boolean;
+  rootDirectory?: string;
 }
 
 export interface UpdateProjectRequest {
@@ -140,6 +142,7 @@ export interface UpdateProjectRequest {
   color?: string;
   status?: ProjectStatus;
   isStarred?: boolean;
+  rootDirectory?: string;
 }
 
 export interface CreateTaskRequest {

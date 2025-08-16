@@ -20,6 +20,10 @@ import AbortMessage from './AbortMessage';
 // Specialized components for specific tools
 import { TodoWriteTimeline } from './TodoWriteTimeline';
 import ExitPlanModeMessage from './ExitPlanModeMessage';
+import { TransientMessageCard } from './TransientMessageCard';
+
+// Import chat store for streaming context
+import { useChatStore } from '../../../stores/chatStore';
 
 interface SimpleMessageRendererProps {
   message: ProcessedMessage;
@@ -29,6 +33,7 @@ interface SimpleMessageRendererProps {
   showTimestamp?: boolean;
   compact?: boolean;
   onPlanReviewDecision?: (planReviewId: string, decision: any) => void;
+  viewMode?: 'streamlined' | 'complete'; // New prop for view mode
 }
 
 /**
@@ -43,7 +48,27 @@ export const SimpleMessageRenderer: React.FC<SimpleMessageRendererProps> = ({
   showTimestamp = true,
   compact = false,
   onPlanReviewDecision,
+  viewMode = 'streamlined',
 }) => {
+  const { streamingContext } = useChatStore();
+  
+  // Smart transient message handling
+  if (message.metadata?.isTransient) {
+    // During streaming: hide transient messages (shown in overlay instead)
+    if (isStreaming && 
+        message.metadata?.requestId === streamingContext?.requestId) {
+      return null; // Don't render in main flow during streaming
+    }
+    
+    // In history view: show with special styling based on view mode
+    if (!isStreaming) {
+      return <TransientMessageCard 
+        message={message} 
+        showInHistory={viewMode === 'complete'} 
+      />;
+    }
+  }
+
   // Common props for all message components
   const baseProps = {
     message: message as any, // Legacy compatibility

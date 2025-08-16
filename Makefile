@@ -15,7 +15,7 @@ RED := \033[31m
 BLUE := \033[34m
 RESET := \033[0m
 
-.PHONY: help setup dev dev-full clean logs status bridge handler test-integration docker-up docker-down prisma-sync prisma-generate db-check
+.PHONY: help setup dev dev-full clean logs status bridge handler test-integration docker-up docker-down prisma-sync prisma-generate db-check mongo-rs-init mongo-rs-status mongo-rs-fix
 
 # Default target
 help: ## Show this help message
@@ -54,8 +54,11 @@ dev-full: setup dev ## Complete setup and start development environment
 docker-up: ## Start Docker containers (database, backend, frontend)
 	@echo "$(YELLOW)Starting Docker containers...$(RESET)"
 	@docker compose -f docker-compose.dev.yml up -d --remove-orphans
-	@sleep 5
-	@echo "$(GREEN)✓ Docker containers started$(RESET)"
+	@echo "$(BLUE)⏳ Waiting for MongoDB to be ready...$(RESET)"
+	@sleep 10
+	@make mongo-rs-init
+	@make prisma-sync
+	@echo "$(GREEN)✓ Docker containers started and configured$(RESET)"
 	@make db-check
 
 docker-down: ## Stop Docker containers
@@ -203,6 +206,40 @@ db-check: ## Check database connection and schema status
 		echo "$(GREEN)✓ Database connection successful$(RESET)" || \
 		echo "$(RED)✗ Database connection failed$(RESET)"
 
+# MongoDB Replica Set Management
+mongo-rs-init: ## Initialize MongoDB replica set
+	@echo "$(YELLOW)🔧 Initializing MongoDB replica set...$(RESET)"
+	@docker exec baton-mongodb-dev mongosh --quiet --eval " \
+		try { \
+			var status = rs.status(); \
+			if (status.ok == 1) { \
+				print('✅ Replica set already initialized'); \
+				print('Primary: ' + status.members.find(m => m.stateStr == 'PRIMARY').name); \
+			} \
+		} catch(e) { \
+			print('🔧 Initializing replica set...'); \
+			rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongodb:27017'}]}); \
+			print('✅ Replica set initialized successfully'); \
+		}"
+
+mongo-rs-status: ## Check MongoDB replica set status
+	@echo "$(BLUE)📊 MongoDB Replica Set Status:$(RESET)"
+	@docker exec baton-mongodb-dev mongosh --quiet --eval "try { var status = rs.status(); if (status.ok == 1) { status.members.forEach(m => print(m.name + ': ' + m.stateStr + (m.health == 1 ? ' (healthy)' : ' (unhealthy)'))); } else { print('❌ Replica set not initialized'); } } catch(e) { print('❌ Error: ' + e.message); }"
+
+mongo-rs-fix: ## Force fix MongoDB replica set issues
+	@echo "$(YELLOW)🔧 Fixing MongoDB replica set...$(RESET)"
+	@docker exec baton-mongodb-dev mongosh --quiet --eval " \
+		try { \
+			rs.initiate({_id: 'rs0', members: [{_id: 0, host: 'mongodb:27017'}]}); \
+			print('✅ Replica set initialized'); \
+		} catch(e) { \
+			if (e.message.includes('already initialized')) { \
+				print('ℹ️ Replica set already initialized'); \
+			} else { \
+				print('❌ Error: ' + e.message); \
+			} \
+		}"
+
 # Database Management  
 db-reset: ## Reset and reseed database
 	@echo "$(YELLOW)Resetting database...$(RESET)"
@@ -227,6 +264,17 @@ lint: ## Run linting on all code
 build: ## Build production assets
 	@cd backend && npm run build
 	@cd frontend && npm run build
+
+# Complete Reset Commands
+docker-reset: ## Complete Docker environment reset with replica set
+	@echo "$(YELLOW)🔄 Resetting Docker environment...$(RESET)"
+	@docker compose -f docker-compose.dev.yml down -v
+	@docker compose -f docker-compose.dev.yml up -d --remove-orphans
+	@echo "$(BLUE)⏳ Waiting for MongoDB to be ready...$(RESET)"
+	@sleep 10
+	@make mongo-rs-init
+	@make prisma-sync
+	@echo "$(GREEN)✅ Environment reset complete!$(RESET)"
 
 # Cleanup
 clean: stop ## Stop services and clean up temporary files

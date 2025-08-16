@@ -29,15 +29,16 @@ model User {
 }
 
 model Project {
-  id          String   @id @default(auto()) @map("_id") @db.ObjectId
-  name        String
-  description String?
-  color       String   @default("#3b82f6")
-  status      String   @default("active") // active, archived, completed
-  isStarred   Boolean  @default(false)
-  ownerId     String   @db.ObjectId
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  name          String
+  description   String?
+  color         String   @default("#3b82f6")
+  status        String   @default("active") // active, archived, completed
+  isStarred     Boolean  @default(false)
+  rootDirectory String?  // Working directory for Claude Code SDK execution
+  ownerId       String   @db.ObjectId
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   // Relations
   owner               User                     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
@@ -282,6 +283,11 @@ model Message {
   sessionId       String?   // data.session_id
   usage           Json?     // data.message.usage (tokens, etc.)
   
+  // Message classification fields for smart display
+  messageClass    String?   @default("content") // status, tool, content, result
+  isTransient     Boolean   @default(false)     // True for status messages like "Thinking..."
+  displayPriority String?   @default("primary") // primary, secondary, ephemeral
+  
   // Legacy/fallback fields
   tokenCount Int?      // Fallback token count
   status     String    @default("completed") // sending, completed, failed
@@ -302,6 +308,9 @@ model Message {
   @@index([role])
   @@index([createdAt])
   @@index([sessionId])
+  @@index([messageClass])
+  @@index([isTransient])
+  @@index([displayPriority])
 }
 
 model MessageAttachment {

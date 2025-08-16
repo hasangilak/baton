@@ -1,5 +1,5 @@
 import React from "react";
-import { Menu, Plus } from "lucide-react";
+import { Menu, Plus, Settings, Eye, EyeOff } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { WelcomeScreen } from "../shared/WelcomeScreen";
 import { SessionInfo } from "../shared/SessionInfo";
@@ -10,6 +10,7 @@ import { SessionStatusIndicator } from "../shared/SessionStatusIndicator";
 import { SessionErrorBanner } from "../shared/SessionErrorBanner";
 import { ConnectionStatusIndicator, ConnectionLostBanner } from "../shared/ConnectionStatusIndicator";
 import { BridgeServiceBanner, BridgeServiceIndicator } from "../shared/BridgeServiceBanner";
+import { StreamingStatusOverlay } from "../shared/StreamingStatusOverlay";
 import { useChatIntegration } from "../../../hooks/chat/useChatIntegration";
 import { useParams } from 'react-router-dom';
 import { useFileUpload } from "../../../hooks/useFileUpload";
@@ -75,6 +76,9 @@ export const ChatPageDesktop: React.FC = () => {
   
   // Connection error handling
   const [showConnectionBanner, setShowConnectionBanner] = React.useState(false);
+  
+  // View mode for message display
+  const [viewMode, setViewMode] = React.useState<'streamlined' | 'complete'>('streamlined');
   
   // Get current messages including optimistic and streaming
   const rawMessages = getAllMessages();
@@ -390,6 +394,25 @@ export const ChatPageDesktop: React.FC = () => {
               />
               
               <div className="flex items-center gap-3">
+                {/* View Mode Toggle */}
+                <button
+                  onClick={() => setViewMode(viewMode === 'streamlined' ? 'complete' : 'streamlined')}
+                  className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-gray-300 hover:bg-[#2D2D30] rounded transition-colors"
+                  title={`Switch to ${viewMode === 'streamlined' ? 'complete' : 'streamlined'} view`}
+                >
+                  {viewMode === 'streamlined' ? (
+                    <>
+                      <Eye className="w-3 h-3" />
+                      <span>Streamlined</span>
+                    </>
+                  ) : (
+                    <>
+                      <EyeOff className="w-3 h-3" />
+                      <span>Complete</span>
+                    </>
+                  )}
+                </button>
+                
                 <ConnectionStatusIndicator compact />
                 <BridgeServiceIndicator 
                   isError={state.bridgeServiceError} 
@@ -562,6 +585,7 @@ export const ChatPageDesktop: React.FC = () => {
                           state.isStreaming &&
                           !item.data.metadata?.isComplete
                         }
+                        viewMode={viewMode}
                         onCopy={(content, messageId) => {
                           navigator.clipboard.writeText(content);
                         }}
@@ -602,6 +626,9 @@ export const ChatPageDesktop: React.FC = () => {
         accept={fileUpload.supportedExtensions.join(",")}
         style={{ display: "none" }}
       />
+      
+      {/* Streaming Status Overlay */}
+      <StreamingStatusOverlay />
     </div>
   );
 };

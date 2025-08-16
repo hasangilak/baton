@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Folder, Palette, Trash2 } from 'lucide-react';
+import { Folder, Palette, Trash2, FolderOpen } from 'lucide-react';
 import { useUpdateProject, useDeleteProject } from '../../hooks/useProjects';
 import { useToast } from '../../hooks/useToast';
 import type { Project, UpdateProjectRequest } from '../../types';
@@ -47,7 +47,8 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
   const [formData, setFormData] = useState<UpdateProjectRequest>({
     name: '',
     description: '',
-    color: '#3b82f6'
+    color: '#3b82f6',
+    rootDirectory: ''
   });
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
@@ -56,7 +57,7 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
   const toast = useToast();
 
   const handleClose = useCallback(() => {
-    setFormData({ name: '', description: '', color: '#3b82f6' });
+    setFormData({ name: '', description: '', color: '#3b82f6', rootDirectory: '' });
     setErrors({});
     onClose();
   }, [onClose]);
@@ -67,7 +68,8 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
       setFormData({
         name: project.name,
         description: project.description || '',
-        color: project.color
+        color: project.color,
+        rootDirectory: project.rootDirectory || ''
       });
     }
   }, [project]);
@@ -193,6 +195,26 @@ export const EditProjectModal: React.FC<EditProjectModalProps> = ({
               placeholder="Describe your project (optional)"
               data-testid="edit-project-description-input"
             />
+          </div>
+
+          {/* Root Directory */}
+          <div>
+            <label htmlFor="rootDirectory" className="block text-sm font-medium text-gray-700 mb-2">
+              <FolderOpen className="w-4 h-4 inline mr-2" />
+              Root Directory
+            </label>
+            <input
+              type="text"
+              id="rootDirectory"
+              value={formData.rootDirectory}
+              onChange={(e) => setFormData({ ...formData, rootDirectory: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="/path/to/your/project (optional)"
+              data-testid="edit-project-root-directory-input"
+            />
+            <p className="text-sm text-gray-500 mt-1">
+              Working directory for Claude Code to execute commands. Leave blank to use default.
+            </p>
           </div>
 
           {/* Color Selection */}

@@ -11,13 +11,15 @@ const prisma = new PrismaClient();
 const createProjectSchema = z.object({
   name: z.string().min(1).max(100),
   description: z.string().optional(),
-  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#3b82f6')
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#3b82f6'),
+  rootDirectory: z.string().optional()
 });
 
 const updateProjectSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   description: z.string().optional(),
-  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional()
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  rootDirectory: z.string().optional()
 });
 
 // GET /api/projects - Get all projects
@@ -112,6 +114,7 @@ router.post('/', async (req, res, next) => {
         name: validatedData.name,
         description: validatedData.description ?? null,
         color: validatedData.color ?? '#3b82f6',
+        rootDirectory: validatedData.rootDirectory ?? null,
         ownerId: user.id
       },
       include: {
@@ -149,7 +152,8 @@ router.put('/:id', async (req, res, next) => {
       data: {
         ...(validatedData.name && { name: validatedData.name }),
         ...(validatedData.description !== undefined && { description: validatedData.description }),
-        ...(validatedData.color && { color: validatedData.color })
+        ...(validatedData.color && { color: validatedData.color }),
+        ...(validatedData.rootDirectory !== undefined && { rootDirectory: validatedData.rootDirectory })
       },
       include: {
         owner: {

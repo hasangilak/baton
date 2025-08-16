@@ -125,13 +125,17 @@ export class MessageProcessor {
     // Check if this is a tool use message
     const toolUseBlocks = content.filter(block => block.type === 'tool_use');
     const textBlocks = content.filter(block => block.type === 'text');
+    const textContent = textBlocks.map(block => block.text).join('') || '';
+    
+    // Check if this is a status/transient message
+    const isTransient = this.isStatusMessage(textContent);
     
     if (toolUseBlocks.length > 0) {
       // This is a tool message
       return {
         id: messageId,
         type: 'tool',
-        content: textBlocks.map(block => block.text).join('') || '',
+        content: textContent,
         timestamp,
         metadata: {
           sessionId: data.session_id,
@@ -140,7 +144,8 @@ export class MessageProcessor {
           usage: data.message?.usage,
           cost: data.total_cost_usd,
           duration: data.duration_ms,
-          isComplete: true
+          isComplete: true,
+          isTransient: false // Tool executions are not transient
         }
       };
     }
@@ -149,7 +154,7 @@ export class MessageProcessor {
     return {
       id: messageId,
       type: 'assistant',
-      content: textBlocks.map(block => block.text).join('') || '',
+      content: textContent,
       timestamp,
       metadata: {
         sessionId: data.session_id,
@@ -157,7 +162,10 @@ export class MessageProcessor {
         cost: data.total_cost_usd,
         duration: data.duration_ms,
         model: data.message?.model,
-        isComplete: true
+        isComplete: true,
+        isTransient,
+        displayMode: isTransient ? 'overlay' : 'normal',
+        persistDisplay: isTransient ? 'collapsed' : 'normal'
       }
     };
   }
@@ -257,7 +265,14 @@ export class MessageProcessor {
         status: rawMessage.status,
         isComplete: true,
         legacy: true,
-        optimistic: false // Mark database messages as non-optimistic
+        optimistic: false, // Mark database messages as non-optimistic
+        
+        // Handle classification from database
+        isTransient: rawMessage.isTransient || false,
+        messageClass: rawMessage.messageClass || 'content',
+        displayPriority: rawMessage.displayPriority || 'primary',
+        displayMode: rawMessage.isTransient ? 'overlay' : 'normal',
+        persistDisplay: rawMessage.isTransient ? 'collapsed' : 'normal'
       }
     };
   }
@@ -314,6 +329,26 @@ export class MessageProcessor {
     }
     
     return Array.from(seen.values()).sort((a, b) => a.timestamp - b.timestamp);
+  }
+
+  /**
+   * Check if a message content indicates a status/thinking message
+   */
+  private static isStatusMessage(content: string): boolean {
+    if (!content) return false;
+    
+    const statusPatterns = [
+      /^Currently\s+\w+ing/i,    // Currently reading/writing/searching
+      /^Thinking\.?\.\./i,       // Thinking...
+      /^Processing\b/i,          // Processing...
+      /^Analyzing\b/i,           // Analyzing...
+      /^Loading\b/i,             // Loading...
+      /^Searching\b/i,           // Searching...
+      /^Reading\s+files?\b/i,    // Reading files
+      /^Writing\s+to\b/i,        // Writing to...
+    ];
+    
+    return statusPatterns.some(pattern => pattern.test(content.trim()));
   }
 
   /**

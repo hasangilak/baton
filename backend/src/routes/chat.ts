@@ -85,7 +85,7 @@ router.post('/conversations', async (req: Request, res: Response) => {
   try {
     const { projectId, title } = req.body;
     // For now, use a default user ID - in production, get from auth
-    const userId = '689affcf10e66a4b10341208';
+    const userId = '68a091de6af4daada191a144';
 
     if (!projectId) {
       return res.status(400).json({
@@ -1491,7 +1491,7 @@ router.post('/messages/stream-bridge', async (req: Request, res: Response): Prom
         conversationId,
         sessionId: currentSessionId,
         allowedTools,
-        workingDirectory: process.env.WORKING_DIRECTORY || '/home/hassan/work/baton',
+        workingDirectory: conversation.project?.rootDirectory || process.env.WORKING_DIRECTORY || '/home/hassan/work/baton',
         permissionMode: permissionMode,
         projectName: conversation.project?.name
       };

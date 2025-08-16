@@ -5,21 +5,40 @@ services:
   mongodb:
     image: mongo:7
     container_name: baton-mongodb
-    command: ["mongod", "--quiet", "--logpath", "/var/log/mongodb/mongod.log", "--replSet", "rs0", "--bind_ip_all"]
     environment:
       - MONGO_INITDB_DATABASE=baton
     volumes:
       - mongodb_data:/data/db
       - mongodb_logs:/var/log/mongodb
+      - ./mongodb/init-replica-set.js:/docker-entrypoint-initdb.d/init-replica-set.js:ro
+      - ./mongodb/docker-entrypoint.sh:/usr/local/bin/docker-entrypoint.sh:ro
+    entrypoint: ["/usr/local/bin/docker-entrypoint.sh"]
     networks:
       - baton-network
     ports:
       - "27017:27017"
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      test: |
+        mongosh --quiet --eval "
+          try {
+            var status = rs.status();
+            if (status.ok == 1 && status.members.length > 0) {
+              var primary = status.members.find(m => m.stateStr == 'PRIMARY');
+              if (primary) {
+                quit(0);
+              } else {
+                quit(1);
+              }
+            } else {
+              quit(1);
+            }
+          } catch(e) {
+            quit(1);
+          }
+        "
       interval: 10s
-      timeout: 5s
-      retries: 5
+      timeout: 10s
+      retries: 10
       start_period: 30s
     restart: unless-stopped
 
