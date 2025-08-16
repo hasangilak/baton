@@ -168,7 +168,7 @@ export const useChatStore = create<ChatStore>()(
           updatedMessages.push(message);
         }
         
-        // Set as active status message for overlay display
+        // Set as active status message for overlay display (replaces previous status)
         set({
           messages: updatedMessages,
           activeStatusMessage: message,
@@ -191,21 +191,39 @@ export const useChatStore = create<ChatStore>()(
         updatedMessages[existingIndex] = message;
         console.log('🔄 Updated existing message:', message.id);
         
-        // Clear active status when real content arrives
+        // Only clear active status if this is substantial assistant content (not tool usage or result)
+        // Keep showing status messages until we get real assistant response content or streaming ends
+        // Tool messages and result messages should NOT clear the status - they're part of the agent's work process
+        const shouldClearStatus = message.type === 'assistant' && 
+                                 !message.metadata?.isTransient && 
+                                 !message.metadata?.toolName && // Don't clear on tool usage
+                                 message.type !== 'tool' && // Don't clear on tool messages
+                                 message.type !== 'result' && // Don't clear on result messages
+                                 message.content.trim().length > 10;
+        
         set({ 
           messages: updatedMessages,
-          activeStatusMessage: null,
-          streamingContext: null
+          activeStatusMessage: shouldClearStatus ? null : get().activeStatusMessage,
+          streamingContext: shouldClearStatus ? null : get().streamingContext
         });
       } else {
         // Add new message
         console.log('➕ Added new message:', message.id, 'Total messages will be:', messages.length + 1);
         
-        // Clear active status when real content arrives
+        // Only clear active status if this is substantial assistant content (not tool usage or result)
+        // Keep showing status messages until we get real assistant response content or streaming ends
+        // Tool messages and result messages should NOT clear the status - they're part of the agent's work process
+        const shouldClearStatus = message.type === 'assistant' && 
+                                 !message.metadata?.isTransient && 
+                                 !message.metadata?.toolName && // Don't clear on tool usage
+                                 message.type !== 'tool' && // Don't clear on tool messages
+                                 message.type !== 'result' && // Don't clear on result messages
+                                 message.content.trim().length > 10;
+        
         set({ 
           messages: [...messages, message],
-          activeStatusMessage: null,
-          streamingContext: null
+          activeStatusMessage: shouldClearStatus ? null : get().activeStatusMessage,
+          streamingContext: shouldClearStatus ? null : get().streamingContext
         });
         
         console.log('✅ Message added to store. New message count:', get().messages.length);
@@ -676,7 +694,7 @@ export const useChatStore = create<ChatStore>()(
         }
       };
 
-      // Simple message complete handler - just stop streaming
+      // Simple message complete handler - stop streaming and clear status
       const handleMessageComplete = (data: any) => {
         const currentState = get();
         const completionTargetId = data.conversationId || data.projectId;
@@ -697,9 +715,13 @@ export const useChatStore = create<ChatStore>()(
           return;
         }
         
-        // Simple: just stop streaming
+        // Stop streaming and clear any active status messages
         setStreamingState(false);
-        console.log('💬 Message complete, stopped streaming');
+        set({
+          activeStatusMessage: null,
+          streamingContext: null
+        });
+        console.log('💬 Message complete, stopped streaming and cleared status');
       };
 
       // Session available handler
@@ -793,6 +815,12 @@ export const useChatStore = create<ChatStore>()(
       const handleError = (data: any) => {
         setStreamingState(false);
         
+        // Clear any active status messages on error
+        set({
+          activeStatusMessage: null,
+          streamingContext: null
+        });
+        
         // Check if this is a bridge service error
         const isBridgeError = data.error && data.error.includes('No bridge service connected');
         
@@ -809,6 +837,12 @@ export const useChatStore = create<ChatStore>()(
       // Abort handler
       const handleAbort = (_data: any) => {
         setStreamingState(false);
+        
+        // Clear any active status messages on abort
+        set({
+          activeStatusMessage: null,
+          streamingContext: null
+        });
       };
 
       // Conversation created handler for new conversations

@@ -302,47 +302,59 @@ export class ClaudeSDK {
     requestId: string, 
     timeSinceLastMessage: number
   ): void {
-    // Basic message logging
-    if (messageCount <= 5) { // Log first 5 messages in detail
-      this.logger.debug('Claude message received', {
-        messageCount,
-        type: sdkMessage.type || 'unknown',
-        timeSinceLastMessage
-      });
+    // Enhanced logging to debug status message issue
+    const type = sdkMessage.type;
+    const role = sdkMessage.message?.role || 'n/a';
+    const content = sdkMessage.message?.content;
+    
+    // Always log message type and basic info for debugging
+    this.logger.info('🔍 Claude SDK Message Details', {
+      seq: messageCount,
+      type,
+      role,
+      contentType: typeof content,
+      isArray: Array.isArray(content),
+      hasSessionId: !!sdkMessage.session_id,
+      responseTime: timeSinceLastMessage
+    });
+    
+    // Log actual content to debug status messages
+    if (content) {
+      if (Array.isArray(content)) {
+        const textBlocks = content.filter(block => block?.type === 'text');
+        const toolBlocks = content.filter(block => block?.type === 'tool_use');
+        
+        textBlocks.forEach((block, i) => {
+          this.logger.info(`📝 Text Block ${i + 1}:`, {
+            text: block.text?.substring(0, 100) + (block.text?.length > 100 ? '...' : ''),
+            fullLength: block.text?.length
+          });
+        });
+        
+        toolBlocks.forEach((block, i) => {
+          this.logger.info(`🔧 Tool Block ${i + 1}:`, {
+            name: block.name,
+            hasInput: !!block.input
+          });
+        });
+      } else if (typeof content === 'string') {
+        this.logger.info('📝 String Content:', {
+          content: content.substring(0, 100) + (content.length > 100 ? '...' : ''),
+          fullLength: content.length
+        });
+      }
     }
 
-    // Detailed content analysis
-    try {
-      const type = sdkMessage.type;
-      const role = sdkMessage.message?.role || 'n/a';
-      const content = sdkMessage.message?.content;
-      
-      const contentSummary = this.summarizeContent(content);
-      
-      this.logger.debug('Message details', {
-        seq: messageCount,
-        type,
-        role,
-        content: contentSummary,
-        responseTime: timeSinceLastMessage
-      });
-      
-    } catch (error) {
-      this.logger.debug('Could not analyze message content', {
-        seq: messageCount
-      });
-    }
-
-    // Log structured message for analysis
-    if (process.env.NODE_ENV === 'development') {
-      this.logger.debug('Full Claude message', {
+    // Log structured message for analysis in development
+    if (process.env.NODE_ENV === 'development' || messageCount <= 10) {
+      this.logger.info('🔬 Full Claude Message JSON', {
         message: JSON.stringify(sdkMessage, null, 2)
       });
     }
   }
 
   /**
-   * Summarize message content for logging
+   * Summarize message content for logging (currently unused but kept for compatibility)
    */
   private summarizeContent(content: any): string {
     if (!content) return 'none';

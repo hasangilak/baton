@@ -346,6 +346,13 @@ export class MessageProcessor {
       /^Searching\b/i,           // Searching...
       /^Reading\s+files?\b/i,    // Reading files
       /^Writing\s+to\b/i,        // Writing to...
+      /^I'll\s+\w+/i,           // I'll help/read/write/check
+      /^Let\s+me\s+\w+/i,       // Let me check/read/analyze
+      /^I'm\s+going\s+to\s+\w+/i, // I'm going to help/read
+      /^I\s+need\s+to\s+\w+/i,  // I need to check/analyze
+      /^First,?\s+I'll\s+\w+/i, // First, I'll check
+      /^Now\s+I'll\s+\w+/i,     // Now I'll read
+      /^Next,?\s+I'll\s+\w+/i,  // Next, I'll analyze
     ];
     
     return statusPatterns.some(pattern => pattern.test(content.trim()));

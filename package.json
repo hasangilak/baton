@@ -8,7 +8,7 @@
     "url": "https://github.com/hasangilak/baton.git"
   },
   "dependencies": {
-    "@anthropic-ai/claude-code": "^1.0.70",
+    "@anthropic-ai/claude-code": "^1.0.83",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@types/react-window": "^1.8.8",
     "axios": "^1.11.0",
