@@ -12,6 +12,7 @@
     "@types/react-syntax-highlighter": "^15.5.13",
     "@types/react-window": "^1.8.8",
     "axios": "^1.11.0",
+    "colors": "^1.4.0",
     "cors": "^2.8.5",
     "crypto": "^1.0.1",
     "events": "^3.3.0",

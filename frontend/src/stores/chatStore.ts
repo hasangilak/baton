@@ -197,9 +197,10 @@ export const useChatStore = create<ChatStore>()(
         const shouldClearStatus = message.type === 'assistant' && 
                                  !message.metadata?.isTransient && 
                                  !message.metadata?.toolName && // Don't clear on tool usage
+                                 !message.metadata?.hasThinking && // Don't clear on thinking messages
                                  message.type !== 'tool' && // Don't clear on tool messages
                                  message.type !== 'result' && // Don't clear on result messages
-                                 message.content.trim().length > 10;
+                                 message.content.trim().length > 50; // Require substantial content (>50 chars)
         
         set({ 
           messages: updatedMessages,
@@ -216,9 +217,10 @@ export const useChatStore = create<ChatStore>()(
         const shouldClearStatus = message.type === 'assistant' && 
                                  !message.metadata?.isTransient && 
                                  !message.metadata?.toolName && // Don't clear on tool usage
+                                 !message.metadata?.hasThinking && // Don't clear on thinking messages
                                  message.type !== 'tool' && // Don't clear on tool messages
                                  message.type !== 'result' && // Don't clear on result messages
-                                 message.content.trim().length > 10;
+                                 message.content.trim().length > 50; // Require substantial content (>50 chars)
         
         set({ 
           messages: [...messages, message],

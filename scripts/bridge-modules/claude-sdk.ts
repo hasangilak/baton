@@ -121,6 +121,44 @@ export class ClaudeSDK {
         // Log message details
         this.logMessage(sdkMessage, messageCount, requestId, timeSinceLastMessage);
 
+        // Generate synthetic status messages for tool usage
+        if (sdkMessage.type === 'assistant' && sdkMessage.message?.content) {
+          const toolBlocks = sdkMessage.message.content.filter((block: any) => block.type === 'tool_use');
+          
+          for (const toolBlock of toolBlocks) {
+            const statusMessage = this.generateStatusMessage(toolBlock);
+            if (statusMessage) {
+              // Create and yield synthetic status message before the tool message
+              const syntheticMessage = {
+                type: 'assistant' as const,
+                message: {
+                  id: `status_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                  type: 'message',
+                  role: 'assistant',
+                  model: sdkMessage.message.model,
+                  content: [{
+                    type: 'text',
+                    text: statusMessage
+                  }],
+                  stop_reason: null,
+                  stop_sequence: null,
+                  usage: null
+                },
+                parent_tool_use_id: null,
+                session_id: sdkMessage.session_id
+              };
+
+              contextLogger.info('🤖 Generated synthetic status message', {
+                toolName: toolBlock.name,
+                statusMessage: statusMessage.substring(0, 50),
+                syntheticMessageId: syntheticMessage.message.id
+              });
+
+              yield syntheticMessage;
+            }
+          }
+        }
+
         yield sdkMessage;
 
         // Check for completion
@@ -211,6 +249,7 @@ export class ClaudeSDK {
       mcpServers: {},
       model: 'claude-sonnet-4-20250514',
       permissionMode: effectivePermissionMode as any,
+      maxThinkingTokens: 8192, // Enable thinking mode for status messages
       canUseTool: async (toolName: string, parameters: Record<string, any>) => {
         return this.handleToolPermission(toolName, parameters, request);
       }
@@ -374,6 +413,94 @@ export class ClaudeSDK {
     }
     
     return typeof content;
+  }
+
+  /**
+   * Generate synthetic status messages for tool usage
+   */
+  private generateStatusMessage(toolBlock: any): string | null {
+    if (!toolBlock || !toolBlock.name) return null;
+
+    const toolName = toolBlock.name;
+    const toolInput = toolBlock.input || {};
+
+    switch (toolName) {
+      case 'WebSearch':
+        const query = toolInput.query || 'information';
+        return `Searching the web for "${query}"...`;
+
+      case 'Read':
+        const filePath = toolInput.file_path || toolInput.path || 'file';
+        const fileName = filePath.split('/').pop() || filePath;
+        return `Reading ${fileName}...`;
+
+      case 'Edit':
+      case 'MultiEdit':
+        const editPath = toolInput.file_path || toolInput.path || 'file';
+        const editFileName = editPath.split('/').pop() || editPath;
+        return `Editing ${editFileName}...`;
+
+      case 'Write':
+        const writePath = toolInput.file_path || toolInput.path || 'file';
+        const writeFileName = writePath.split('/').pop() || writePath;
+        return `Writing to ${writeFileName}...`;
+
+      case 'Bash':
+        const command = toolInput.command || 'command';
+        const shortCommand = command.length > 30 ? command.substring(0, 30) + '...' : command;
+        return `Executing: ${shortCommand}`;
+
+      case 'Task':
+        const description = toolInput.description || 'task';
+        return `Running agent task: ${description}`;
+
+      case 'Glob':
+        const pattern = toolInput.pattern || 'files';
+        return `Searching for files matching: ${pattern}`;
+
+      case 'Grep':
+        const grepPattern = toolInput.pattern || 'pattern';
+        return `Searching for: ${grepPattern}`;
+
+      case 'LS':
+        const lsPath = toolInput.path || 'directory';
+        return `Listing contents of ${lsPath}...`;
+
+      case 'WebFetch':
+        const url = toolInput.url || 'webpage';
+        const domain = url.replace(/^https?:\/\//, '').split('/')[0];
+        return `Fetching content from ${domain}...`;
+
+      case 'TodoWrite':
+        return `Updating todo list...`;
+
+      // Playwright browser tools
+      case 'mcp__playwright__browser_navigate':
+        const navUrl = toolInput.url || 'page';
+        return `Navigating to ${navUrl}...`;
+
+      case 'mcp__playwright__browser_click':
+        const element = toolInput.element || 'element';
+        return `Clicking on ${element}...`;
+
+      case 'mcp__playwright__browser_type':
+        return `Typing text...`;
+
+      case 'mcp__playwright__browser_take_screenshot':
+        return `Taking screenshot...`;
+
+      case 'mcp__playwright__browser_snapshot':
+        return `Capturing page snapshot...`;
+
+      case 'mcp__grep__searchGitHub':
+        const searchQuery = toolInput.query || 'code';
+        return `Searching GitHub for: ${searchQuery}`;
+
+      default:
+        // Generic status message for unknown tools
+        const genericToolName = toolName.replace(/^mcp__.*?__/, '').replace(/_/g, ' ');
+        return `Using ${genericToolName}...`;
+    }
   }
 
   /**
