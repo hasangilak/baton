@@ -8,6 +8,7 @@
 import { PrismaClient, Message, Conversation } from '@prisma/client';
 import { logger } from '../utils/logger';
 import { StreamResponse } from '../types/claude-bridge';
+import { serializeMessages } from '../utils/bigint-serializer';
 
 export class MessageStorageService {
   private prisma: PrismaClient;
@@ -454,7 +455,7 @@ export class MessageStorageService {
   /**
    * Get all messages for a conversation (used by frontend Zustand store)
    */
-  async getConversationMessages(conversationId: string): Promise<Message[]> {
+  async getConversationMessages(conversationId: string): Promise<any[]> {
     logger.storage?.info('Fetching conversation messages', { conversationId });
 
     try {
@@ -477,7 +478,10 @@ export class MessageStorageService {
         messageCount: messages.length 
       });
 
-      return messages;
+      // Serialize BigInt fields to avoid JSON serialization errors
+      const serializedMessages = serializeMessages(messages);
+      
+      return serializedMessages;
     } catch (error) {
       logger.storage?.error('❌ Failed to get conversation messages', { error, conversationId });
       throw new Error(`Failed to fetch messages: ${error instanceof Error ? error.message : 'Unknown error'}`);
