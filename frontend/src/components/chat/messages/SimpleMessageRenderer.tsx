@@ -34,6 +34,7 @@ interface SimpleMessageRendererProps {
   compact?: boolean;
   onPlanReviewDecision?: (planReviewId: string, decision: any) => void;
   viewMode?: 'streamlined' | 'complete'; // New prop for view mode
+  messageIndex?: number; // For staggered animations
 }
 
 /**
@@ -49,8 +50,18 @@ export const SimpleMessageRenderer: React.FC<SimpleMessageRendererProps> = ({
   compact = false,
   onPlanReviewDecision,
   viewMode = 'streamlined',
+  messageIndex = 0,
 }) => {
   const { streamingContext } = useChatStore();
+  
+  // Generate animation classes based on message index and type
+  const getAnimationClasses = () => {
+    const baseClasses = 'message-container';
+    const animationClass = isStreaming ? 'animate-slide-up' : 'message-enter';
+    const staggerClass = messageIndex <= 5 ? `message-stagger-${Math.min(messageIndex, 5)}` : '';
+    
+    return `${baseClasses} ${animationClass} ${staggerClass}`.trim();
+  };
   
   // Smart transient message handling
   if (message.metadata?.isTransient) {
@@ -79,32 +90,41 @@ export const SimpleMessageRenderer: React.FC<SimpleMessageRendererProps> = ({
     compact,
   };
 
-  // Direct component mapping based on message type
-  switch (message.type) {
-    case 'user':
-      return <UserMessage {...baseProps} />;
-      
-    case 'assistant':
-      return <AssistantMessage {...baseProps} />;
-      
-    case 'system':
-      return <SystemMessageComponent {...baseProps} />;
-      
-    case 'tool':
-      return renderToolMessage(message, baseProps, onPlanReviewDecision);
-      
-    case 'result':
-      return <ResultMessage {...baseProps} />;
-      
-    case 'error':
-      return <ErrorMessage {...baseProps} />;
-      
-    case 'abort':
-      return <AbortMessage {...baseProps} />;
-      
-    default:
-      return renderUnknownMessage(message, baseProps);
-  }
+  // Direct component mapping based on message type with animation wrapper
+  const MessageComponent = () => {
+    switch (message.type) {
+      case 'user':
+        return <UserMessage {...baseProps} />;
+        
+      case 'assistant':
+        return <AssistantMessage {...baseProps} />;
+        
+      case 'system':
+        return <SystemMessageComponent {...baseProps} />;
+        
+      case 'tool':
+        return renderToolMessage(message, baseProps, onPlanReviewDecision);
+        
+      case 'result':
+        return <ResultMessage {...baseProps} />;
+        
+      case 'error':
+        return <ErrorMessage {...baseProps} />;
+        
+      case 'abort':
+        return <AbortMessage {...baseProps} />;
+        
+      default:
+        return renderUnknownMessage(message, baseProps);
+    }
+  };
+
+  // Wrap message in animation container
+  return (
+    <div className={getAnimationClasses()}>
+      <MessageComponent />
+    </div>
+  );
 };
 
 /**

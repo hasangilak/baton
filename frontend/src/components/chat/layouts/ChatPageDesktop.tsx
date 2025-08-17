@@ -478,7 +478,7 @@ export const ChatPageDesktop: React.FC = () => {
                     </div>
                   </div>
                 )}
-                {conversationItems.map((item) => {
+                {conversationItems.map((item, index) => {
                   // Handle different conversation item types
                   if (item.type === 'prompt') {
                     const prompt = item.data;
@@ -582,6 +582,7 @@ export const ChatPageDesktop: React.FC = () => {
                       <SimpleMessageRenderer
                         key={item.id}
                         message={item.data}
+                        messageIndex={index}
                         isStreaming={
                           state.isStreaming &&
                           !item.data.metadata?.isComplete
